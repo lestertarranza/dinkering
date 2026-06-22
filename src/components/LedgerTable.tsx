@@ -1,5 +1,9 @@
 import { formatMoney, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui";
+import {
+  formatBookingContext,
+  type BookingContext,
+} from "@/lib/booking-context";
 import type { LedgerEntry } from "@/lib/types";
 
 const sourceLabels: Record<string, string> = {
@@ -15,7 +19,13 @@ const sourceLabels: Record<string, string> = {
  * Entries should be passed oldest-first; the running balance is computed
  * in order and the table is displayed newest-first.
  */
-export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
+export function LedgerTable({
+  entries,
+  bookingContext,
+}: {
+  entries: LedgerEntry[];
+  bookingContext?: Map<string, BookingContext>;
+}) {
   const ordered = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
     if (d !== 0) return d;
@@ -67,6 +77,14 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
                     <Badge tone="neutral">Voided</Badge>
                   </span>
                 ) : null}
+                {(() => {
+                  const ctx = formatBookingContext(bookingContext?.get(entry.id));
+                  return ctx ? (
+                    <span className="mt-0.5 block text-xs text-slate-400">
+                      {ctx}
+                    </span>
+                  ) : null;
+                })()}
               </td>
               <td className="px-4 py-2 text-slate-500">
                 {sourceLabels[entry.source_type] ?? entry.source_type}

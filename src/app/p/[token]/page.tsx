@@ -8,6 +8,10 @@ import {
   formatTimeRange,
   describeBalance,
 } from "@/lib/format";
+import {
+  buildLedgerBookingContext,
+  formatBookingContext,
+} from "@/lib/booking-context";
 import type {
   Booking,
   BookingAttendance,
@@ -80,7 +84,9 @@ export default async function PlayerPortal({
         .eq("player_id", p.id),
       db
         .from("booking_shares")
-        .select("*, bookings(booking_code, play_date)")
+        .select(
+          "*, bookings(booking_code, play_date, start_time, end_time, venue, court_number)",
+        )
         .eq("player_id", p.id),
       db
         .from("team_expense_shares")
@@ -103,6 +109,7 @@ export default async function PlayerPortal({
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
   const d = describeBalance(balance);
+  const ledgerContext = await buildLedgerBookingContext(db, ledger);
 
   const rsvpBtn = (bookingId: string, value: string, label: string, current: string) => (
     <button
@@ -234,26 +241,43 @@ export default async function PlayerPortal({
           <Card className="divide-y divide-slate-100">
             {(
               shares as (BookingShare & {
-                bookings: { booking_code: string; play_date: string } | null;
+                bookings:
+                  | {
+                      booking_code: string;
+                      play_date: string;
+                      start_time: string | null;
+                      end_time: string | null;
+                      venue: string | null;
+                      court_number: string | null;
+                    }
+                  | null;
               })[]
-            ).map((s) => (
-              <div
-                key={s.id}
-                className="flex items-center justify-between px-4 py-3 text-sm"
-              >
-                <span>
-                  <span className="font-medium text-slate-700">
-                    {s.bookings?.booking_code}
-                  </span>{" "}
-                  <span className="text-slate-400">
-                    {formatDate(s.bookings?.play_date)}
+            ).map((s) => {
+              const ctx = formatBookingContext(s.bookings);
+              return (
+                <div
+                  key={s.id}
+                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                >
+                  <span className="min-w-0">
+                    <span className="font-medium text-slate-700">
+                      {s.bookings?.booking_code}
+                    </span>{" "}
+                    <span className="text-slate-400">
+                      {formatDate(s.bookings?.play_date)}
+                    </span>
+                    {ctx ? (
+                      <span className="mt-0.5 block text-xs text-slate-400">
+                        {ctx}
+                      </span>
+                    ) : null}
                   </span>
-                </span>
-                <span className="font-medium text-rose-600">
-                  {formatMoney(s.amount_owed)}
-                </span>
-              </div>
-            ))}
+                  <span className="shrink-0 font-medium text-rose-600">
+                    {formatMoney(s.amount_owed)}
+                  </span>
+                </div>
+              );
+            })}
           </Card>
         )}
       </Section>
@@ -352,7 +376,7 @@ export default async function PlayerPortal({
       {/* Full ledger */}
       <Section title="Full ledger">
         <Card className="overflow-hidden">
-          <LedgerTable entries={ledger} />
+          <LedgerTable entries={ledger} bookingContext={ledgerContext} />
         </Card>
         <p className="mt-2 px-1 text-xs text-slate-400">
           Balance = total charges − total payments &amp; credits. A positive

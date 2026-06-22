@@ -14,6 +14,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLink } from "@/components/CopyLink";
 import { LedgerTable } from "@/components/LedgerTable";
+import { buildLedgerBookingContext } from "@/lib/booking-context";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import {
@@ -74,6 +75,11 @@ export default async function PlayerDetail({
 
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
+  const ledgerEntries = (ledger ?? []) as LedgerEntry[];
+  const ledgerContext = await buildLedgerBookingContext(
+    supabase,
+    ledgerEntries,
+  );
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const shareUrl = `${appUrl}/p/${p.public_token}`;
 
@@ -164,7 +170,10 @@ export default async function PlayerDetail({
             <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
               Ledger history
             </h2>
-            <LedgerTable entries={(ledger ?? []) as LedgerEntry[]} />
+            <LedgerTable
+              entries={ledgerEntries}
+              bookingContext={ledgerContext}
+            />
           </Card>
         </div>
 

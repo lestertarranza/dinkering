@@ -3,6 +3,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { LedgerTable } from "@/components/LedgerTable";
 import { formatMoney, formatDate, describeBalance } from "@/lib/format";
+import {
+  buildLedgerBookingContext,
+  formatBookingContext,
+} from "@/lib/booking-context";
 import type {
   BookingShare,
   LedgerEntry,
@@ -46,7 +50,9 @@ export default async function GroupPortal({
       .is("end_date", null),
     db
       .from("booking_shares")
-      .select("*, players(name), bookings(booking_code, play_date)")
+      .select(
+        "*, players(name), bookings(booking_code, play_date, start_time, end_time, venue, court_number)",
+      )
       .eq("player_group_id", g.id),
     db
       .from("team_expense_shares")
@@ -61,6 +67,10 @@ export default async function GroupPortal({
 
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
+  const ledgerContext = await buildLedgerBookingContext(
+    db,
+    (ledger ?? []) as LedgerEntry[],
+  );
 
   return (
     <main className="mx-auto max-w-lg px-4 py-6">
@@ -128,18 +138,30 @@ export default async function GroupPortal({
             {(
               bShares as (BookingShare & {
                 players: { name: string } | null;
-                bookings: { booking_code: string; play_date: string } | null;
+                bookings:
+                  | {
+                      booking_code: string;
+                      play_date: string;
+                      start_time: string | null;
+                      end_time: string | null;
+                      venue: string | null;
+                      court_number: string | null;
+                    }
+                  | null;
               })[]
-            ).map((s) => (
-              <Row
-                key={s.id}
-                left={s.players?.name ?? "—"}
-                sub={`${s.bookings?.booking_code ?? "Court"} · ${formatDate(
-                  s.bookings?.play_date,
-                )}`}
-                amount={Number(s.amount_owed)}
-              />
-            ))}
+            ).map((s) => {
+              const ctx = formatBookingContext(s.bookings);
+              return (
+                <Row
+                  key={s.id}
+                  left={s.players?.name ?? "—"}
+                  sub={`${s.bookings?.booking_code ?? "Court"} · ${formatDate(
+                    s.bookings?.play_date,
+                  )}${ctx ? ` · ${ctx}` : ""}`}
+                  amount={Number(s.amount_owed)}
+                />
+              );
+            })}
             {(
               eShares as (TeamExpenseShare & {
                 players: { name: string } | null;
@@ -185,7 +207,10 @@ export default async function GroupPortal({
 
       <Section title="Shared ledger">
         <Card className="overflow-hidden">
-          <LedgerTable entries={(ledger ?? []) as LedgerEntry[]} />
+          <LedgerTable
+            entries={(ledger ?? []) as LedgerEntry[]}
+            bookingContext={ledgerContext}
+          />
         </Card>
       </Section>
 
