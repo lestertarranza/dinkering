@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
+import { validatePublicTeamToken } from "@/lib/public-links";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,13 +18,7 @@ export default async function TeamBoard({
   const { token } = await params;
   const db = createAdminClient();
 
-  const { data: settings } = await db
-    .from("app_settings")
-    .select("roster_token, roster_public")
-    .single();
-  if (!settings || !settings.roster_public || settings.roster_token !== token) {
-    notFound();
-  }
+  if (!(await validatePublicTeamToken(db, token))) notFound();
 
   const [
     { data: players },
@@ -112,6 +107,15 @@ export default async function TeamBoard({
           Tap your name to open your private page.
         </p>
       </header>
+
+      <nav className="mb-4 flex justify-center gap-3 text-xs">
+        <Link
+          href={`/schedule/${token}`}
+          className="text-emerald-600 hover:underline"
+        >
+          Upcoming games →
+        </Link>
+      </nav>
 
       {rows.length === 0 ? (
         <EmptyState title="No players yet" />

@@ -43,6 +43,9 @@ export default async function PlayersPage({
   const boardUrl = settings?.roster_token
     ? `${appUrl}/board/${settings.roster_token}`
     : null;
+  const scheduleUrl = settings?.roster_token
+    ? `${appUrl}/schedule/${settings.roster_token}`
+    : null;
 
   const list = ((players ?? []) as Player[]).filter((p) =>
     q ? `${p.name} ${p.display_name ?? ""}`.toLowerCase().includes(q.toLowerCase()) : true,
@@ -57,37 +60,61 @@ export default async function PlayersPage({
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:order-2">
-          {/* Public team board link */}
+          {/* Public team links */}
           <Card className="p-4">
             <h2 className="mb-1 text-sm font-semibold text-slate-700">
-              Public team board
+              Public team links
             </h2>
             <p className="mb-3 text-xs text-slate-400">
-              One link to share with the whole team. Everyone sees the roster
-              with balances and taps their own name to open their private page.
+              Share these with the whole team. Both use the same secure token.
             </p>
-            {boardUrl ? (
-              <>
-                <p className="mb-3 break-all rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                  {boardUrl}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <CopyLink url={boardUrl} />
-                  <Link
-                    href={`/board/${settings!.roster_token}`}
-                    target="_blank"
-                    className={buttonClass("secondary")}
-                  >
-                    Open board ↗
-                  </Link>
-                  <form action={regenerateRosterToken}>
-                    <SubmitButton variant="ghost">Regenerate</SubmitButton>
-                  </form>
+            {boardUrl && scheduleUrl ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-600">
+                    Team board (balances)
+                  </p>
+                  <p className="mb-2 break-all rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    {boardUrl}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <CopyLink url={boardUrl} />
+                    <Link
+                      href={`/board/${settings!.roster_token}`}
+                      target="_blank"
+                      className={buttonClass("secondary")}
+                    >
+                      Open ↗
+                    </Link>
+                  </div>
                 </div>
-              </>
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-600">
+                    Upcoming games (schedule &amp; RSVP)
+                  </p>
+                  <p className="mb-2 break-all rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    {scheduleUrl}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <CopyLink url={scheduleUrl} />
+                    <Link
+                      href={`/schedule/${settings!.roster_token}`}
+                      target="_blank"
+                      className={buttonClass("secondary")}
+                    >
+                      Open ↗
+                    </Link>
+                  </div>
+                </div>
+                <form action={regenerateRosterToken}>
+                  <SubmitButton variant="ghost">
+                    Regenerate token (invalidates both links)
+                  </SubmitButton>
+                </form>
+              </div>
             ) : (
               <p className="text-xs text-rose-500">
-                Run the latest database migration to enable the team board.
+                Run the latest database migration to enable public team links.
               </p>
             )}
           </Card>
