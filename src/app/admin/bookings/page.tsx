@@ -7,6 +7,7 @@ import {
   formatTimeRange,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
+import { round2 } from "@/lib/ledger";
 import type { Booking } from "@/lib/types";
 import { BookingForm } from "./BookingForm";
 import { createBooking } from "./actions";
@@ -17,14 +18,29 @@ export default async function BookingsPage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: bookings }, { data: paidTotals }] = await Promise.all([
-    supabase.from("bookings").select("*").order("play_date", { ascending: false }),
-    supabase.from("booking_payment_totals").select("*"),
-  ]);
+  const [{ data: bookings }, { data: paidTotals }, { data: bookingShares }] =
+    await Promise.all([
+      supabase
+        .from("bookings")
+        .select("*")
+        .order("play_date", { ascending: false }),
+      supabase.from("booking_payment_totals").select("*"),
+      supabase.from("booking_shares").select("booking_id, amount_owed"),
+    ]);
 
   const paidMap = new Map(
     (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
   );
+  const shareMap = new Map<string, number>();
+  for (const s of (bookingShares ?? []) as {
+    booking_id: string;
+    amount_owed: number;
+  }[]) {
+    shareMap.set(
+      s.booking_id,
+      (shareMap.get(s.booking_id) ?? 0) + Number(s.amount_owed),
+    );
+  }
 
   const all = (bookings ?? []) as Booking[];
   const upcoming = all
@@ -34,7 +50,11 @@ export default async function BookingsPage() {
 
   function Row({ b }: { b: Booking }) {
     const paid = paidMap.get(b.id) ?? 0;
-    const outstanding = Number(b.total_booking_cost) - paid;
+    const shareTotal = shareMap.get(b.id) ?? 0;
+    const hasShares = shareTotal >= SETTLE_TOLERANCE;
+    // Collectible = charged shares − payments (ledger basis), so it matches the
+    // booking detail and player balances rather than the raw court cost.
+    const outstanding = round2(shareTotal - paid);
     // Only "booked" and "played" bookings are collectible. Cancelled and
     // refunded bookings carry no due (e.g. the slot was sold/handed off).
     const billable = b.status === "booked" || b.status === "played";
@@ -62,18 +82,18 @@ export default async function BookingsPage() {
             <p className="font-semibold text-slate-900">
               {formatMoney(b.total_booking_cost)}
             </p>
-            {billable ? (
+            {billable && hasShares ? (
               outstanding >= SETTLE_TOLERANCE ? (
                 <span className="mt-1 inline-block">
                   <Badge tone="collect">
                     {formatMoney(outstanding)} due
                   </Badge>
                 </span>
-              ) : Number(b.total_booking_cost) > 0 ? (
+              ) : (
                 <span className="mt-1 inline-block">
                   <Badge tone="paid">Paid</Badge>
                 </span>
-              ) : null
+              )
             ) : null}
           </div>
         </div>
