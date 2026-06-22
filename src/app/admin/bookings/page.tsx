@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, PageHeader, StatusBadge, Badge, EmptyState } from "@/components/ui";
-import { formatMoney, formatDate, formatTimeRange } from "@/lib/format";
+import {
+  formatMoney,
+  formatDate,
+  formatTimeRange,
+  SETTLE_TOLERANCE,
+} from "@/lib/format";
 import type { Booking } from "@/lib/types";
 import { BookingForm } from "./BookingForm";
 import { createBooking } from "./actions";
@@ -58,7 +63,7 @@ export default async function BookingsPage() {
               {formatMoney(b.total_booking_cost)}
             </p>
             {billable ? (
-              outstanding > 0.005 ? (
+              outstanding >= SETTLE_TOLERANCE ? (
                 <span className="mt-1 inline-block">
                   <Badge tone="collect">
                     {formatMoney(outstanding)} due

@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Card, StatCard, Badge, PageHeader, EmptyState } from "@/components/ui";
-import { formatMoney, formatDate, describeBalance } from "@/lib/format";
+import {
+  formatMoney,
+  formatDate,
+  describeBalance,
+  SETTLE_TOLERANCE,
+} from "@/lib/format";
 import type { Booking, Payment, Player, PlayerGroup, TeamExpense } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -73,10 +78,10 @@ export default async function Dashboard() {
   ];
 
   const totalCollectible = owners
-    .filter((o) => o.balance > 0.005)
+    .filter((o) => o.balance >= SETTLE_TOLERANCE)
     .reduce((s, o) => s + o.balance, 0);
   const totalCredits = owners
-    .filter((o) => o.balance < -0.005)
+    .filter((o) => o.balance <= -SETTLE_TOLERANCE)
     .reduce((s, o) => s + Math.abs(o.balance), 0);
   const isBillable = (b: Booking) =>
     b.status === "booked" || b.status === "played";
@@ -100,17 +105,18 @@ export default async function Dashboard() {
     .filter(
       (b) =>
         isBillable(b) &&
-        Number(b.total_booking_cost) - (paidMap.get(b.id) ?? 0) > 0.005,
+        Number(b.total_booking_cost) - (paidMap.get(b.id) ?? 0) >=
+          SETTLE_TOLERANCE,
     )
     .sort((a, b) => b.play_date.localeCompare(a.play_date))
     .slice(0, 6);
 
   const withBalance = owners
-    .filter((o) => o.balance > 0.005)
+    .filter((o) => o.balance >= SETTLE_TOLERANCE)
     .sort((a, b) => b.balance - a.balance)
     .slice(0, 8);
   const withCredit = owners
-    .filter((o) => o.balance < -0.005)
+    .filter((o) => o.balance <= -SETTLE_TOLERANCE)
     .sort((a, b) => a.balance - b.balance)
     .slice(0, 8);
 

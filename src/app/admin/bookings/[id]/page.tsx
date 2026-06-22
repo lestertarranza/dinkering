@@ -12,7 +12,12 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
-import { formatMoney, formatDate, formatTimeRange } from "@/lib/format";
+import {
+  formatMoney,
+  formatDate,
+  formatTimeRange,
+  SETTLE_TOLERANCE,
+} from "@/lib/format";
 import type {
   Booking,
   BookingAttendance,
@@ -99,7 +104,9 @@ export default async function BookingDetail({
     0,
   );
   const billable = b.status === "booked" || b.status === "played";
-  const outstanding = billable ? Number(b.total_booking_cost) - paid : 0;
+  const rawOutstanding = billable ? Number(b.total_booking_cost) - paid : 0;
+  const outstanding =
+    Math.abs(rawOutstanding) < SETTLE_TOLERANCE ? 0 : rawOutstanding;
 
   return (
     <div>
@@ -138,7 +145,8 @@ export default async function BookingDetail({
             {formatMoney(totalShared)}
           </p>
           <p className="mt-1 text-xs text-slate-400">
-            {Math.abs(totalShared - Number(b.total_booking_cost)) < 0.01
+            {Math.abs(totalShared - Number(b.total_booking_cost)) <
+            SETTLE_TOLERANCE
               ? "Fully allocated"
               : `${formatMoney(Number(b.total_booking_cost) - totalShared)} unallocated`}
           </p>
@@ -155,7 +163,7 @@ export default async function BookingDetail({
           </p>
           <p
             className={`mt-1 text-xl font-semibold ${
-              outstanding > 0.005 ? "text-rose-600" : "text-slate-900"
+              outstanding >= SETTLE_TOLERANCE ? "text-rose-600" : "text-slate-900"
             }`}
           >
             {billable ? formatMoney(outstanding) : "—"}
@@ -325,7 +333,8 @@ export default async function BookingDetail({
                             ? chargeable.has(r.actual_status)
                             : r.response_status === "going");
                         const bal = balMap.get(r.player_id) ?? 0;
-                        const credit = bal < -0.005 ? Math.abs(bal) : 0;
+                        const credit =
+                          bal <= -SETTLE_TOLERANCE ? Math.abs(bal) : 0;
                         return (
                           <tr key={r.id}>
                             <td className="py-2">
