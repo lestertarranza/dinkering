@@ -46,6 +46,8 @@ function toDate(v: unknown): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   // Auth check — only signed-in admins may import.
   const authed = await createClient();
@@ -66,6 +68,43 @@ export async function POST(request: Request) {
     expenseShares?: Row[];
   };
 
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const emit = (obj: unknown) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      try {
+        await runImport(body, emit);
+      } catch (e) {
+        emit({ type: "error", error: e instanceof Error ? e.message : String(e) });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+    },
+  });
+}
+
+type ImportBody = {
+  wipe?: boolean;
+  players?: Row[];
+  bookings?: Row[];
+  playerShares?: Row[];
+  payments?: Row[];
+  teamExpenses?: Row[];
+  expenseShares?: Row[];
+};
+
+async function runImport(
+  body: ImportBody,
+  emit: (obj: unknown) => void,
+) {
   const db = createAdminClient();
   const warnings: string[] = [];
   const counts: Record<string, number> = {
@@ -78,7 +117,21 @@ export async function POST(request: Request) {
     ledger_entries: 0,
   };
 
+  const total =
+    (body.players?.length ?? 0) +
+    (body.bookings?.length ?? 0) +
+    (body.playerShares?.length ?? 0) +
+    (body.payments?.length ?? 0) +
+    (body.teamExpenses?.length ?? 0) +
+    (body.expenseShares?.length ?? 0);
+  let processed = 0;
+  const tick = (phase: string) => {
+    processed++;
+    emit({ type: "progress", phase, current: processed, total });
+  };
+
   if (body.wipe) {
+    emit({ type: "progress", phase: "Clearing existing data…", current: 0, total });
     for (const t of [
       "ledger_entries",
       "booking_shares",
@@ -99,6 +152,7 @@ export async function POST(request: Request) {
   // ---- Players ----
   const playerByName = new Map<string, string>();
   for (const row of body.players ?? []) {
+    tick("Players");
     const name = str(pick(row, ["name", "player", "playername", "fullname"]));
     if (!name) continue;
     const display_name = str(pick(row, ["displayname", "nickname", "alias"]));
@@ -142,6 +196,7 @@ export async function POST(request: Request) {
   const bookingByCode = new Map<string, { id: string; date: string }>();
   const bookingByDate = new Map<string, { id: string; date: string }>();
   for (const row of body.bookings ?? []) {
+    tick("Bookings");
     const code = str(pick(row, ["bookingcode", "bookingid", "code", "id", "ref"]));
     const play_date = toDate(pick(row, ["playdate", "date", "gamedate"]));
     const courts = num(pick(row, ["courtsbooked", "courts", "court"])) || 1;
@@ -201,6 +256,7 @@ export async function POST(request: Request) {
 
   // ---- Booking / player shares ----
   for (const row of body.playerShares ?? []) {
+    tick("Player shares");
     const playerName = str(pick(row, ["player", "name", "playername"]));
     const player_id = await findPlayer(playerName);
     if (!player_id) {
@@ -249,6 +305,7 @@ export async function POST(request: Request) {
 
   // ---- Payments ----
   for (const row of body.payments ?? []) {
+    tick("Payments");
     const playerName = str(pick(row, ["player", "name", "payer", "playername"]));
     const player_id = await findPlayer(playerName);
     if (!player_id) {
@@ -293,6 +350,7 @@ export async function POST(request: Request) {
   // ---- Team expenses ----
   const expenseByKey = new Map<string, { id: string; date: string }>();
   for (const row of body.teamExpenses ?? []) {
+    tick("Team expenses");
     const code = str(pick(row, ["expensecode", "expenseid", "code", "id"]));
     const description =
       str(pick(row, ["description", "itemdescription", "item", "expense"])) ??
@@ -349,6 +407,7 @@ export async function POST(request: Request) {
 
   // ---- Expense shares ----
   for (const row of body.expenseShares ?? []) {
+    tick("Expense shares");
     const playerName = str(pick(row, ["player", "name", "playername"]));
     const player_id = await findPlayer(playerName);
     if (!player_id) {
@@ -399,5 +458,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, counts, warnings });
+  emit({ type: "done", counts, warnings });
 }

@@ -30,6 +30,9 @@ export default async function BookingsPage() {
   function Row({ b }: { b: Booking }) {
     const paid = paidMap.get(b.id) ?? 0;
     const outstanding = Number(b.total_booking_cost) - paid;
+    // Only "booked" and "played" bookings are collectible. Cancelled and
+    // refunded bookings carry no due (e.g. the slot was sold/handed off).
+    const billable = b.status === "booked" || b.status === "played";
     return (
       <Link
         href={`/admin/bookings/${b.id}`}
@@ -54,7 +57,7 @@ export default async function BookingsPage() {
             <p className="font-semibold text-slate-900">
               {formatMoney(b.total_booking_cost)}
             </p>
-            {b.status !== "cancelled" ? (
+            {billable ? (
               outstanding > 0.005 ? (
                 <span className="mt-1 inline-block">
                   <Badge tone="collect">

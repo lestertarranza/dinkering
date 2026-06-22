@@ -78,8 +78,10 @@ export default async function Dashboard() {
   const totalCredits = owners
     .filter((o) => o.balance < -0.005)
     .reduce((s, o) => s + Math.abs(o.balance), 0);
+  const isBillable = (b: Booking) =>
+    b.status === "booked" || b.status === "played";
   const totalBookingCost = ((bookings ?? []) as Booking[])
-    .filter((b) => b.status !== "cancelled")
+    .filter(isBillable)
     .reduce((s, b) => s + Number(b.total_booking_cost), 0);
   const totalPayments = (ledgerPayments ?? []).reduce(
     (s, p) => s + Number(p.credit_amount),
@@ -91,13 +93,13 @@ export default async function Dashboard() {
   );
   const allBookings = (bookings ?? []) as Booking[];
   const upcoming = allBookings
-    .filter((b) => b.play_date >= today && b.status !== "cancelled")
+    .filter((b) => b.play_date >= today && b.status === "booked")
     .sort((a, b) => a.play_date.localeCompare(b.play_date))
     .slice(0, 6);
   const unpaid = allBookings
     .filter(
       (b) =>
-        b.status !== "cancelled" &&
+        isBillable(b) &&
         Number(b.total_booking_cost) - (paidMap.get(b.id) ?? 0) > 0.005,
     )
     .sort((a, b) => b.play_date.localeCompare(a.play_date))
