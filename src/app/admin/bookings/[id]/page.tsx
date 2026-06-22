@@ -25,6 +25,7 @@ import type {
   Payment,
   Player,
 } from "@/lib/types";
+import { round2 } from "@/lib/ledger";
 import { BookingForm } from "../BookingForm";
 import {
   updateBooking,
@@ -108,13 +109,17 @@ export default async function BookingDetail({
     (balances ?? []).map((x) => [x.player_id as string, Number(x.balance)]),
   );
 
-  const totalShared = shareList.reduce((s, x) => s + Number(x.amount_owed), 0);
-  const paid = ((payments ?? []) as Payment[]).reduce(
-    (s, p) => s + Number(p.amount),
-    0,
+  const totalShared = round2(
+    shareList.reduce((s, x) => s + Number(x.amount_owed), 0),
+  );
+  const paid = round2(
+    ((payments ?? []) as Payment[]).reduce((s, p) => s + Number(p.amount), 0),
   );
   const billable = b.status === "booked" || b.status === "played";
-  const rawOutstanding = billable ? Number(b.total_booking_cost) - paid : 0;
+  // Outstanding is what players still owe = charged shares − payments, so it
+  // reconciles exactly with the per-player table below (and player balances),
+  // instead of the raw court cost which can differ by a few centavos.
+  const rawOutstanding = billable ? round2(totalShared - paid) : 0;
   const outstanding =
     Math.abs(rawOutstanding) < SETTLE_TOLERANCE ? 0 : rawOutstanding;
 
@@ -501,7 +506,7 @@ export default async function BookingDetail({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {reconLines.map((line) => {
-                        const bal = line.charged - line.paid;
+                        const bal = round2(line.charged - line.paid);
                         const settled = Math.abs(bal) < SETTLE_TOLERANCE;
                         return (
                           <tr key={line.key}>
@@ -559,7 +564,7 @@ export default async function BookingDetail({
                           {formatMoney(paid)}
                         </td>
                         <td className="py-2 text-right">
-                          {formatMoney(totalShared - paid)}
+                          {formatMoney(round2(totalShared - paid))}
                         </td>
                       </tr>
                     </tfoot>

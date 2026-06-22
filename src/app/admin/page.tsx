@@ -8,6 +8,7 @@ import {
   describeBalance,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
+import { round2 } from "@/lib/ledger";
 import type { Booking, Payment, Player, PlayerGroup, TeamExpense } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export default async function Dashboard() {
     { data: groups },
     { data: bookings },
     { data: paidTotals },
+    { data: shareTotals },
     { data: ledgerPayments },
     { data: recentPayments },
     { data: recentExpenses },
@@ -33,6 +35,7 @@ export default async function Dashboard() {
     supabase.from("player_groups").select("id, name"),
     supabase.from("bookings").select("*"),
     supabase.from("booking_payment_totals").select("*"),
+    supabase.from("booking_share_totals").select("*"),
     supabase
       .from("ledger_entries")
       .select("credit_amount")
@@ -102,6 +105,16 @@ export default async function Dashboard() {
   const paidMap = new Map(
     (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
   );
+  const shareMap = new Map(
+    (shareTotals ?? []).map((b) => [
+      b.booking_id as string,
+      Number(b.total_shared),
+    ]),
+  );
+  // Collectible per booking = charged shares − payments (ledger basis), so the
+  // dashboard agrees with the booking pages and player balances.
+  const bookingDue = (b: Booking) =>
+    round2((shareMap.get(b.id) ?? 0) - (paidMap.get(b.id) ?? 0));
   const allBookings = (bookings ?? []) as Booking[];
   const upcoming = allBookings
     .filter((b) => b.play_date >= today && b.status === "booked")
@@ -111,8 +124,8 @@ export default async function Dashboard() {
     .filter(
       (b) =>
         isBillable(b) &&
-        Number(b.total_booking_cost) - (paidMap.get(b.id) ?? 0) >=
-          SETTLE_TOLERANCE,
+        (shareMap.get(b.id) ?? 0) >= SETTLE_TOLERANCE &&
+        bookingDue(b) >= SETTLE_TOLERANCE,
     )
     .sort((a, b) => b.play_date.localeCompare(a.play_date))
     .slice(0, 6);
@@ -233,8 +246,7 @@ export default async function Dashboard() {
             ) : (
               <ul className="space-y-1">
                 {unpaid.map((b) => {
-                  const due =
-                    Number(b.total_booking_cost) - (paidMap.get(b.id) ?? 0);
+                  const due = bookingDue(b);
                   const ctx = [
                     formatTimeRange(b.start_time, b.end_time),
                     b.venue,
