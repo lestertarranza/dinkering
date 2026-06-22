@@ -85,8 +85,13 @@ export default async function Dashboard() {
     .reduce((s, o) => s + Math.abs(o.balance), 0);
   const isBillable = (b: Booking) =>
     b.status === "booked" || b.status === "played";
-  const totalBookingCost = ((bookings ?? []) as Booking[])
-    .filter(isBillable)
+  // Cost actually incurred (and billed to players) = played games only.
+  const playedBookingCost = ((bookings ?? []) as Booking[])
+    .filter((b) => b.status === "played")
+    .reduce((s, b) => s + Number(b.total_booking_cost), 0);
+  // Future court time committed but not yet played/billed.
+  const upcomingCommitments = ((bookings ?? []) as Booking[])
+    .filter((b) => b.status === "booked")
     .reduce((s, b) => s + Number(b.total_booking_cost), 0);
   const totalPayments = (ledgerPayments ?? []).reduce(
     (s, p) => s + Number(p.credit_amount),
@@ -127,7 +132,7 @@ export default async function Dashboard() {
         description="Money owed, credits, bookings, and recent activity."
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Outstanding collectible"
           value={formatMoney(totalCollectible)}
@@ -141,14 +146,21 @@ export default async function Dashboard() {
           hint="Advance & overpayments"
         />
         <StatCard
-          label="Total booking cost"
-          value={formatMoney(totalBookingCost)}
-          tone="neutral"
-        />
-        <StatCard
           label="Payments received"
           value={formatMoney(totalPayments)}
           tone="info"
+        />
+        <StatCard
+          label="Court cost (played)"
+          value={formatMoney(playedBookingCost)}
+          tone="neutral"
+          hint="Cost of games played & billed"
+        />
+        <StatCard
+          label="Upcoming commitments"
+          value={formatMoney(upcomingCommitments)}
+          tone="neutral"
+          hint="Future booked games not yet billed"
         />
       </div>
 
