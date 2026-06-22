@@ -118,6 +118,57 @@ export default async function BookingDetail({
   const outstanding =
     Math.abs(rawOutstanding) < SETTLE_TOLERANCE ? 0 : rawOutstanding;
 
+  // Merge shares + payments into one per-payer reconciliation table.
+  const paymentList = (payments ?? []) as (Payment & {
+    players: { name: string } | null;
+    player_groups: { name: string } | null;
+  })[];
+  type ReconLine = {
+    key: string;
+    name: string;
+    kind: "player" | "group";
+    charged: number;
+    paid: number;
+    shareCount: number;
+  };
+  const reconMap = new Map<string, ReconLine>();
+  const ensureLine = (key: string, name: string, kind: "player" | "group") => {
+    let line = reconMap.get(key);
+    if (!line) {
+      line = { key, name, kind, charged: 0, paid: 0, shareCount: 0 };
+      reconMap.set(key, line);
+    }
+    return line;
+  };
+  for (const s of shareList) {
+    if (!s.player_id) continue;
+    const line = ensureLine(
+      `p:${s.player_id}`,
+      s.players?.name ?? "Unknown player",
+      "player",
+    );
+    line.charged += Number(s.amount_owed);
+    line.shareCount += 1;
+  }
+  for (const p of paymentList) {
+    if (p.payer_player_id) {
+      ensureLine(
+        `p:${p.payer_player_id}`,
+        p.players?.name ?? "Player",
+        "player",
+      ).paid += Number(p.amount);
+    } else if (p.payer_group_id) {
+      ensureLine(
+        `g:${p.payer_group_id}`,
+        p.player_groups?.name ?? "Group",
+        "group",
+      ).paid += Number(p.amount);
+    }
+  }
+  const reconLines = [...reconMap.values()].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
   return (
     <div>
       <PageHeader
@@ -272,56 +323,6 @@ export default async function BookingDetail({
             </div>
           </Card>
 
-          {/* Recorded shares (who played / who was charged) */}
-          {shareList.length > 0 ? (
-            <Card>
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <h2 className="text-sm font-semibold text-slate-700">
-                  Recorded player shares
-                </h2>
-                <span className="text-xs text-slate-400">
-                  {shareList.length} share{shareList.length === 1 ? "" : "s"} ·{" "}
-                  {formatMoney(totalShared)}
-                </span>
-              </div>
-              <div className="p-4">
-                <ul className="space-y-2">
-                  {shareList.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="font-medium text-slate-700">
-                          {s.players?.name ?? "Unknown player"}
-                        </span>
-                        {Number(s.share_units) !== 1 ? (
-                          <Badge tone="neutral">
-                            {Number(s.share_units)} units
-                          </Badge>
-                        ) : null}
-                        {s.player_group_id ? (
-                          <Badge tone="info">Pooled</Badge>
-                        ) : null}
-                      </span>
-                      <span className="font-medium text-rose-600">
-                        {formatMoney(s.amount_owed)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {hasDuplicateShares ? (
-                  <p className="mt-3 text-xs text-slate-400">
-                    Some players appear more than once. Imported bookings can
-                    record multiple shares per player — e.g. when someone
-                    covered guests they invited and settled the split on their
-                    own.
-                  </p>
-                ) : null}
-              </div>
-            </Card>
-          ) : null}
-
           {/* Confirm attendance */}
           {roster.length > 0 ? (
             <Card>
@@ -469,11 +470,11 @@ export default async function BookingDetail({
             </Card>
           ) : null}
 
-          {/* Payments for this booking */}
+          {/* Player shares & payments (merged) */}
           <Card>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-700">
-                Payments toward this booking
+                Player shares &amp; payments
               </h2>
               <Link
                 href={`/admin/payments?booking=${b.id}`}
@@ -483,31 +484,95 @@ export default async function BookingDetail({
               </Link>
             </div>
             <div className="p-4">
-              {(payments ?? []).length === 0 ? (
-                <p className="text-sm text-slate-400">No payments tagged yet.</p>
+              {reconLines.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No shares or payments recorded for this booking yet.
+                </p>
               ) : (
-                <ul className="space-y-2">
-                  {(
-                    payments as (Payment & {
-                      players: { name: string } | null;
-                      player_groups: { name: string } | null;
-                    })[]
-                  ).map((p) => (
-                    <li
-                      key={p.id}
-                      className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"
-                    >
-                      <span>
-                        {p.players?.name ?? p.player_groups?.name ?? "—"} ·{" "}
-                        {formatDate(p.payment_date)}
-                      </span>
-                      <span className="font-medium text-emerald-600">
-                        {formatMoney(p.amount)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[480px] text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="py-2 font-medium">Player</th>
+                        <th className="py-2 text-right font-medium">Share</th>
+                        <th className="py-2 text-right font-medium">Paid</th>
+                        <th className="py-2 text-right font-medium">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reconLines.map((line) => {
+                        const bal = line.charged - line.paid;
+                        const settled = Math.abs(bal) < SETTLE_TOLERANCE;
+                        return (
+                          <tr key={line.key}>
+                            <td className="py-2">
+                              <span className="font-medium text-slate-700">
+                                {line.name}
+                              </span>
+                              {line.kind === "group" ? (
+                                <span className="ml-2 align-middle">
+                                  <Badge tone="info">Group</Badge>
+                                </span>
+                              ) : null}
+                              {line.shareCount > 1 ? (
+                                <span className="ml-2 align-middle">
+                                  <Badge tone="neutral">
+                                    {line.shareCount} shares
+                                  </Badge>
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className="py-2 text-right text-slate-600">
+                              {line.charged > 0
+                                ? formatMoney(line.charged)
+                                : "—"}
+                            </td>
+                            <td className="py-2 text-right text-emerald-600">
+                              {line.paid > 0 ? formatMoney(line.paid) : "—"}
+                            </td>
+                            <td
+                              className={`py-2 text-right font-medium ${
+                                settled
+                                  ? "text-slate-400"
+                                  : bal > 0
+                                    ? "text-rose-600"
+                                    : "text-emerald-600"
+                              }`}
+                            >
+                              {settled
+                                ? "Settled"
+                                : bal > 0
+                                  ? `${formatMoney(bal)} due`
+                                  : `${formatMoney(Math.abs(bal))} over`}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 text-sm font-semibold text-slate-700">
+                        <td className="py-2">Total</td>
+                        <td className="py-2 text-right">
+                          {formatMoney(totalShared)}
+                        </td>
+                        <td className="py-2 text-right text-emerald-700">
+                          {formatMoney(paid)}
+                        </td>
+                        <td className="py-2 text-right">
+                          {formatMoney(totalShared - paid)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               )}
+              {hasDuplicateShares ? (
+                <p className="mt-3 text-xs text-slate-400">
+                  Some players have more than one share. Imported bookings can
+                  record multiple shares per player — e.g. when someone covered
+                  guests they invited and settled the split on their own.
+                </p>
+              ) : null}
             </div>
           </Card>
         </div>
