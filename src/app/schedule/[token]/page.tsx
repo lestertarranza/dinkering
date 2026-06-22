@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, EmptyState } from "@/components/ui";
-import { formatDate, formatTimeRange } from "@/lib/format";
+import { formatDate } from "@/lib/format";
+import { formatBookingContext } from "@/lib/booking-context";
 import {
   validatePublicTeamToken,
 } from "@/lib/public-links";
@@ -87,13 +88,7 @@ export default async function PublicSchedule({
         <Card className="divide-y divide-slate-100">
           {upcoming.map((b) => {
             const st = stats.get(b.id);
-            const ctx = [
-              formatTimeRange(b.start_time, b.end_time),
-              b.venue,
-              b.court_number,
-            ]
-              .filter(Boolean)
-              .join(" · ");
+            const ctx = formatBookingContext(b);
             return (
               <Link
                 key={b.id}

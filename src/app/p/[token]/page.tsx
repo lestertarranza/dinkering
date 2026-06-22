@@ -5,7 +5,6 @@ import { Card, StatusBadge, EmptyState } from "@/components/ui";
 import {
   formatMoney,
   formatDate,
-  formatTimeRange,
   describeBalance,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
@@ -85,7 +84,7 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, status)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status)",
     )
     .eq("player_id", p.id);
 
@@ -226,22 +225,18 @@ export default async function PlayerPortal({
           <EmptyState title="No upcoming games" />
         ) : (
           <div className="space-y-3">
-            {upcoming.map((a) => (
+            {upcoming.map((a) => {
+              const ctx = formatBookingContext(a.bookings);
+              return (
               <Card key={a.id} className="p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <div>
                     <p className="font-medium text-slate-900">
                       {formatDate(a.bookings.play_date)}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      {a.bookings.start_time
-                        ? formatTimeRange(
-                            a.bookings.start_time,
-                            a.bookings.end_time,
-                          )
-                        : ""}
-                      {a.bookings.venue ? ` · ${a.bookings.venue}` : ""}
-                    </p>
+                    {ctx ? (
+                      <p className="text-xs text-slate-500">{ctx}</p>
+                    ) : null}
                   </div>
                   <StatusBadge status={a.response_status} />
                 </div>
@@ -253,7 +248,8 @@ export default async function PlayerPortal({
                   {rsvpBtn("not_going", "Not going", a.response_status)}
                 </form>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </Section>
