@@ -4,6 +4,7 @@ import { Card, StatCard, Badge, PageHeader, EmptyState } from "@/components/ui";
 import {
   formatMoney,
   formatDate,
+  formatTimeRange,
   describeBalance,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
@@ -182,26 +183,39 @@ export default async function Dashboard() {
               <EmptyState title="No upcoming bookings" />
             ) : (
               <ul className="space-y-1">
-                {upcoming.map((b) => (
-                  <li key={b.id}>
-                    <Link
-                      href={`/admin/bookings/${b.id}`}
-                      className="flex items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-slate-50"
-                    >
-                      <span>
-                        <span className="font-medium text-slate-700">
-                          {b.booking_code}
-                        </span>{" "}
-                        <span className="text-slate-400">
-                          {formatDate(b.play_date)}
+                {upcoming.map((b) => {
+                  const ctx = [
+                    formatTimeRange(b.start_time, b.end_time),
+                    b.venue,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                  return (
+                    <li key={b.id}>
+                      <Link
+                        href={`/admin/bookings/${b.id}`}
+                        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="font-medium text-slate-700">
+                            {b.booking_code}
+                          </span>{" "}
+                          <span className="text-slate-400">
+                            {formatDate(b.play_date)}
+                          </span>
+                          {ctx ? (
+                            <span className="mt-0.5 block text-xs text-slate-400">
+                              {ctx}
+                            </span>
+                          ) : null}
                         </span>
-                      </span>
-                      <span className="text-slate-600">
-                        {formatMoney(b.total_booking_cost)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+                        <span className="shrink-0 text-slate-600">
+                          {formatMoney(b.total_booking_cost)}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -221,19 +235,30 @@ export default async function Dashboard() {
                 {unpaid.map((b) => {
                   const due =
                     Number(b.total_booking_cost) - (paidMap.get(b.id) ?? 0);
+                  const ctx = [
+                    formatTimeRange(b.start_time, b.end_time),
+                    b.venue,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
                   return (
                     <li key={b.id}>
                       <Link
                         href={`/admin/bookings/${b.id}`}
-                        className="flex items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-slate-50"
+                        className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm hover:bg-slate-50"
                       >
-                        <span>
+                        <span className="min-w-0">
                           <span className="font-medium text-slate-700">
                             {b.booking_code}
                           </span>{" "}
                           <span className="text-slate-400">
                             {formatDate(b.play_date)}
                           </span>
+                          {ctx ? (
+                            <span className="mt-0.5 block text-xs text-slate-400">
+                              {ctx}
+                            </span>
+                          ) : null}
                         </span>
                         <Badge tone="collect">{formatMoney(due)} due</Badge>
                       </Link>
