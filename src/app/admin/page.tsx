@@ -24,7 +24,7 @@ export default async function Dashboard() {
     { data: groups },
     { data: bookings },
     { data: paidTotals },
-    { data: shareTotals },
+    { data: bookingShares },
     { data: ledgerPayments },
     { data: recentPayments },
     { data: recentExpenses },
@@ -35,7 +35,7 @@ export default async function Dashboard() {
     supabase.from("player_groups").select("id, name"),
     supabase.from("bookings").select("*"),
     supabase.from("booking_payment_totals").select("*"),
-    supabase.from("booking_share_totals").select("*"),
+    supabase.from("booking_shares").select("booking_id, amount_owed"),
     supabase
       .from("ledger_entries")
       .select("credit_amount")
@@ -105,12 +105,16 @@ export default async function Dashboard() {
   const paidMap = new Map(
     (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
   );
-  const shareMap = new Map(
-    (shareTotals ?? []).map((b) => [
-      b.booking_id as string,
-      Number(b.total_shared),
-    ]),
-  );
+  const shareMap = new Map<string, number>();
+  for (const s of (bookingShares ?? []) as {
+    booking_id: string;
+    amount_owed: number;
+  }[]) {
+    shareMap.set(
+      s.booking_id,
+      (shareMap.get(s.booking_id) ?? 0) + Number(s.amount_owed),
+    );
+  }
   // Collectible per booking = charged shares − payments (ledger basis), so the
   // dashboard agrees with the booking pages and player balances.
   const bookingDue = (b: Booking) =>

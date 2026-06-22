@@ -18,25 +18,29 @@ export default async function BookingsPage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: bookings }, { data: paidTotals }, { data: shareTotals }] =
+  const [{ data: bookings }, { data: paidTotals }, { data: bookingShares }] =
     await Promise.all([
       supabase
         .from("bookings")
         .select("*")
         .order("play_date", { ascending: false }),
       supabase.from("booking_payment_totals").select("*"),
-      supabase.from("booking_share_totals").select("*"),
+      supabase.from("booking_shares").select("booking_id, amount_owed"),
     ]);
 
   const paidMap = new Map(
     (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
   );
-  const shareMap = new Map(
-    (shareTotals ?? []).map((b) => [
-      b.booking_id as string,
-      Number(b.total_shared),
-    ]),
-  );
+  const shareMap = new Map<string, number>();
+  for (const s of (bookingShares ?? []) as {
+    booking_id: string;
+    amount_owed: number;
+  }[]) {
+    shareMap.set(
+      s.booking_id,
+      (shareMap.get(s.booking_id) ?? 0) + Number(s.amount_owed),
+    );
+  }
 
   const all = (bookings ?? []) as Booking[];
   const upcoming = all
