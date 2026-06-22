@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
@@ -100,6 +101,15 @@ export default async function PlayerPortal({
   const d = describeBalance(balance);
   const ledgerContext = await buildLedgerBookingContext(db, ledger);
 
+  const { data: settings } = await db
+    .from("app_settings")
+    .select("roster_token, roster_public")
+    .single();
+  const teamToken =
+    settings?.roster_public && settings.roster_token
+      ? settings.roster_token
+      : null;
+
   // One merged statement (charges + payments + adjustments) with a running
   // balance, newest first.
   const orderedLedger = [...ledger].sort((a, b) => {
@@ -192,6 +202,23 @@ export default async function PlayerPortal({
           </p>
         ) : null}
       </Card>
+
+      {teamToken ? (
+        <nav className="mb-4 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm">
+          <Link
+            href={`/board/${teamToken}`}
+            className="text-emerald-600 hover:underline"
+          >
+            Team balances
+          </Link>
+          <Link
+            href={`/schedule/${teamToken}`}
+            className="text-emerald-600 hover:underline"
+          >
+            Upcoming games
+          </Link>
+        </nav>
+      ) : null}
 
       {/* Upcoming + RSVP */}
       <Section title="Upcoming games">
