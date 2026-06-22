@@ -20,6 +20,7 @@ import {
   updateGroup,
   addMember,
   removeMember,
+  setPrimaryMember,
   regenerateGroupToken,
   deleteGroup,
 } from "../actions";
@@ -61,6 +62,16 @@ export default async function GroupDetail({
         .eq("active_status", "active")
         .order("name"),
     ]);
+
+  const memberList = (members ?? []) as {
+    id: string;
+    is_primary: boolean;
+    players: Pick<Player, "id" | "name">;
+  }[];
+  const memberPlayerIds = new Set(memberList.map((m) => m.players.id));
+  const availablePlayers = (
+    (allPlayers ?? []) as Pick<Player, "id" | "name">[]
+  ).filter((p) => !memberPlayerIds.has(p.id));
 
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
@@ -148,36 +159,54 @@ export default async function GroupDetail({
 
         <div className="space-y-5">
           <Card className="p-4">
-            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+            <h2 className="mb-1 text-sm font-semibold text-slate-700">
               Members
             </h2>
-            {(members ?? []).length === 0 ? (
+            <p className="mb-3 text-xs text-slate-400">
+              Members share one pooled wallet. The{" "}
+              <span className="font-medium text-slate-500">Primary</span> member
+              is the main contact / default payer — there is only one per group.
+            </p>
+            {memberList.length === 0 ? (
               <p className="mb-3 text-sm text-slate-400">No members yet.</p>
             ) : (
               <ul className="mb-3 space-y-2">
-                {(members ?? []).map(
-                  (m: {
-                    id: string;
-                    is_primary: boolean;
-                    players: Pick<Player, "id" | "name">;
-                  }) => (
-                    <li
-                      key={m.id}
-                      className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
-                    >
-                      <div>
-                        <Link
-                          href={`/admin/players/${m.players.id}`}
-                          className="text-sm font-medium text-emerald-700 hover:underline"
-                        >
-                          {m.players.name}
-                        </Link>
-                        {m.is_primary ? (
-                          <span className="ml-2">
-                            <Badge tone="info">Primary</Badge>
-                          </span>
-                        ) : null}
-                      </div>
+                {memberList.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
+                  >
+                    <div>
+                      <Link
+                        href={`/admin/players/${m.players.id}`}
+                        className="text-sm font-medium text-emerald-700 hover:underline"
+                      >
+                        {m.players.name}
+                      </Link>
+                      {m.is_primary ? (
+                        <span className="ml-2">
+                          <Badge tone="info">Primary</Badge>
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!m.is_primary ? (
+                        <form action={setPrimaryMember}>
+                          <input
+                            type="hidden"
+                            name="membership_id"
+                            value={m.id}
+                          />
+                          <input
+                            type="hidden"
+                            name="player_group_id"
+                            value={g.id}
+                          />
+                          <SubmitButton variant="ghost">
+                            Make primary
+                          </SubmitButton>
+                        </form>
+                      ) : null}
                       <ConfirmButton
                         action={removeMember}
                         message="Remove this member from the group?"
@@ -186,30 +215,35 @@ export default async function GroupDetail({
                       >
                         Remove
                       </ConfirmButton>
-                    </li>
-                  ),
-                )}
+                    </div>
+                  </li>
+                ))}
               </ul>
             )}
-            <form action={addMember} className="space-y-2">
-              <input type="hidden" name="player_group_id" value={g.id} />
-              <select name="player_id" required className={inputClass}>
-                <option value="">Add a player…</option>
-                {((allPlayers ?? []) as Pick<Player, "id" | "name">[]).map(
-                  (p) => (
+            {availablePlayers.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                All active players are already members.
+              </p>
+            ) : (
+              <form action={addMember} className="space-y-2">
+                <input type="hidden" name="player_group_id" value={g.id} />
+                <select name="player_id" required className={inputClass}>
+                  <option value="">Add a player…</option>
+                  {availablePlayers.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
-                  ),
-                )}
-              </select>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" name="is_primary" /> Primary member
-              </label>
-              <SubmitButton variant="secondary" className="w-full">
-                Add member
-              </SubmitButton>
-            </form>
+                  ))}
+                </select>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="checkbox" name="is_primary" /> Make primary
+                  member
+                </label>
+                <SubmitButton variant="secondary" className="w-full">
+                  Add member
+                </SubmitButton>
+              </form>
+            )}
           </Card>
 
           <Card className="p-4">

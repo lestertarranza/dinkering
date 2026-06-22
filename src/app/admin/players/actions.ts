@@ -111,13 +111,42 @@ export async function regenerateToken(formData: FormData) {
 export async function assignToGroup(formData: FormData) {
   const player_id = String(formData.get("player_id"));
   const player_group_id = String(formData.get("player_group_id"));
-  const is_primary = formData.get("is_primary") === "on";
+  const wantPrimary = formData.get("is_primary") === "on";
   if (!player_group_id) return;
   const supabase = await createClient();
+
+  // Skip if already an active member of the group.
+  const { data: existing } = await supabase
+    .from("player_group_members")
+    .select("id")
+    .eq("player_group_id", player_group_id)
+    .eq("player_id", player_id)
+    .is("end_date", null)
+    .limit(1);
+  if (existing && existing.length > 0) {
+    revalidatePath(`/admin/players/${player_id}`);
+    return;
+  }
+
+  const { count } = await supabase
+    .from("player_group_members")
+    .select("id", { count: "exact", head: true })
+    .eq("player_group_id", player_group_id)
+    .is("end_date", null);
+  const makePrimary = wantPrimary || (count ?? 0) === 0;
+
+  if (makePrimary) {
+    await supabase
+      .from("player_group_members")
+      .update({ is_primary: false })
+      .eq("player_group_id", player_group_id)
+      .is("end_date", null);
+  }
+
   await supabase.from("player_group_members").insert({
     player_id,
     player_group_id,
-    is_primary,
+    is_primary: makePrimary,
     start_date: new Date().toISOString().slice(0, 10),
   });
   revalidatePath(`/admin/players/${player_id}`);

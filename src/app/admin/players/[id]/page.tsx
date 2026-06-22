@@ -60,6 +60,18 @@ export default async function PlayerDetail({
       supabase.from("player_groups").select("id, name, type").order("name"),
     ]);
 
+  const membershipList = (memberships ?? []) as {
+    id: string;
+    is_primary: boolean;
+    player_groups: Pick<PlayerGroup, "id" | "name" | "type">;
+  }[];
+  const memberGroupIds = new Set(
+    membershipList.map((m) => m.player_groups.id),
+  );
+  const availableGroups = ((groups ?? []) as PlayerGroup[]).filter(
+    (g) => !memberGroupIds.has(g.id),
+  );
+
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -223,65 +235,66 @@ export default async function PlayerDetail({
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Pooled funds / groups
             </h2>
-            {(memberships ?? []).length === 0 ? (
+            {membershipList.length === 0 ? (
               <p className="mb-3 text-sm text-slate-400">
                 Not part of any group.
               </p>
             ) : (
               <ul className="mb-3 space-y-2">
-                {(memberships ?? []).map(
-                  (m: {
-                    id: string;
-                    is_primary: boolean;
-                    player_groups: Pick<PlayerGroup, "id" | "name" | "type">;
-                  }) => (
-                    <li
-                      key={m.id}
-                      className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
-                    >
-                      <div>
-                        <Link
-                          href={`/admin/groups/${m.player_groups.id}`}
-                          className="text-sm font-medium text-emerald-700 hover:underline"
-                        >
-                          {m.player_groups.name}
-                        </Link>
-                        {m.is_primary ? (
-                          <span className="ml-2">
-                            <Badge tone="info">Primary</Badge>
-                          </span>
-                        ) : null}
-                      </div>
-                      <ConfirmButton
-                        action={removeFromGroup}
-                        message="Remove this player from the group?"
-                        variant="ghost"
-                        hidden={{ membership_id: m.id, player_id: p.id }}
+                {membershipList.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
+                  >
+                    <div>
+                      <Link
+                        href={`/admin/groups/${m.player_groups.id}`}
+                        className="text-sm font-medium text-emerald-700 hover:underline"
                       >
-                        Remove
-                      </ConfirmButton>
-                    </li>
-                  ),
-                )}
+                        {m.player_groups.name}
+                      </Link>
+                      {m.is_primary ? (
+                        <span className="ml-2">
+                          <Badge tone="info">Primary</Badge>
+                        </span>
+                      ) : null}
+                    </div>
+                    <ConfirmButton
+                      action={removeFromGroup}
+                      message="Remove this player from the group?"
+                      variant="ghost"
+                      hidden={{ membership_id: m.id, player_id: p.id }}
+                    >
+                      Remove
+                    </ConfirmButton>
+                  </li>
+                ))}
               </ul>
             )}
-            <form action={assignToGroup} className="space-y-2">
-              <input type="hidden" name="player_id" value={p.id} />
-              <select name="player_group_id" required className={inputClass}>
-                <option value="">Select a group…</option>
-                {((groups ?? []) as PlayerGroup[]).map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" name="is_primary" /> Primary member
-              </label>
-              <SubmitButton variant="secondary" className="w-full">
-                Add to group
-              </SubmitButton>
-            </form>
+            {availableGroups.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                No other groups available to join.
+              </p>
+            ) : (
+              <form action={assignToGroup} className="space-y-2">
+                <input type="hidden" name="player_id" value={p.id} />
+                <select name="player_group_id" required className={inputClass}>
+                  <option value="">Select a group…</option>
+                  {availableGroups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="checkbox" name="is_primary" /> Make primary
+                  member
+                </label>
+                <SubmitButton variant="secondary" className="w-full">
+                  Add to group
+                </SubmitButton>
+              </form>
+            )}
           </Card>
 
           {/* Manual adjustment */}
