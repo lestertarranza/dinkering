@@ -7,12 +7,14 @@ import {
   Badge,
   Field,
   inputClass,
+  buttonClass,
   EmptyState,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { CopyLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
-import { createPlayer } from "./actions";
+import { createPlayer, regenerateRosterToken } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,15 @@ export default async function PlayersPage({
     (balances ?? []).map((b) => [b.player_id as string, Number(b.balance)]),
   );
 
+  const { data: settings } = await supabase
+    .from("app_settings")
+    .select("roster_token")
+    .single();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const boardUrl = settings?.roster_token
+    ? `${appUrl}/board/${settings.roster_token}`
+    : null;
+
   const list = ((players ?? []) as Player[]).filter((p) =>
     q ? `${p.name} ${p.display_name ?? ""}`.toLowerCase().includes(q.toLowerCase()) : true,
   );
@@ -45,24 +56,61 @@ export default async function PlayersPage({
       />
 
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* Quick add */}
-        <Card className="p-4 lg:order-2">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">
-            Add player
-          </h2>
-          <form action={createPlayer} className="space-y-3">
-            <Field label="Full name">
-              <input name="name" required className={inputClass} />
-            </Field>
-            <Field label="Display name" hint="Optional short name / nickname">
-              <input name="display_name" className={inputClass} />
-            </Field>
-            <Field label="Notes">
-              <textarea name="notes" rows={2} className={inputClass} />
-            </Field>
-            <SubmitButton className="w-full">Add player</SubmitButton>
-          </form>
-        </Card>
+        <div className="space-y-5 lg:order-2">
+          {/* Public team board link */}
+          <Card className="p-4">
+            <h2 className="mb-1 text-sm font-semibold text-slate-700">
+              Public team board
+            </h2>
+            <p className="mb-3 text-xs text-slate-400">
+              One link to share with the whole team. Everyone sees the roster
+              with balances and taps their own name to open their private page.
+            </p>
+            {boardUrl ? (
+              <>
+                <p className="mb-3 break-all rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  {boardUrl}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <CopyLink url={boardUrl} />
+                  <Link
+                    href={`/board/${settings!.roster_token}`}
+                    target="_blank"
+                    className={buttonClass("secondary")}
+                  >
+                    Open board ↗
+                  </Link>
+                  <form action={regenerateRosterToken}>
+                    <SubmitButton variant="ghost">Regenerate</SubmitButton>
+                  </form>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-rose-500">
+                Run the latest database migration to enable the team board.
+              </p>
+            )}
+          </Card>
+
+          {/* Quick add */}
+          <Card className="p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+              Add player
+            </h2>
+            <form action={createPlayer} className="space-y-3">
+              <Field label="Full name">
+                <input name="name" required className={inputClass} />
+              </Field>
+              <Field label="Display name" hint="Optional short name / nickname">
+                <input name="display_name" className={inputClass} />
+              </Field>
+              <Field label="Notes">
+                <textarea name="notes" rows={2} className={inputClass} />
+              </Field>
+              <SubmitButton className="w-full">Add player</SubmitButton>
+            </form>
+          </Card>
+        </div>
 
         {/* List */}
         <div className="lg:order-1 lg:col-span-2">

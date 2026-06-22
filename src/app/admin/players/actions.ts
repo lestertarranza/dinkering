@@ -108,6 +108,22 @@ export async function regenerateToken(formData: FormData) {
   revalidatePath(`/admin/players/${id}`);
 }
 
+/** Rotate the public team-board token, invalidating the previous share link. */
+export async function regenerateRosterToken() {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("gen_share_token");
+  const token =
+    (data as string | null) ??
+    Array.from(crypto.getRandomValues(new Uint8Array(24)))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  await supabase
+    .from("app_settings")
+    .update({ roster_token: token })
+    .eq("id", true);
+  revalidatePath("/admin/players");
+}
+
 export async function assignToGroup(formData: FormData) {
   const player_id = String(formData.get("player_id"));
   const player_group_id = String(formData.get("player_group_id"));
