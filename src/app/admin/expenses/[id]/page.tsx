@@ -9,7 +9,7 @@ import {
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { formatMoney, formatDate } from "@/lib/format";
+import { formatMoney, formatDate, SETTLE_TOLERANCE } from "@/lib/format";
 import type { Player, TeamExpense, TeamExpenseShare } from "@/lib/types";
 import { regenerateExpenseShares, reverseExpense, deleteExpense } from "../actions";
 
@@ -61,7 +61,9 @@ export default async function ExpenseDetail({
     (s, x) => s + Number(x.amount_owed),
     0,
   );
-  const unassigned = Number(e.total_cost) - totalAssigned;
+  const rawUnassigned = Number(e.total_cost) - totalAssigned;
+  const unassigned =
+    Math.abs(rawUnassigned) < SETTLE_TOLERANCE ? 0 : rawUnassigned;
 
   // Union of active players and anyone who currently has a share.
   const candidateMap = new Map<string, string>();
@@ -120,7 +122,7 @@ export default async function ExpenseDetail({
           </p>
           <p
             className={`mt-1 text-xl font-semibold ${
-              Math.abs(unassigned) > 0.005 ? "text-amber-600" : "text-slate-900"
+              unassigned !== 0 ? "text-amber-600" : "text-slate-900"
             }`}
           >
             {formatMoney(unassigned)}

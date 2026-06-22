@@ -53,19 +53,32 @@ export function formatTimeRange(
 }
 
 /**
+ * Sub-peso residue tolerance. Splitting fractional court/expense shares and
+ * rounding each row to centavos can leave a few centavos of noise in a net
+ * balance (e.g. ₱0.01). Anything within this tolerance of zero is treated as
+ * settled so stray centavos never show up as a balance or amount due.
+ */
+export const SETTLE_TOLERANCE = 0.5;
+
+/** True when an amount is effectively zero (within rounding tolerance). */
+export function isSettled(amount: number): boolean {
+  return Math.abs(amount) < SETTLE_TOLERANCE;
+}
+
+/**
  * Describe a wallet balance from the player's perspective.
  *  > 0  → owes money (collect)
  *  < 0  → has credit
- *  = 0  → settled
+ *  ≈ 0  → settled (within rounding tolerance)
  */
 export function describeBalance(balance: number): {
   label: string;
   tone: "collect" | "credit" | "settled";
   amount: number;
 } {
-  if (balance > 0.005)
+  if (balance >= SETTLE_TOLERANCE)
     return { label: "Owes", tone: "collect", amount: balance };
-  if (balance < -0.005)
+  if (balance <= -SETTLE_TOLERANCE)
     return { label: "Credit", tone: "credit", amount: Math.abs(balance) };
   return { label: "Settled", tone: "settled", amount: 0 };
 }
