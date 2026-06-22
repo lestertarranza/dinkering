@@ -115,12 +115,11 @@ export default async function PlayerPortal({
   }
   statement.reverse();
 
-  const rsvpBtn = (bookingId: string, value: string, label: string, current: string) => (
+  const rsvpBtn = (value: string, label: string, current: string) => (
     <button
       type="submit"
       name="response_status"
       value={value}
-      formAction={submitRsvp}
       className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
         current === value
           ? value === "going"
@@ -219,17 +218,12 @@ export default async function PlayerPortal({
                   </div>
                   <StatusBadge status={a.response_status} />
                 </div>
-                <form className="flex gap-2">
+                <form action={submitRsvp} className="flex gap-2">
                   <input type="hidden" name="token" value={token} />
                   <input type="hidden" name="booking_id" value={a.bookings.id} />
-                  {rsvpBtn(a.bookings.id, "going", "Going", a.response_status)}
-                  {rsvpBtn(a.bookings.id, "maybe", "Maybe", a.response_status)}
-                  {rsvpBtn(
-                    a.bookings.id,
-                    "not_going",
-                    "Not going",
-                    a.response_status,
-                  )}
+                  {rsvpBtn("going", "Going", a.response_status)}
+                  {rsvpBtn("maybe", "Maybe", a.response_status)}
+                  {rsvpBtn("not_going", "Not going", a.response_status)}
                 </form>
               </Card>
             ))}

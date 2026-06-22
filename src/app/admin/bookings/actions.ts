@@ -108,6 +108,31 @@ export async function addAttendee(formData: FormData) {
   revalidatePath(`/admin/bookings/${booking_id}`);
 }
 
+/** Add every active player to a booking's roster in one click. */
+export async function addAllActivePlayers(formData: FormData) {
+  const booking_id = String(formData.get("booking_id"));
+  if (!booking_id) return;
+  const supabase = await createClient();
+  const { data: players } = await supabase
+    .from("players")
+    .select("id")
+    .eq("active_status", "active");
+  const rows = (players ?? []).map((p) => ({
+    booking_id,
+    player_id: p.id as string,
+    response_status: "no_response" as ResponseStatus,
+  }));
+  if (rows.length > 0) {
+    await supabase
+      .from("booking_attendance")
+      .upsert(rows, {
+        onConflict: "booking_id,player_id",
+        ignoreDuplicates: true,
+      });
+  }
+  revalidatePath(`/admin/bookings/${booking_id}`);
+}
+
 /** Admin records or overrides a player's RSVP response. */
 export async function setResponse(formData: FormData) {
   const booking_id = String(formData.get("booking_id"));
@@ -150,49 +175,40 @@ export async function confirmAttendance(formData: FormData) {
   revalidatePath(`/admin/bookings/${booking_id}`);
 }
 
+type ShareRow = {
+  player_id: string;
+  share_units: number;
+  override_share_amount: number | null;
+};
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type BookingRecord = {
+  id: string;
+  play_date: string;
+  booking_code: string | null;
+  total_booking_cost: number;
+};
+
 /**
- * Generate booking shares from the submitted roster.
- * Reverses any existing shares + ledger entries for this booking first,
- * then splits the total cost by share units and posts fresh ledger entries
- * (routed to each player's wallet owner — group if pooled).
+ * Void + replace all shares for a booking with the given rows, splitting the
+ * total cost by units and posting ledger entries (routed to each player's
+ * wallet owner — group if pooled). Shared by generateShares and chargeAttendees.
  */
-export async function generateShares(formData: FormData) {
-  const booking_id = String(formData.get("booking_id"));
-  const supabase = await createClient();
-
-  const { data: booking } = await supabase
-    .from("bookings")
-    .select("*")
-    .eq("id", booking_id)
-    .single();
-  if (!booking) return;
-
-  const playerIds = formData
-    .getAll("share_player_ids")
-    .map(String)
-    .filter((pid) => formData.get(`include-${pid}`) === "on");
-
-  const rows = playerIds.map((pid) => {
-    const units = parseFloat(String(formData.get(`units-${pid}`) || "1")) || 0;
-    const overrideRaw = String(formData.get(`override-${pid}`) || "").trim();
-    const override = overrideRaw === "" ? null : parseFloat(overrideRaw);
-    return { player_id: pid, share_units: units, override_share_amount: override };
-  });
-
-  // Reverse existing shares for this booking (financial safety: void, then replace).
+async function rebuildBookingShares(
+  supabase: SupabaseServerClient,
+  booking: BookingRecord,
+  rows: ShareRow[],
+) {
   const { data: existing } = await supabase
     .from("booking_shares")
     .select("id")
-    .eq("booking_id", booking_id);
+    .eq("booking_id", booking.id);
   for (const s of existing ?? []) {
     await voidLedgerForSource(supabase, "booking_share", s.id as string);
   }
-  await supabase.from("booking_shares").delete().eq("booking_id", booking_id);
+  await supabase.from("booking_shares").delete().eq("booking_id", booking.id);
 
-  if (rows.length === 0) {
-    revalidatePath(`/admin/bookings/${booking_id}`);
-    return;
-  }
+  if (rows.length === 0) return;
 
   const allocations = splitByUnits(rows, Number(booking.total_booking_cost));
 
@@ -205,7 +221,7 @@ export async function generateShares(formData: FormData) {
     const { data: share } = await supabase
       .from("booking_shares")
       .insert({
-        booking_id,
+        booking_id: booking.id,
         player_id: row.player_id,
         player_group_id: owner.player_group_id,
         share_units: row.share_units,
@@ -230,7 +246,76 @@ export async function generateShares(formData: FormData) {
       ]);
     }
   }
+}
 
+/**
+ * Generate booking shares from the submitted roster.
+ * Reverses any existing shares + ledger entries for this booking first,
+ * then splits the total cost by share units and posts fresh ledger entries
+ * (routed to each player's wallet owner — group if pooled).
+ */
+export async function generateShares(formData: FormData) {
+  const booking_id = String(formData.get("booking_id"));
+  const supabase = await createClient();
+
+  const { data: booking } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("id", booking_id)
+    .single();
+  if (!booking) return;
+
+  const playerIds = formData
+    .getAll("share_player_ids")
+    .map(String)
+    .filter((pid) => formData.get(`include-${pid}`) === "on");
+
+  const rows: ShareRow[] = playerIds.map((pid) => {
+    const units = parseFloat(String(formData.get(`units-${pid}`) || "1")) || 0;
+    const overrideRaw = String(formData.get(`override-${pid}`) || "").trim();
+    const override = overrideRaw === "" ? null : parseFloat(overrideRaw);
+    return { player_id: pid, share_units: units, override_share_amount: override };
+  });
+
+  await rebuildBookingShares(supabase, booking as BookingRecord, rows);
+  revalidatePath(`/admin/bookings/${booking_id}`);
+}
+
+const CHARGEABLE_ACTUAL = new Set(["attended", "late_cancel", "guest"]);
+
+/**
+ * One-click: charge everyone who played. Splits the cost equally (1 unit each)
+ * across players whose confirmed attendance is chargeable, or — if attendance
+ * hasn't been confirmed yet — those who RSVP'd "going".
+ */
+export async function chargeAttendees(formData: FormData) {
+  const booking_id = String(formData.get("booking_id"));
+  const supabase = await createClient();
+
+  const { data: booking } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("id", booking_id)
+    .single();
+  if (!booking) return;
+
+  const { data: roster } = await supabase
+    .from("booking_attendance")
+    .select("player_id, response_status, actual_status")
+    .eq("booking_id", booking_id);
+
+  const included = (roster ?? []).filter((r) =>
+    r.actual_status
+      ? CHARGEABLE_ACTUAL.has(r.actual_status as string)
+      : r.response_status === "going",
+  );
+  const rows: ShareRow[] = included.map((r) => ({
+    player_id: r.player_id as string,
+    share_units: 1,
+    override_share_amount: null,
+  }));
+
+  await rebuildBookingShares(supabase, booking as BookingRecord, rows);
   revalidatePath(`/admin/bookings/${booking_id}`);
 }
 
