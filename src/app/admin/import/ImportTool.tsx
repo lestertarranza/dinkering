@@ -92,6 +92,11 @@ export function ImportTool() {
   const [unmatched, setUnmatched] = useState<string[]>([]);
   const [wipe, setWipe] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{
+    phase: string;
+    current: number;
+    total: number;
+  } | null>(null);
   const [result, setResult] = useState<{
     counts?: Record<string, number>;
     warnings?: string[];
@@ -127,18 +132,59 @@ export function ImportTool() {
   async function runImport() {
     setBusy(true);
     setResult(null);
+    setProgress({ phase: "Starting…", current: 0, total: 0 });
     try {
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...parsed, wipe }),
       });
-      const json = await res.json();
-      setResult(json);
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => "");
+        setResult({ error: text || `Request failed (${res.status})` });
+        return;
+      }
+
+      // Read the NDJSON progress stream line-by-line.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (!line) continue;
+          const ev = JSON.parse(line) as {
+            type: string;
+            phase?: string;
+            current?: number;
+            total?: number;
+            counts?: Record<string, number>;
+            warnings?: string[];
+            error?: string;
+          };
+          if (ev.type === "progress") {
+            setProgress({
+              phase: ev.phase ?? "",
+              current: ev.current ?? 0,
+              total: ev.total ?? 0,
+            });
+          } else if (ev.type === "done") {
+            setResult({ counts: ev.counts, warnings: ev.warnings });
+          } else if (ev.type === "error") {
+            setResult({ error: ev.error });
+          }
+        }
+      }
     } catch (err) {
       setResult({ error: String(err) });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -222,6 +268,30 @@ export function ImportTool() {
           >
             {busy ? "Importing…" : "Import data"}
           </button>
+
+          {busy && progress ? (
+            <div className="mt-4">
+              <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                <span>{progress.phase}</span>
+                <span>
+                  {progress.total > 0
+                    ? `${progress.current} / ${progress.total}`
+                    : ""}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-150"
+                  style={{
+                    width:
+                      progress.total > 0
+                        ? `${Math.min(100, Math.round((progress.current / progress.total) * 100))}%`
+                        : "15%",
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 

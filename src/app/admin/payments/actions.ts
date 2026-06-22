@@ -7,6 +7,9 @@ import {
   resolveWalletOwner,
   voidLedgerForSource,
 } from "@/lib/ledger";
+import { formatMoney } from "@/lib/format";
+
+export type PaymentState = { ok: boolean; message: string } | null;
 
 /** Parse a combined payer value like "p:<uuid>" or "g:<uuid>". */
 function parsePayer(value: string): {
@@ -18,10 +21,18 @@ function parsePayer(value: string): {
   return { player_id: null, group_id: null };
 }
 
-export async function createPayment(formData: FormData) {
+export async function createPayment(
+  _prev: PaymentState,
+  formData: FormData,
+): Promise<PaymentState> {
   const { player_id, group_id } = parsePayer(String(formData.get("payer") || ""));
   const amount = Math.abs(parseFloat(String(formData.get("amount") || "0")));
-  if (!amount || (!player_id && !group_id)) return;
+  if (!amount || (!player_id && !group_id)) {
+    return {
+      ok: false,
+      message: "Please select a payer and enter an amount greater than zero.",
+    };
+  }
 
   const payment_date =
     String(formData.get("payment_date") || "") ||
@@ -33,7 +44,7 @@ export async function createPayment(formData: FormData) {
     String(formData.get("payment_code") || "").trim() ||
     (await nextCode(supabase, "payments", "payment_code", "PAY"));
 
-  const { data: payment } = await supabase
+  const { data: payment, error: payErr } = await supabase
     .from("payments")
     .insert({
       payment_code: code,
@@ -50,6 +61,13 @@ export async function createPayment(formData: FormData) {
     .select("id")
     .single();
 
+  if (payErr || !payment?.id) {
+    return {
+      ok: false,
+      message: `Could not record payment: ${payErr?.message ?? "unknown error"}`,
+    };
+  }
+
   // Route credit to the wallet owner so pooled members net against the group.
   let ledgerPlayer = player_id;
   let ledgerGroup = group_id;
@@ -59,24 +77,27 @@ export async function createPayment(formData: FormData) {
     ledgerGroup = owner.player_group_id;
   }
 
-  if (payment?.id) {
-    await supabase.from("ledger_entries").insert({
-      entry_date: payment_date,
-      player_id: ledgerPlayer,
-      player_group_id: ledgerGroup,
-      source_type: "payment",
-      source_id: payment.id,
-      description: `Payment ${code}${
-        booking_id ? " (booking)" : " (advance / general)"
-      }`,
-      debit_amount: 0,
-      credit_amount: amount,
-    });
-  }
+  await supabase.from("ledger_entries").insert({
+    entry_date: payment_date,
+    player_id: ledgerPlayer,
+    player_group_id: ledgerGroup,
+    source_type: "payment",
+    source_id: payment.id,
+    description: `Payment ${code}${
+      booking_id ? " (booking)" : " (advance / general)"
+    }`,
+    debit_amount: 0,
+    credit_amount: amount,
+  });
 
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
   if (booking_id) revalidatePath(`/admin/bookings/${booking_id}`);
+
+  return {
+    ok: true,
+    message: `Recorded ${formatMoney(amount)} (${code}).`,
+  };
 }
 
 /** Reverse a payment by voiding its ledger entry (audit-safe, no hard delete). */

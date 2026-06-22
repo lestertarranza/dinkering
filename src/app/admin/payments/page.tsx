@@ -1,18 +1,11 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import {
-  Card,
-  PageHeader,
-  Badge,
-  Field,
-  inputClass,
-  EmptyState,
-} from "@/components/ui";
-import { SubmitButton } from "@/components/SubmitButton";
+import { Card, PageHeader, Badge, EmptyState } from "@/components/ui";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatMoney, formatDate } from "@/lib/format";
 import type { Booking, Payment, Player, PlayerGroup } from "@/lib/types";
-import { createPayment, reversePayment } from "./actions";
+import { PaymentForm } from "./PaymentForm";
+import { reversePayment } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -56,86 +49,17 @@ export default async function PaymentsPage({
           <h2 className="mb-3 text-sm font-semibold text-slate-700">
             Record payment
           </h2>
-          <form action={createPayment} className="space-y-3">
-            <Field label="Payer">
-              <select name="payer" required className={inputClass}>
-                <option value="">Select payer…</option>
-                {(groups ?? []).length > 0 ? (
-                  <optgroup label="Groups / pooled funds">
-                    {((groups ?? []) as Pick<PlayerGroup, "id" | "name">[]).map(
-                      (g) => (
-                        <option key={g.id} value={`g:${g.id}`}>
-                          {g.name}
-                        </option>
-                      ),
-                    )}
-                  </optgroup>
-                ) : null}
-                <optgroup label="Players">
-                  {((players ?? []) as Pick<Player, "id" | "name">[]).map((p) => (
-                    <option key={p.id} value={`p:${p.id}`}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Amount">
-                <input
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Date">
-                <input
-                  name="payment_date"
-                  type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
-                  className={inputClass}
-                />
-              </Field>
-            </div>
-            <Field label="For booking" hint="Optional — leave blank for advance / general">
-              <select
-                name="booking_id"
-                defaultValue={booking}
-                className={inputClass}
-              >
-                <option value="">General / advance payment</option>
-                {(
-                  (bookings ?? []) as Pick<
-                    Booking,
-                    "id" | "booking_code" | "play_date"
-                  >[]
-                ).map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.booking_code} · {formatDate(b.play_date)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Method">
-                <input
-                  name="payment_method"
-                  placeholder="Cash / GCash"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Reference #">
-                <input name="reference_number" className={inputClass} />
-              </Field>
-            </div>
-            <Field label="Notes">
-              <textarea name="notes" rows={2} className={inputClass} />
-            </Field>
-            <SubmitButton className="w-full">Record payment</SubmitButton>
-          </form>
+          <PaymentForm
+            players={(players ?? []) as Pick<Player, "id" | "name">[]}
+            groups={(groups ?? []) as Pick<PlayerGroup, "id" | "name">[]}
+            bookings={
+              (bookings ?? []) as Pick<
+                Booking,
+                "id" | "booking_code" | "play_date"
+              >[]
+            }
+            defaultBooking={booking}
+          />
         </Card>
 
         <div className="lg:order-1 lg:col-span-2">

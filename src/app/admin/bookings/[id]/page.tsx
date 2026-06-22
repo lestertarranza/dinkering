@@ -98,7 +98,8 @@ export default async function BookingDetail({
     (s, p) => s + Number(p.amount),
     0,
   );
-  const outstanding = Number(b.total_booking_cost) - paid;
+  const billable = b.status === "booked" || b.status === "played";
+  const outstanding = billable ? Number(b.total_booking_cost) - paid : 0;
 
   return (
     <div>
@@ -157,8 +158,13 @@ export default async function BookingDetail({
               outstanding > 0.005 ? "text-rose-600" : "text-slate-900"
             }`}
           >
-            {formatMoney(outstanding)}
+            {billable ? formatMoney(outstanding) : "—"}
           </p>
+          {!billable ? (
+            <p className="mt-1 text-xs text-slate-400">
+              {b.status === "refunded" ? "Refunded — not collectible" : "Not collectible"}
+            </p>
+          ) : null}
         </Card>
       </div>
 
