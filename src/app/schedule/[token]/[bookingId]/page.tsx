@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
-import { formatDate, formatTimeRange } from "@/lib/format";
+import { formatDate } from "@/lib/format";
+import { formatBookingContext } from "@/lib/booking-context";
 import {
   publicPlayerLabel,
   validatePublicTeamToken,
@@ -63,13 +64,7 @@ export default async function PublicBookingRoster({
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
   const noResponse = roster.length - going - maybe - notGoing;
 
-  const ctx = [
-    formatTimeRange(b.start_time, b.end_time),
-    b.venue,
-    b.court_number,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const ctx = formatBookingContext(b);
 
   return (
     <main className="mx-auto max-w-lg px-4 py-6">
