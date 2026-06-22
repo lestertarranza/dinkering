@@ -1,12 +1,12 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
-import { LedgerTable } from "@/components/LedgerTable";
 import {
   formatMoney,
   formatDate,
   formatTimeRange,
   describeBalance,
+  SETTLE_TOLERANCE,
 } from "@/lib/format";
 import {
   buildLedgerBookingContext,
@@ -15,13 +15,18 @@ import {
 import type {
   Booking,
   BookingAttendance,
-  BookingShare,
   LedgerEntry,
-  Payment,
   Player,
-  TeamExpenseShare,
 } from "@/lib/types";
 import { submitRsvp } from "./actions";
+
+const STATEMENT_LABELS: Record<string, string> = {
+  booking_share: "Court",
+  payment: "Payment",
+  team_expense_share: "Team expense",
+  team_expense_credit: "Reimbursement",
+  manual_adjustment: "Adjustment",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -76,28 +81,12 @@ export default async function PlayerPortal({
     ledger = (pl ?? []) as LedgerEntry[];
   }
 
-  const [{ data: attendance }, { data: shares }, { data: expShares }, { data: payments }] =
-    await Promise.all([
-      db
-        .from("booking_attendance")
-        .select("*, bookings(id, booking_code, play_date, start_time, end_time, venue, status)")
-        .eq("player_id", p.id),
-      db
-        .from("booking_shares")
-        .select(
-          "*, bookings(booking_code, play_date, start_time, end_time, venue, court_number)",
-        )
-        .eq("player_id", p.id),
-      db
-        .from("team_expense_shares")
-        .select("*, team_expenses(description, purchase_date)")
-        .eq("player_id", p.id),
-      db
-        .from("payments")
-        .select("*")
-        .eq("payer_player_id", p.id)
-        .order("payment_date", { ascending: false }),
-    ]);
+  const { data: attendance } = await db
+    .from("booking_attendance")
+    .select(
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, status)",
+    )
+    .eq("player_id", p.id);
 
   type AttRow = BookingAttendance & { bookings: Booking };
   const att = (attendance ?? []) as AttRow[];
@@ -110,6 +99,21 @@ export default async function PlayerPortal({
 
   const d = describeBalance(balance);
   const ledgerContext = await buildLedgerBookingContext(db, ledger);
+
+  // One merged statement (charges + payments + adjustments) with a running
+  // balance, newest first.
+  const orderedLedger = [...ledger].sort((a, b) => {
+    const byDate = a.entry_date.localeCompare(b.entry_date);
+    return byDate !== 0 ? byDate : a.created_at.localeCompare(b.created_at);
+  });
+  let runningBalance = 0;
+  const statement: { entry: LedgerEntry; running: number }[] = [];
+  for (const e of orderedLedger) {
+    if (!e.voided)
+      runningBalance += Number(e.debit_amount) - Number(e.credit_amount);
+    statement.push({ entry: e, running: runningBalance });
+  }
+  statement.reverse();
 
   const rsvpBtn = (bookingId: string, value: string, label: string, current: string) => (
     <button
@@ -233,117 +237,67 @@ export default async function PlayerPortal({
         )}
       </Section>
 
-      {/* Court shares */}
-      <Section title="Court shares">
-        {(shares ?? []).length === 0 ? (
-          <EmptyState title="No court charges yet" />
+      {/* Charges & payments (single merged statement, newest first) */}
+      <Section title="Charges & payments">
+        {statement.length === 0 ? (
+          <EmptyState title="No activity yet" />
         ) : (
-          <Card className="divide-y divide-slate-100">
-            {(
-              shares as (BookingShare & {
-                bookings:
-                  | {
-                      booking_code: string;
-                      play_date: string;
-                      start_time: string | null;
-                      end_time: string | null;
-                      venue: string | null;
-                      court_number: string | null;
-                    }
-                  | null;
-              })[]
-            ).map((s) => {
-              const ctx = formatBookingContext(s.bookings);
-              return (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-                >
-                  <span className="min-w-0">
-                    <span className="font-medium text-slate-700">
-                      {s.bookings?.booking_code}
-                    </span>{" "}
-                    <span className="text-slate-400">
-                      {formatDate(s.bookings?.play_date)}
-                    </span>
-                    {ctx ? (
-                      <span className="mt-0.5 block text-xs text-slate-400">
-                        {ctx}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="shrink-0 font-medium text-rose-600">
-                    {formatMoney(s.amount_owed)}
-                  </span>
-                </div>
-              );
-            })}
-          </Card>
-        )}
-      </Section>
-
-      {/* Expense shares */}
-      <Section title="Team expense shares">
-        {(expShares ?? []).length === 0 ? (
-          <EmptyState title="No expense shares" />
-        ) : (
-          <Card className="divide-y divide-slate-100">
-            {(
-              expShares as (TeamExpenseShare & {
-                team_expenses: {
-                  description: string;
-                  purchase_date: string;
-                } | null;
-              })[]
-            ).map((s) => (
-              <div
-                key={s.id}
-                className="flex items-center justify-between px-4 py-3 text-sm"
-              >
-                <span>
-                  <span className="font-medium text-slate-700">
-                    {s.team_expenses?.description}
-                  </span>{" "}
-                  <span className="text-slate-400">
-                    {formatDate(s.team_expenses?.purchase_date)}
-                  </span>
-                </span>
-                <span className="font-medium text-rose-600">
-                  {formatMoney(s.amount_owed)}
-                </span>
-              </div>
-            ))}
-          </Card>
-        )}
-      </Section>
-
-      {/* Payments */}
-      <Section title="Your payments">
-        {(payments ?? []).length === 0 ? (
-          <EmptyState title="No payments recorded" />
-        ) : (
-          <Card className="divide-y divide-slate-100">
-            {((payments ?? []) as Payment[]).map((pay) => (
-              <div
-                key={pay.id}
-                className="flex items-center justify-between px-4 py-3 text-sm"
-              >
-                <span>
-                  <span className="text-slate-400">
-                    {formatDate(pay.payment_date)}
-                  </span>
-                  {pay.payment_method ? (
-                    <span className="ml-2 text-slate-500">
-                      {pay.payment_method}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="font-medium text-emerald-600">
-                  {formatMoney(pay.amount)}
-                </span>
-              </div>
-            ))}
-          </Card>
+          <>
+            <Card className="divide-y divide-slate-100">
+              {statement.map(({ entry, running }) => {
+                const ctx = formatBookingContext(ledgerContext.get(entry.id));
+                const charge = Number(entry.debit_amount);
+                const credit = Number(entry.credit_amount);
+                const isCharge = charge > 0;
+                const balLabel =
+                  Math.abs(running) < SETTLE_TOLERANCE
+                    ? "Settled"
+                    : running > 0
+                      ? `${formatMoney(running)} owed`
+                      : `${formatMoney(-running)} credit`;
+                return (
+                  <div
+                    key={entry.id}
+                    className={`flex items-start justify-between gap-3 px-4 py-3 text-sm ${
+                      entry.voided ? "text-slate-400 line-through" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-700">
+                        {entry.description ||
+                          STATEMENT_LABELS[entry.source_type] ||
+                          "Entry"}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {formatDate(entry.entry_date)}
+                        {ctx ? ` · ${ctx}` : ""}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p
+                        className={`font-semibold ${
+                          isCharge ? "text-rose-600" : "text-emerald-600"
+                        }`}
+                      >
+                        {isCharge
+                          ? formatMoney(charge)
+                          : `− ${formatMoney(credit)}`}
+                      </p>
+                      {!entry.voided ? (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {balLabel}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+            <p className="mt-2 px-1 text-xs text-slate-400">
+              Charges are in red, payments &amp; credits in green. The grey line
+              is your running balance after each item.
+            </p>
+          </>
         )}
       </Section>
 
@@ -371,17 +325,6 @@ export default async function PlayerPortal({
             ))}
           </Card>
         )}
-      </Section>
-
-      {/* Full ledger */}
-      <Section title="Full ledger">
-        <Card className="overflow-hidden">
-          <LedgerTable entries={ledger} bookingContext={ledgerContext} />
-        </Card>
-        <p className="mt-2 px-1 text-xs text-slate-400">
-          Balance = total charges − total payments &amp; credits. A positive
-          balance means you owe; a negative balance is credit carried forward.
-        </p>
       </Section>
 
       <footer className="mt-8 text-center text-xs text-slate-300">

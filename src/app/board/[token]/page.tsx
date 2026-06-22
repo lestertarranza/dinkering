@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import { formatMoney, describeBalance } from "@/lib/format";
+import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -86,7 +86,18 @@ export default async function TeamBoard({
         pooled,
       };
     })
-    .sort((a, b) => a.label.localeCompare(b.label));
+    // Credits first (largest credit on top), then owes (largest first),
+    // then settled players last.
+    .sort((a, b) => {
+      const rank = (bal: number) =>
+        Math.abs(bal) < SETTLE_TOLERANCE ? 2 : bal < 0 ? 0 : 1;
+      const ra = rank(a.balance);
+      const rb = rank(b.balance);
+      if (ra !== rb) return ra - rb;
+      if (ra === 0) return a.balance - b.balance; // more credit (more negative) first
+      if (ra === 1) return b.balance - a.balance; // larger owed first
+      return a.label.localeCompare(b.label); // settled: alphabetical
+    });
 
   return (
     <main className="mx-auto max-w-lg px-4 py-6">
