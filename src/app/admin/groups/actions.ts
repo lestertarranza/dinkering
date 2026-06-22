@@ -18,8 +18,10 @@ export async function createGroup(formData: FormData) {
     .select("id")
     .single();
 
-  // Optionally attach selected players immediately
-  const memberIds = formData.getAll("member_ids").map(String).filter(Boolean);
+  // Optionally attach selected players immediately (deduped; first is primary)
+  const memberIds = [
+    ...new Set(formData.getAll("member_ids").map(String).filter(Boolean)),
+  ];
   if (data?.id && memberIds.length) {
     const today = new Date().toISOString().slice(0, 10);
     await supabase.from("player_group_members").insert(
@@ -52,15 +54,63 @@ export async function updateGroup(formData: FormData) {
 export async function addMember(formData: FormData) {
   const player_group_id = String(formData.get("player_group_id"));
   const player_id = String(formData.get("player_id"));
-  const is_primary = formData.get("is_primary") === "on";
+  const wantPrimary = formData.get("is_primary") === "on";
   if (!player_id) return;
   const supabase = await createClient();
+
+  // Skip if this player is already an active member of the group.
+  const { data: existing } = await supabase
+    .from("player_group_members")
+    .select("id")
+    .eq("player_group_id", player_group_id)
+    .eq("player_id", player_id)
+    .is("end_date", null)
+    .limit(1);
+  if (existing && existing.length > 0) {
+    revalidatePath(`/admin/groups/${player_group_id}`);
+    return;
+  }
+
+  // The first member of a group is automatically primary.
+  const { count } = await supabase
+    .from("player_group_members")
+    .select("id", { count: "exact", head: true })
+    .eq("player_group_id", player_group_id)
+    .is("end_date", null);
+  const makePrimary = wantPrimary || (count ?? 0) === 0;
+
+  // Only one active primary per group.
+  if (makePrimary) {
+    await supabase
+      .from("player_group_members")
+      .update({ is_primary: false })
+      .eq("player_group_id", player_group_id)
+      .is("end_date", null);
+  }
+
   await supabase.from("player_group_members").insert({
     player_group_id,
     player_id,
-    is_primary,
+    is_primary: makePrimary,
     start_date: new Date().toISOString().slice(0, 10),
   });
+  revalidatePath(`/admin/groups/${player_group_id}`);
+}
+
+/** Designate an existing active member as the group's sole primary. */
+export async function setPrimaryMember(formData: FormData) {
+  const membership_id = String(formData.get("membership_id"));
+  const player_group_id = String(formData.get("player_group_id"));
+  const supabase = await createClient();
+  await supabase
+    .from("player_group_members")
+    .update({ is_primary: false })
+    .eq("player_group_id", player_group_id)
+    .is("end_date", null);
+  await supabase
+    .from("player_group_members")
+    .update({ is_primary: true })
+    .eq("id", membership_id);
   revalidatePath(`/admin/groups/${player_group_id}`);
 }
 
