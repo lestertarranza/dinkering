@@ -94,6 +94,16 @@ export default async function BookingDetail({
     players: Pick<Player, "id" | "name"> | null;
   })[];
   const shareByPlayer = new Map(shareList.map((s) => [s.player_id, s]));
+  const shareCountByPlayer = new Map<string | null, number>();
+  for (const s of shareList) {
+    shareCountByPlayer.set(
+      s.player_id,
+      (shareCountByPlayer.get(s.player_id) ?? 0) + 1,
+    );
+  }
+  const hasDuplicateShares = [...shareCountByPlayer.values()].some(
+    (n) => n > 1,
+  );
   const balMap = new Map(
     (balances ?? []).map((x) => [x.player_id as string, Number(x.balance)]),
   );
@@ -261,6 +271,56 @@ export default async function BookingDetail({
               </form>
             </div>
           </Card>
+
+          {/* Recorded shares (who played / who was charged) */}
+          {shareList.length > 0 ? (
+            <Card>
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                <h2 className="text-sm font-semibold text-slate-700">
+                  Recorded player shares
+                </h2>
+                <span className="text-xs text-slate-400">
+                  {shareList.length} share{shareList.length === 1 ? "" : "s"} ·{" "}
+                  {formatMoney(totalShared)}
+                </span>
+              </div>
+              <div className="p-4">
+                <ul className="space-y-2">
+                  {shareList.map((s) => (
+                    <li
+                      key={s.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium text-slate-700">
+                          {s.players?.name ?? "Unknown player"}
+                        </span>
+                        {Number(s.share_units) !== 1 ? (
+                          <Badge tone="neutral">
+                            {Number(s.share_units)} units
+                          </Badge>
+                        ) : null}
+                        {s.player_group_id ? (
+                          <Badge tone="info">Pooled</Badge>
+                        ) : null}
+                      </span>
+                      <span className="font-medium text-rose-600">
+                        {formatMoney(s.amount_owed)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {hasDuplicateShares ? (
+                  <p className="mt-3 text-xs text-slate-400">
+                    Some players appear more than once. Imported bookings can
+                    record multiple shares per player — e.g. when someone
+                    covered guests they invited and settled the split on their
+                    own.
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
 
           {/* Confirm attendance */}
           {roster.length > 0 ? (
