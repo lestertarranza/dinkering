@@ -13,7 +13,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLink } from "@/components/CopyLink";
 import { LedgerTable } from "@/components/LedgerTable";
-import { formatMoney, describeBalance } from "@/lib/format";
+import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
 import { addManualAdjustment } from "../../players/actions";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import {
@@ -21,6 +21,7 @@ import {
   addMember,
   removeMember,
   setPrimaryMember,
+  pullMemberBalances,
   regenerateGroupToken,
   deleteGroup,
 } from "../actions";
@@ -68,10 +69,30 @@ export default async function GroupDetail({
     is_primary: boolean;
     players: Pick<Player, "id" | "name">;
   }[];
-  const memberPlayerIds = new Set(memberList.map((m) => m.players.id));
+  const memberPlayerIds = memberList.map((m) => m.players.id);
+  const memberPlayerIdSet = new Set(memberPlayerIds);
   const availablePlayers = (
     (allPlayers ?? []) as Pick<Player, "id" | "name">[]
-  ).filter((p) => !memberPlayerIds.has(p.id));
+  ).filter((p) => !memberPlayerIdSet.has(p.id));
+
+  // Individual (un-pooled) balances still sitting on each member's own wallet.
+  const { data: memberBalances } = memberPlayerIds.length
+    ? await supabase
+        .from("player_balances")
+        .select("player_id, balance")
+        .in("player_id", memberPlayerIds)
+    : { data: [] };
+  const memberBalanceMap = new Map(
+    ((memberBalances ?? []) as { player_id: string; balance: number }[]).map(
+      (b) => [b.player_id, Number(b.balance)],
+    ),
+  );
+  const pullable = memberList
+    .map((m) => ({
+      name: m.players.name,
+      balance: memberBalanceMap.get(m.players.id) ?? 0,
+    }))
+    .filter((x) => Math.abs(x.balance) >= SETTLE_TOLERANCE);
 
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
@@ -245,6 +266,59 @@ export default async function GroupDetail({
               </form>
             )}
           </Card>
+
+          {memberList.length > 0 ? (
+            <Card className="p-4">
+              <h2 className="mb-1 text-sm font-semibold text-slate-700">
+                Pool member balances
+              </h2>
+              <p className="mb-3 text-xs text-slate-400">
+                Moves each member&apos;s existing individual balance into this
+                shared wallet (one-time). New games and payments already pool
+                automatically. The members&apos; own ledgers are zeroed with a
+                matching transfer entry, so nothing is deleted.
+              </p>
+              {pullable.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  Nothing to pull — no member has an individual balance.
+                </p>
+              ) : (
+                <>
+                  <ul className="mb-3 space-y-1 text-sm">
+                    {pullable.map((x) => {
+                      const pd = describeBalance(x.balance);
+                      return (
+                        <li
+                          key={x.name}
+                          className="flex items-center justify-between"
+                        >
+                          <span className="text-slate-600">{x.name}</span>
+                          <span
+                            className={
+                              pd.tone === "collect"
+                                ? "text-rose-600"
+                                : "text-emerald-600"
+                            }
+                          >
+                            {pd.tone === "collect" ? "owes " : "credit "}
+                            {formatMoney(pd.amount)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <ConfirmButton
+                    action={pullMemberBalances}
+                    message={`Pull ${pullable.length} member balance(s) into "${g.name}"? This posts transfer entries and cannot be auto-undone.`}
+                    variant="secondary"
+                    hidden={{ player_group_id: g.id }}
+                  >
+                    Pull balances into group
+                  </ConfirmButton>
+                </>
+              )}
+            </Card>
+          ) : null}
 
           <Card className="p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">

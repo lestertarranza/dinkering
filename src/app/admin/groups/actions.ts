@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { round2 } from "@/lib/ledger";
+import { SETTLE_TOLERANCE } from "@/lib/format";
 import type { GroupType } from "@/lib/types";
 
 export async function createGroup(formData: FormData) {
@@ -122,6 +124,107 @@ export async function removeMember(formData: FormData) {
     .from("player_group_members")
     .update({ end_date: new Date().toISOString().slice(0, 10) })
     .eq("id", membership_id);
+  revalidatePath(`/admin/groups/${player_group_id}`);
+}
+
+/**
+ * Pull each active member's current individual balance into the group's
+ * pooled wallet. Posts a balanced pair of manual adjustments per member:
+ * one that zeroes the player and one that loads the same net onto the group,
+ * preserving a full audit trail (no history is rewritten or deleted).
+ */
+export async function pullMemberBalances(formData: FormData) {
+  const player_group_id = String(formData.get("player_group_id"));
+  if (!player_group_id) return;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const actor = user?.email ?? "admin";
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: group } = await supabase
+    .from("player_groups")
+    .select("name")
+    .eq("id", player_group_id)
+    .single();
+  if (!group) return;
+
+  const { data: members } = await supabase
+    .from("player_group_members")
+    .select("player_id, players(name)")
+    .eq("player_group_id", player_group_id)
+    .is("end_date", null);
+
+  for (const m of (members ?? []) as unknown as {
+    player_id: string;
+    players: { name: string } | null;
+  }[]) {
+    const { data: bal } = await supabase
+      .from("player_balances")
+      .select("balance")
+      .eq("player_id", m.player_id)
+      .single();
+    const balance = round2(Number(bal?.balance ?? 0));
+    if (Math.abs(balance) < SETTLE_TOLERANCE) continue;
+
+    const magnitude = round2(Math.abs(balance));
+    const owes = balance > 0; // positive balance => player owes the team
+    const playerName = m.players?.name ?? "member";
+
+    // Player side: offset their balance back to zero.
+    const { data: playerAdj } = await supabase
+      .from("manual_adjustments")
+      .insert({
+        player_id: m.player_id,
+        amount: magnitude,
+        type: owes ? "credit" : "charge",
+        reason: `Transferred balance to pooled group "${group.name}"`,
+        adjustment_date: today,
+        created_by: actor,
+      })
+      .select("id")
+      .single();
+
+    await supabase.from("ledger_entries").insert({
+      entry_date: today,
+      player_id: m.player_id,
+      player_group_id: null,
+      source_type: "manual_adjustment",
+      source_id: playerAdj?.id ?? null,
+      description: `Transferred balance to pooled group "${group.name}"`,
+      debit_amount: owes ? 0 : magnitude,
+      credit_amount: owes ? magnitude : 0,
+    });
+
+    // Group side: load the same net onto the pooled wallet.
+    const { data: groupAdj } = await supabase
+      .from("manual_adjustments")
+      .insert({
+        player_group_id,
+        amount: magnitude,
+        type: owes ? "charge" : "credit",
+        reason: `Pulled opening balance from ${playerName}`,
+        adjustment_date: today,
+        created_by: actor,
+      })
+      .select("id")
+      .single();
+
+    await supabase.from("ledger_entries").insert({
+      entry_date: today,
+      player_id: null,
+      player_group_id,
+      source_type: "manual_adjustment",
+      source_id: groupAdj?.id ?? null,
+      description: `Opening balance pulled from ${playerName}`,
+      debit_amount: owes ? magnitude : 0,
+      credit_amount: owes ? 0 : magnitude,
+    });
+
+    revalidatePath(`/admin/players/${m.player_id}`);
+  }
+
   revalidatePath(`/admin/groups/${player_group_id}`);
 }
 
