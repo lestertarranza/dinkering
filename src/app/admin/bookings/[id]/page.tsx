@@ -31,9 +31,11 @@ import {
   updateBooking,
   setBookingStatus,
   addAttendee,
+  addAllActivePlayers,
   setResponse,
   confirmAttendance,
   generateShares,
+  chargeAttendees,
   deleteBooking,
 } from "../actions";
 
@@ -313,18 +315,28 @@ export default async function BookingDetail({
                 </ul>
               )}
 
-              <form action={addAttendee} className="mt-4 flex gap-2">
-                <input type="hidden" name="booking_id" value={b.id} />
-                <select name="player_id" className={inputClass} required>
-                  <option value="">Add player to roster…</option>
-                  {availablePlayers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <SubmitButton variant="secondary">Add</SubmitButton>
-              </form>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <form action={addAttendee} className="flex flex-1 gap-2">
+                  <input type="hidden" name="booking_id" value={b.id} />
+                  <select name="player_id" className={inputClass} required>
+                    <option value="">Add player to roster…</option>
+                    {availablePlayers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <SubmitButton variant="secondary">Add</SubmitButton>
+                </form>
+                {availablePlayers.length > 0 ? (
+                  <form action={addAllActivePlayers}>
+                    <input type="hidden" name="booking_id" value={b.id} />
+                    <SubmitButton variant="ghost">
+                      + Add all active players
+                    </SubmitButton>
+                  </form>
+                ) : null}
+              </div>
             </div>
           </Card>
 
@@ -373,9 +385,19 @@ export default async function BookingDetail({
           {/* Generate shares */}
           {roster.length > 0 ? (
             <Card>
-              <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
-                Booking shares
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+                <h2 className="text-sm font-semibold text-slate-700">
+                  Booking shares
+                </h2>
+                <ConfirmButton
+                  action={chargeAttendees}
+                  message="Charge everyone who played? This splits the court cost equally across all attended (or RSVP'd going) players and replaces any existing shares."
+                  variant="secondary"
+                  hidden={{ booking_id: b.id }}
+                >
+                  ⚡ Charge everyone who attended
+                </ConfirmButton>
+              </div>
               <form action={generateShares} className="p-4">
                 <input type="hidden" name="booking_id" value={b.id} />
                 <div className="overflow-x-auto">
