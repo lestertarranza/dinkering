@@ -90,6 +90,9 @@ export default async function PaymentsPage({
                       <p className="mt-1 text-xs text-slate-400">
                         {p.payment_code} · {formatDate(p.payment_date)}
                         {p.payment_method ? ` · ${p.payment_method}` : ""}
+                        {p.reference_number
+                          ? ` · ref ${p.reference_number}`
+                          : ""}
                         {p.bookings?.booking_code
                           ? ` · ${p.bookings.booking_code}`
                           : " · advance"}

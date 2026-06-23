@@ -27,6 +27,7 @@ import type {
   Player,
 } from "@/lib/types";
 import { RsvpForm } from "./RsvpForm";
+import { ScrollToHash } from "@/components/ScrollToHash";
 
 const STATEMENT_LABELS: Record<string, string> = {
   booking_share: "Court",
@@ -130,6 +131,7 @@ export default async function PlayerPortal({
 
   return (
     <main className={publicMainClass}>
+      <ScrollToHash />
       <header className="mb-5 text-center">
         <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
           🏓
@@ -200,7 +202,7 @@ export default async function PlayerPortal({
             {upcoming.map((a) => {
               const ctx = formatBookingContext(a.bookings);
               return (
-                <Card key={a.id} className="p-4">
+                <Card key={a.id} id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <p className={`text-lg ${publicPrimaryText}`}>

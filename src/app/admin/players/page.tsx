@@ -11,7 +11,7 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { CopyLink } from "@/components/CopyLink";
+import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
 import { createPlayer, regenerateRosterToken } from "./actions";
@@ -79,6 +79,11 @@ export default async function PlayersPage({
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <CopyLink url={boardUrl} />
+                    <ShareLink
+                      url={boardUrl}
+                      title="Dinkering team balances"
+                      label="Share"
+                    />
                     <Link
                       href={`/board/${settings!.roster_token}`}
                       target="_blank"
@@ -97,6 +102,11 @@ export default async function PlayersPage({
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <CopyLink url={scheduleUrl} />
+                    <ShareLink
+                      url={scheduleUrl}
+                      title="Dinkering upcoming games"
+                      label="Share"
+                    />
                     <Link
                       href={`/schedule/${settings!.roster_token}`}
                       target="_blank"

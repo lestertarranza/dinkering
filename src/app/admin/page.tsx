@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, StatCard, Badge, PageHeader, EmptyState } from "@/components/ui";
+import { Card, StatCard, Badge, PageHeader, EmptyState, buttonClass } from "@/components/ui";
 import {
   formatMoney,
   formatDate,
@@ -25,7 +25,7 @@ export default async function Dashboard() {
     { data: bookings },
     { data: paidTotals },
     { data: bookingShares },
-    { data: ledgerPayments },
+    { data: dashTotals },
     { data: recentPayments },
     { data: recentExpenses },
   ] = await Promise.all([
@@ -33,14 +33,12 @@ export default async function Dashboard() {
     supabase.from("group_balances").select("*"),
     supabase.from("players").select("id, name, active_status"),
     supabase.from("player_groups").select("id, name"),
-    supabase.from("bookings").select("*"),
+    supabase
+      .from("bookings")
+      .select("id, booking_code, play_date, status, total_booking_cost"),
     supabase.from("booking_payment_totals").select("*"),
     supabase.from("booking_shares").select("booking_id, amount_owed"),
-    supabase
-      .from("ledger_entries")
-      .select("credit_amount")
-      .eq("source_type", "payment")
-      .eq("voided", false),
+    supabase.from("dashboard_totals").select("*").single(),
     supabase
       .from("payments")
       .select("*, players(name), player_groups(name)")
@@ -89,18 +87,9 @@ export default async function Dashboard() {
     .reduce((s, o) => s + Math.abs(o.balance), 0);
   const isBillable = (b: Booking) =>
     b.status === "booked" || b.status === "played";
-  // Cost actually incurred (and billed to players) = played games only.
-  const playedBookingCost = ((bookings ?? []) as Booking[])
-    .filter((b) => b.status === "played")
-    .reduce((s, b) => s + Number(b.total_booking_cost), 0);
-  // Future court time committed but not yet played/billed.
-  const upcomingCommitments = ((bookings ?? []) as Booking[])
-    .filter((b) => b.status === "booked")
-    .reduce((s, b) => s + Number(b.total_booking_cost), 0);
-  const totalPayments = (ledgerPayments ?? []).reduce(
-    (s, p) => s + Number(p.credit_amount),
-    0,
-  );
+  const playedBookingCost = Number(dashTotals?.played_booking_cost ?? 0);
+  const upcomingCommitments = Number(dashTotals?.upcoming_commitments ?? 0);
+  const totalPayments = Number(dashTotals?.total_payments ?? 0);
 
   const paidMap = new Map(
     (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
@@ -148,6 +137,11 @@ export default async function Dashboard() {
       <PageHeader
         title="Dashboard"
         description="Money owed, credits, bookings, and recent activity."
+        action={
+          <Link href="/admin/collections" className={buttonClass("secondary")}>
+            Collections →
+          </Link>
+        }
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -22,10 +22,7 @@ export async function addManualAdjustment(formData: FormData) {
 
   if (!reason || !amount || (!player_id && !player_group_id)) return;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await requireAdmin();
 
   const { data: adj } = await supabase
     .from("manual_adjustments")
@@ -62,7 +59,7 @@ export async function createPlayer(formData: FormData) {
   const display_name = String(formData.get("display_name") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
 
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase.from("players").insert({ name, display_name, notes });
   revalidatePath("/admin/players");
 }
@@ -76,7 +73,7 @@ export async function updatePlayer(formData: FormData) {
     formData.get("active_status") || "active",
   ) as ActiveStatus;
 
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("players")
     .update({ name, display_name, notes, active_status })
@@ -88,7 +85,7 @@ export async function updatePlayer(formData: FormData) {
 export async function setPlayerStatus(formData: FormData) {
   const id = String(formData.get("id"));
   const active_status = String(formData.get("active_status")) as ActiveStatus;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase.from("players").update({ active_status }).eq("id", id);
   revalidatePath("/admin/players");
   revalidatePath(`/admin/players/${id}`);
@@ -96,7 +93,7 @@ export async function setPlayerStatus(formData: FormData) {
 
 export async function regenerateToken(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data } = await supabase.rpc("gen_share_token");
   // Fallback if rpc not exposed: generate client-side hex.
   const token =
@@ -110,7 +107,7 @@ export async function regenerateToken(formData: FormData) {
 
 /** Rotate the public team-board token, invalidating the previous share link. */
 export async function regenerateRosterToken() {
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data } = await supabase.rpc("gen_share_token");
   const token =
     (data as string | null) ??
@@ -129,7 +126,7 @@ export async function assignToGroup(formData: FormData) {
   const player_group_id = String(formData.get("player_group_id"));
   const wantPrimary = formData.get("is_primary") === "on";
   if (!player_group_id) return;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
 
   // Skip if already an active member of the group.
   const { data: existing } = await supabase
@@ -172,7 +169,7 @@ export async function assignToGroup(formData: FormData) {
 export async function removeFromGroup(formData: FormData) {
   const membership_id = String(formData.get("membership_id"));
   const player_id = String(formData.get("player_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("player_group_members")
     .update({ end_date: new Date().toISOString().slice(0, 10) })
@@ -182,7 +179,7 @@ export async function removeFromGroup(formData: FormData) {
 
 export async function deletePlayer(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   // Only allow hard delete if the player has no ledger history (financial safety).
   const { count } = await supabase
     .from("ledger_entries")

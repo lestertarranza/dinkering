@@ -91,6 +91,7 @@ export function ImportTool() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [unmatched, setUnmatched] = useState<string[]>([]);
   const [wipe, setWipe] = useState(false);
+  const [wipeConfirm, setWipeConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{
     phase: string;
@@ -246,24 +247,42 @@ export function ImportTool() {
             <input
               type="checkbox"
               checked={wipe}
-              onChange={(e) => setWipe(e.target.checked)}
+              onChange={(e) => {
+                setWipe(e.target.checked);
+                if (!e.target.checked) setWipeConfirm("");
+              }}
             />
             Wipe all existing data before importing (recommended for first
             import)
           </label>
 
+          {wipe ? (
+            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm font-medium text-rose-800">
+                This permanently deletes all players, bookings, payments,
+                expenses, and ledger entries.
+              </p>
+              <label className="mt-2 block text-sm text-rose-700">
+                Type <strong>DELETE</strong> to confirm
+                <input
+                  type="text"
+                  value={wipeConfirm}
+                  onChange={(e) => setWipeConfirm(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-rose-300 bg-white px-3 py-2 text-base text-slate-900"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+          ) : null}
+
           <button
             onClick={() => {
-              if (
-                wipe &&
-                !confirm(
-                  "This will DELETE all existing players, bookings, payments, expenses and ledger entries before importing. Continue?",
-                )
-              )
-                return;
+              if (wipe && wipeConfirm !== "DELETE") return;
               runImport();
             }}
-            disabled={busy || totalRows === 0}
+            disabled={
+              busy || totalRows === 0 || (wipe && wipeConfirm !== "DELETE")
+            }
             className={buttonClass("primary", "mt-4")}
           >
             {busy ? "Importing…" : "Import data"}

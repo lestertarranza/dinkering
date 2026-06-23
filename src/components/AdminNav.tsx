@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const links = [
   { href: "/admin", label: "Dashboard", icon: "📊" },
+  { href: "/admin/collections", label: "Collections", icon: "💰" },
   { href: "/admin/players", label: "Players", icon: "🧑" },
   { href: "/admin/groups", label: "Groups / Funds", icon: "👥" },
   { href: "/admin/bookings", label: "Bookings", icon: "📅" },
@@ -41,7 +42,7 @@ export function AdminNav({ email }: { email: string | null }) {
         </Link>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+          className="min-h-11 min-w-11 touch-manipulation rounded-lg p-2 text-slate-600 transition active:scale-95 active:bg-slate-200 hover:bg-slate-100"
           aria-label="Toggle menu"
         >
           {open ? "✕" : "☰"}
@@ -55,10 +56,10 @@ export function AdminNav({ email }: { email: string | null }) {
               key={l.href}
               href={l.href}
               onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${
+              className={`flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
                 isActive(l.href)
                   ? "bg-emerald-50 text-emerald-700"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-slate-100 active:bg-slate-200"
               }`}
             >
               <span>{l.icon}</span>
@@ -87,10 +88,10 @@ export function AdminNav({ email }: { email: string | null }) {
             <Link
               key={l.href}
               href={l.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium ${
+              className={`flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
                 isActive(l.href)
                   ? "bg-emerald-50 text-emerald-700"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-slate-100 active:bg-slate-200"
               }`}
             >
               <span>{l.icon}</span>

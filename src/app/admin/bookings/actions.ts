@@ -2,15 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 import {
   nextCode,
-  resolveWalletOwner,
-  voidLedgerForSource,
-  postLedgerEntries,
-  splitByUnits,
   round2,
 } from "@/lib/ledger";
+import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
 
 function computeTotal(fd: FormData) {
@@ -22,7 +19,7 @@ function computeTotal(fd: FormData) {
 }
 
 export async function createBooking(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const code =
     String(formData.get("booking_code") || "").trim() ||
     (await nextCode(supabase, "bookings", "booking_code", "PB"));
@@ -57,7 +54,7 @@ export async function createBooking(formData: FormData) {
 
 export async function updateBooking(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("bookings")
     .update({
@@ -87,7 +84,7 @@ export async function updateBooking(formData: FormData) {
 export async function setBookingStatus(formData: FormData) {
   const id = String(formData.get("id"));
   const status = String(formData.get("status")) as BookingStatus;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase.from("bookings").update({ status }).eq("id", id);
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
@@ -98,7 +95,7 @@ export async function addAttendee(formData: FormData) {
   const booking_id = String(formData.get("booking_id"));
   const player_id = String(formData.get("player_id"));
   if (!player_id) return;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("booking_attendance")
     .upsert(
@@ -112,7 +109,7 @@ export async function addAttendee(formData: FormData) {
 export async function addAllActivePlayers(formData: FormData) {
   const booking_id = String(formData.get("booking_id"));
   if (!booking_id) return;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data: players } = await supabase
     .from("players")
     .select("id")
@@ -140,7 +137,7 @@ export async function setResponse(formData: FormData) {
   const response_status = String(
     formData.get("response_status"),
   ) as ResponseStatus;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("booking_attendance")
     .upsert(
@@ -153,7 +150,7 @@ export async function setResponse(formData: FormData) {
 /** Confirm actual attendance after the game. */
 export async function confirmAttendance(formData: FormData) {
   const booking_id = String(formData.get("booking_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const ids = formData.getAll("attendee_ids").map(String);
 
   for (const player_id of ids) {
@@ -181,7 +178,6 @@ type ShareRow = {
   override_share_amount: number | null;
 };
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type BookingRecord = {
   id: string;
   play_date: string;
@@ -190,73 +186,11 @@ type BookingRecord = {
 };
 
 /**
- * Void + replace all shares for a booking with the given rows, splitting the
- * total cost by units and posting ledger entries (routed to each player's
- * wallet owner — group if pooled). Shared by generateShares and chargeAttendees.
- */
-async function rebuildBookingShares(
-  supabase: SupabaseServerClient,
-  booking: BookingRecord,
-  rows: ShareRow[],
-) {
-  const { data: existing } = await supabase
-    .from("booking_shares")
-    .select("id")
-    .eq("booking_id", booking.id);
-  for (const s of existing ?? []) {
-    await voidLedgerForSource(supabase, "booking_share", s.id as string);
-  }
-  await supabase.from("booking_shares").delete().eq("booking_id", booking.id);
-
-  if (rows.length === 0) return;
-
-  const allocations = splitByUnits(rows, Number(booking.total_booking_cost));
-
-  for (const { row, amount } of allocations) {
-    const owner = await resolveWalletOwner(
-      supabase,
-      row.player_id,
-      booking.play_date,
-    );
-    const { data: share } = await supabase
-      .from("booking_shares")
-      .insert({
-        booking_id: booking.id,
-        player_id: row.player_id,
-        player_group_id: owner.player_group_id,
-        share_units: row.share_units,
-        override_share_amount: row.override_share_amount,
-        amount_owed: amount,
-      })
-      .select("id")
-      .single();
-
-    if (share?.id) {
-      await postLedgerEntries(supabase, [
-        {
-          entry_date: booking.play_date,
-          player_id: owner.player_id,
-          player_group_id: owner.player_group_id,
-          source_type: "booking_share",
-          source_id: share.id,
-          description: `Court share — ${booking.booking_code ?? "booking"}`,
-          debit_amount: amount,
-          credit_amount: 0,
-        },
-      ]);
-    }
-  }
-}
-
-/**
  * Generate booking shares from the submitted roster.
- * Reverses any existing shares + ledger entries for this booking first,
- * then splits the total cost by share units and posts fresh ledger entries
- * (routed to each player's wallet owner — group if pooled).
  */
 export async function generateShares(formData: FormData) {
   const booking_id = String(formData.get("booking_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
 
   const { data: booking } = await supabase
     .from("bookings")
@@ -277,7 +211,7 @@ export async function generateShares(formData: FormData) {
     return { player_id: pid, share_units: units, override_share_amount: override };
   });
 
-  await rebuildBookingShares(supabase, booking as BookingRecord, rows);
+  await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
   revalidatePath(`/admin/bookings/${booking_id}`);
 }
 
@@ -290,7 +224,7 @@ const CHARGEABLE_ACTUAL = new Set(["attended", "late_cancel", "guest"]);
  */
 export async function chargeAttendees(formData: FormData) {
   const booking_id = String(formData.get("booking_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
 
   const { data: booking } = await supabase
     .from("bookings")
@@ -315,13 +249,13 @@ export async function chargeAttendees(formData: FormData) {
     override_share_amount: null,
   }));
 
-  await rebuildBookingShares(supabase, booking as BookingRecord, rows);
+  await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
   revalidatePath(`/admin/bookings/${booking_id}`);
 }
 
 export async function deleteBooking(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data: shares } = await supabase
     .from("booking_shares")
     .select("id")

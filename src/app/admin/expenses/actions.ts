@@ -3,13 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 import {
   nextCode,
-  resolveWalletOwner,
   voidLedgerForSource,
-  splitByUnits,
 } from "@/lib/ledger";
+import { rebuildExpenseSharesAtomic } from "@/lib/ledger-rpc";
 import type { SplitMethod, TeamExpense } from "@/lib/types";
 
 const chargeable = new Set(["attended", "late_cancel", "guest"]);
@@ -53,92 +52,18 @@ interface ShareRow {
 }
 
 /**
- * (Re)build all shares + ledger entries for an expense:
- *  - voids prior expense_share and team_expense_credit ledger entries
- *  - deletes prior share rows
- *  - splits total cost across participants by units
- *  - credits the buyer for the full amount
+ * (Re)build all shares + ledger entries for an expense via atomic RPC.
  */
 async function rebuildExpenseShares(
   db: SupabaseClient,
   expense: TeamExpense,
   rows: ShareRow[],
 ) {
-  const { data: existing } = await db
-    .from("team_expense_shares")
-    .select("id")
-    .eq("team_expense_id", expense.id);
-  for (const s of existing ?? []) {
-    await voidLedgerForSource(db, "team_expense_share", s.id as string);
-  }
-  await voidLedgerForSource(db, "team_expense_credit", expense.id);
-  await db.from("team_expense_shares").delete().eq("team_expense_id", expense.id);
-
-  // Buyer reimbursement credit (full amount paid).
-  let creditPlayer = expense.paid_by_player_id;
-  let creditGroup = expense.paid_by_group_id;
-  if (expense.paid_by_player_id) {
-    const owner = await resolveWalletOwner(
-      db,
-      expense.paid_by_player_id,
-      expense.purchase_date,
-    );
-    creditPlayer = owner.player_id;
-    creditGroup = owner.player_group_id;
-  }
-  if (creditPlayer || creditGroup) {
-    await db.from("ledger_entries").insert({
-      entry_date: expense.purchase_date,
-      player_id: creditPlayer,
-      player_group_id: creditGroup,
-      source_type: "team_expense_credit",
-      source_id: expense.id,
-      description: `Reimbursement — ${expense.expense_code ?? expense.description}`,
-      debit_amount: 0,
-      credit_amount: Number(expense.total_cost),
-    });
-  }
-
-  if (rows.length === 0) return;
-  const allocations = splitByUnits(rows, Number(expense.total_cost));
-
-  for (const { row, amount } of allocations) {
-    const owner = await resolveWalletOwner(
-      db,
-      row.player_id,
-      expense.purchase_date,
-    );
-    const { data: share } = await db
-      .from("team_expense_shares")
-      .insert({
-        team_expense_id: expense.id,
-        player_id: row.player_id,
-        player_group_id: owner.player_group_id,
-        share_units: row.share_units,
-        override_share_amount: row.override_share_amount,
-        amount_owed: amount,
-      })
-      .select("id")
-      .single();
-    if (share?.id) {
-      await db.from("ledger_entries").insert({
-        entry_date: expense.purchase_date,
-        player_id: owner.player_id,
-        player_group_id: owner.player_group_id,
-        source_type: "team_expense_share",
-        source_id: share.id,
-        description: `Expense share — ${
-          expense.expense_code ?? expense.description
-        }`,
-        debit_amount: amount,
-        credit_amount: 0,
-      });
-    }
-  }
+  await rebuildExpenseSharesAtomic(db, expense, rows);
 }
 
 export async function createExpense(formData: FormData) {
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const purchase_date =
     String(formData.get("purchase_date") || "") ||
     new Date().toISOString().slice(0, 10);
@@ -198,7 +123,7 @@ export async function createExpense(formData: FormData) {
 
 export async function regenerateExpenseShares(formData: FormData) {
   const expense_id = String(formData.get("expense_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data: expense } = await supabase
     .from("team_expenses")
     .select("*")
@@ -225,7 +150,7 @@ export async function regenerateExpenseShares(formData: FormData) {
 
 export async function reverseExpense(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data: shares } = await supabase
     .from("team_expense_shares")
     .select("id")
@@ -244,7 +169,7 @@ export async function reverseExpense(formData: FormData) {
 
 export async function deleteExpense(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data: shares } = await supabase
     .from("team_expense_shares")
     .select("id")

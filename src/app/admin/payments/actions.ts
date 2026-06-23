@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 import {
   nextCode,
   resolveWalletOwner,
@@ -39,7 +39,7 @@ export async function createPayment(
     new Date().toISOString().slice(0, 10);
   const booking_id = String(formData.get("booking_id") || "") || null;
 
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const code =
     String(formData.get("payment_code") || "").trim() ||
     (await nextCode(supabase, "payments", "payment_code", "PAY"));
@@ -103,7 +103,7 @@ export async function createPayment(
 /** Reverse a payment by voiding its ledger entry (audit-safe, no hard delete). */
 export async function reversePayment(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await voidLedgerForSource(supabase, "payment", id);
   const { data: pay } = await supabase
     .from("payments")

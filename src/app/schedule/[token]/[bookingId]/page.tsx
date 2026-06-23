@@ -120,14 +120,14 @@ export default async function PublicBookingRoster({
           {roster.map((r) => (
             <Link
               key={r.id}
-              href={`/p/${r.players.public_token}`}
+              href={`/p/${r.players.public_token}#booking-${bookingId}`}
               className={publicTapRowClass}
             >
               <div className="min-w-0 flex-1">
                 <p className={`text-base ${publicPrimaryText}`}>
                   {publicPlayerLabel(r.players)}
                 </p>
-                <p className={publicHintText}>Tap to open your page & RSVP</p>
+                <p className={publicHintText}>Tap to RSVP on your page</p>
               </div>
               <StatusBadge status={r.response_status} size="md" />
               <span className={publicChevronClass} aria-hidden>

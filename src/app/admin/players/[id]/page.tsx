@@ -12,7 +12,8 @@ import {
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { CopyLink } from "@/components/CopyLink";
+import { CopyLink, ShareLink } from "@/components/CopyLink";
+import { QrCode } from "@/components/QrCode";
 import { LedgerTable } from "@/components/LedgerTable";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
 import { formatMoney, describeBalance } from "@/lib/format";
@@ -147,21 +148,30 @@ export default async function PlayerDetail({
             <p className="mb-3 break-all rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
               {shareUrl}
             </p>
-            <div className="flex flex-wrap gap-2">
-              <CopyLink url={shareUrl} />
-              <Link
-                href={`/p/${p.public_token}`}
-                target="_blank"
-                className={buttonClass("secondary")}
-              >
-                Open portal ↗
-              </Link>
-              <form action={regenerateToken}>
-                <input type="hidden" name="id" value={p.id} />
-                <SubmitButton variant="ghost" pendingLabel="…">
-                  Regenerate token
-                </SubmitButton>
-              </form>
+            <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
+              <div className="flex flex-wrap gap-2">
+                <CopyLink url={shareUrl} />
+                <ShareLink
+                  url={shareUrl}
+                  title={`${p.display_name || p.name} — Dinkering`}
+                  text="Your Dinkering player page:"
+                  label="Share link"
+                />
+                <Link
+                  href={`/p/${p.public_token}`}
+                  target="_blank"
+                  className={buttonClass("secondary")}
+                >
+                  Open portal ↗
+                </Link>
+                <form action={regenerateToken}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <SubmitButton variant="ghost" pendingLabel="…">
+                    Regenerate token
+                  </SubmitButton>
+                </form>
+              </div>
+              <QrCode url={shareUrl} label="Scan to open player page" />
             </div>
           </Card>
 

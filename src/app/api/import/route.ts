@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin, UnauthorizedError } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { round2 } from "@/lib/ledger";
 
@@ -49,13 +49,13 @@ function toDate(v: unknown): string {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  // Auth check — only signed-in admins may import.
-  const authed = await createClient();
-  const {
-    data: { user },
-  } = await authed.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    await requireAdmin();
+  } catch (e) {
+    if (e instanceof UnauthorizedError) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw e;
   }
 
   const body = (await request.json()) as {

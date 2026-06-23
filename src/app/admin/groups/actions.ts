@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth";
 import { round2 } from "@/lib/ledger";
 import { SETTLE_TOLERANCE } from "@/lib/format";
 import type { GroupType } from "@/lib/types";
@@ -13,7 +13,7 @@ export async function createGroup(formData: FormData) {
   const type = String(formData.get("type") || "couple") as GroupType;
   const notes = String(formData.get("notes") || "").trim() || null;
 
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { data } = await supabase
     .from("player_groups")
     .insert({ name, type, notes })
@@ -44,7 +44,7 @@ export async function updateGroup(formData: FormData) {
   const type = String(formData.get("type") || "couple") as GroupType;
   const notes = String(formData.get("notes") || "").trim() || null;
 
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("player_groups")
     .update({ name, type, notes })
@@ -58,7 +58,7 @@ export async function addMember(formData: FormData) {
   const player_id = String(formData.get("player_id"));
   const wantPrimary = formData.get("is_primary") === "on";
   if (!player_id) return;
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
 
   // Skip if this player is already an active member of the group.
   const { data: existing } = await supabase
@@ -103,7 +103,7 @@ export async function addMember(formData: FormData) {
 export async function setPrimaryMember(formData: FormData) {
   const membership_id = String(formData.get("membership_id"));
   const player_group_id = String(formData.get("player_group_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("player_group_members")
     .update({ is_primary: false })
@@ -119,7 +119,7 @@ export async function setPrimaryMember(formData: FormData) {
 export async function removeMember(formData: FormData) {
   const membership_id = String(formData.get("membership_id"));
   const player_group_id = String(formData.get("player_group_id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   await supabase
     .from("player_group_members")
     .update({ end_date: new Date().toISOString().slice(0, 10) })
@@ -136,11 +136,8 @@ export async function removeMember(formData: FormData) {
 export async function pullMemberBalances(formData: FormData) {
   const player_group_id = String(formData.get("player_group_id"));
   if (!player_group_id) return;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const actor = user?.email ?? "admin";
+  const { supabase, user } = await requireAdmin();
+  const actor = user.email ?? "admin";
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: group } = await supabase
@@ -230,7 +227,7 @@ export async function pullMemberBalances(formData: FormData) {
 
 export async function regenerateGroupToken(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -243,7 +240,7 @@ export async function regenerateGroupToken(formData: FormData) {
 
 export async function deleteGroup(formData: FormData) {
   const id = String(formData.get("id"));
-  const supabase = await createClient();
+  const { supabase } = await requireAdmin();
   const { count } = await supabase
     .from("ledger_entries")
     .select("id", { count: "exact", head: true })
