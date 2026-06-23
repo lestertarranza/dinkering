@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { round2 } from "@/lib/ledger";
 import { isSettled } from "@/lib/format";
+import { formatBookingContext } from "@/lib/booking-context";
 import type { SourceType } from "@/lib/types";
 
 export type OpenCharge = {
@@ -125,18 +126,30 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
   if (bookingShareIds.length) {
     const { data } = await db
       .from("booking_shares")
-      .select("id, booking_id, bookings(booking_code, play_date)")
+      .select(
+        "id, booking_id, bookings(booking_code, play_date, start_time, end_time, venue, court_number)",
+      )
       .in("id", bookingShareIds);
     for (const s of (data ?? []) as unknown as {
       id: string;
       booking_id: string;
-      bookings: { booking_code: string | null; play_date: string } | null;
+      bookings: {
+        booking_code: string | null;
+        play_date: string;
+        start_time: string | null;
+        end_time: string | null;
+        venue: string | null;
+        court_number: string | null;
+      } | null;
     }[]) {
       const b = s.bookings;
+      const ctx = b ? formatBookingContext(b) : "";
       bookingMeta.set(s.id, {
         booking_id: s.booking_id,
         label: b
-          ? `Court — ${b.booking_code ?? "booking"} · ${b.play_date}`
+          ? ctx
+            ? `Court — ${b.booking_code ?? "booking"} · ${ctx}`
+            : `Court — ${b.booking_code ?? "booking"}`
           : "Court share",
       });
     }
@@ -166,7 +179,7 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
       expenseMeta.set(s.id, {
         team_expense_id: s.team_expense_id,
         label: e
-          ? `Expense — ${e.expense_code ?? e.description} · ${e.purchase_date}`
+          ? `Expense — ${e.expense_code ?? e.description}`
           : "Team expense share",
       });
     }
