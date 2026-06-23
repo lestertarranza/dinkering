@@ -11,6 +11,7 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ActionForm } from "@/components/ActionForm";
 import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
@@ -116,11 +117,14 @@ export default async function PlayersPage({
                     </Link>
                   </div>
                 </div>
-                <form action={regenerateRosterToken}>
-                  <SubmitButton variant="ghost">
+                <ActionForm
+                  action={regenerateRosterToken}
+                  pendingLabel="Regenerating team links…"
+                >
+                  <SubmitButton variant="ghost" pendingLabel="Regenerating…">
                     Regenerate token (invalidates both links)
                   </SubmitButton>
-                </form>
+                </ActionForm>
               </div>
             ) : (
               <p className="text-xs text-rose-500">
@@ -144,7 +148,9 @@ export default async function PlayersPage({
               <Field label="Notes">
                 <textarea name="notes" rows={2} className={inputClass} />
               </Field>
-              <SubmitButton className="w-full">Add player</SubmitButton>
+              <SubmitButton className="w-full" pendingLabel="Adding player…">
+                Add player
+              </SubmitButton>
             </form>
           </Card>
         </div>

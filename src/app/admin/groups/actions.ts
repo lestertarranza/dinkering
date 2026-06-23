@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { round2 } from "@/lib/ledger";
 import { SETTLE_TOLERANCE } from "@/lib/format";
 import type { GroupType } from "@/lib/types";
@@ -38,9 +39,13 @@ export async function createGroup(formData: FormData) {
   revalidatePath("/admin/groups");
 }
 
-export async function updateGroup(formData: FormData) {
+export async function updateGroup(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const name = String(formData.get("name") || "").trim();
+  if (!name) return actionErr("Name is required.");
   const type = String(formData.get("type") || "couple") as GroupType;
   const notes = String(formData.get("notes") || "").trim() || null;
 
@@ -51,16 +56,19 @@ export async function updateGroup(formData: FormData) {
     .eq("id", id);
   revalidatePath(`/admin/groups/${id}`);
   revalidatePath("/admin/groups");
+  return actionOk("Group saved.");
 }
 
-export async function addMember(formData: FormData) {
+export async function addMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const player_group_id = String(formData.get("player_group_id"));
   const player_id = String(formData.get("player_id"));
   const wantPrimary = formData.get("is_primary") === "on";
-  if (!player_id) return;
+  if (!player_id) return actionErr("Select a player.");
   const { supabase } = await requireAdmin();
 
-  // Skip if this player is already an active member of the group.
   const { data: existing } = await supabase
     .from("player_group_members")
     .select("id")
@@ -69,11 +77,9 @@ export async function addMember(formData: FormData) {
     .is("end_date", null)
     .limit(1);
   if (existing && existing.length > 0) {
-    revalidatePath(`/admin/groups/${player_group_id}`);
-    return;
+    return actionErr("Player is already in this group.");
   }
 
-  // The first member of a group is automatically primary.
   const { count } = await supabase
     .from("player_group_members")
     .select("id", { count: "exact", head: true })
@@ -81,7 +87,6 @@ export async function addMember(formData: FormData) {
     .is("end_date", null);
   const makePrimary = wantPrimary || (count ?? 0) === 0;
 
-  // Only one active primary per group.
   if (makePrimary) {
     await supabase
       .from("player_group_members")
@@ -97,10 +102,14 @@ export async function addMember(formData: FormData) {
     start_date: new Date().toISOString().slice(0, 10),
   });
   revalidatePath(`/admin/groups/${player_group_id}`);
+  return actionOk("Member added.");
 }
 
 /** Designate an existing active member as the group's sole primary. */
-export async function setPrimaryMember(formData: FormData) {
+export async function setPrimaryMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const membership_id = String(formData.get("membership_id"));
   const player_group_id = String(formData.get("player_group_id"));
   const { supabase } = await requireAdmin();
@@ -114,9 +123,13 @@ export async function setPrimaryMember(formData: FormData) {
     .update({ is_primary: true })
     .eq("id", membership_id);
   revalidatePath(`/admin/groups/${player_group_id}`);
+  return actionOk("Primary member updated.");
 }
 
-export async function removeMember(formData: FormData) {
+export async function removeMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const membership_id = String(formData.get("membership_id"));
   const player_group_id = String(formData.get("player_group_id"));
   const { supabase } = await requireAdmin();
@@ -125,6 +138,7 @@ export async function removeMember(formData: FormData) {
     .update({ end_date: new Date().toISOString().slice(0, 10) })
     .eq("id", membership_id);
   revalidatePath(`/admin/groups/${player_group_id}`);
+  return actionOk("Member removed from group.");
 }
 
 /**
@@ -133,9 +147,12 @@ export async function removeMember(formData: FormData) {
  * one that zeroes the player and one that loads the same net onto the group,
  * preserving a full audit trail (no history is rewritten or deleted).
  */
-export async function pullMemberBalances(formData: FormData) {
+export async function pullMemberBalances(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const player_group_id = String(formData.get("player_group_id"));
-  if (!player_group_id) return;
+  if (!player_group_id) return actionErr("Missing group.");
   const { supabase, user } = await requireAdmin();
   const actor = user.email ?? "admin";
   const today = new Date().toISOString().slice(0, 10);
@@ -145,7 +162,7 @@ export async function pullMemberBalances(formData: FormData) {
     .select("name")
     .eq("id", player_group_id)
     .single();
-  if (!group) return;
+  if (!group) return actionErr("Group not found.");
 
   const { data: members } = await supabase
     .from("player_group_members")
@@ -153,6 +170,7 @@ export async function pullMemberBalances(formData: FormData) {
     .eq("player_group_id", player_group_id)
     .is("end_date", null);
 
+  let pulled = 0;
   for (const m of (members ?? []) as unknown as {
     player_id: string;
     players: { name: string } | null;
@@ -165,6 +183,7 @@ export async function pullMemberBalances(formData: FormData) {
     const balance = round2(Number(bal?.balance ?? 0));
     if (Math.abs(balance) < SETTLE_TOLERANCE) continue;
 
+    pulled += 1;
     const magnitude = round2(Math.abs(balance));
     const owes = balance > 0; // positive balance => player owes the team
     const playerName = m.players?.name ?? "member";
@@ -223,9 +242,19 @@ export async function pullMemberBalances(formData: FormData) {
   }
 
   revalidatePath(`/admin/groups/${player_group_id}`);
+  revalidatePath("/admin");
+  if (pulled === 0) {
+    return actionOk("No individual balances to pull — members are already at zero.");
+  }
+  return actionOk(
+    `Pulled balances from ${pulled} member${pulled === 1 ? "" : "s"} into the group wallet.`,
+  );
 }
 
-export async function regenerateGroupToken(formData: FormData) {
+export async function regenerateGroupToken(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
@@ -236,16 +265,24 @@ export async function regenerateGroupToken(formData: FormData) {
     .update({ public_token: token })
     .eq("id", id);
   revalidatePath(`/admin/groups/${id}`);
+  return actionOk("New group link token generated.");
 }
 
-export async function deleteGroup(formData: FormData) {
+export async function deleteGroup(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   const { count } = await supabase
     .from("ledger_entries")
     .select("id", { count: "exact", head: true })
     .eq("player_group_id", id);
-  if (count && count > 0) return; // keep audit trail; do not delete funded groups
+  if (count && count > 0) {
+    return actionErr(
+      "Cannot delete — this group has ledger history. Remove members or leave it as-is.",
+    );
+  }
   await supabase.from("player_groups").delete().eq("id", id);
   revalidatePath("/admin/groups");
   redirect("/admin/groups");

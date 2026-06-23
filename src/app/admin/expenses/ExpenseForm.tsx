@@ -114,7 +114,9 @@ export function ExpenseForm({
       <Field label="Notes">
         <textarea name="notes" rows={2} className={inputClass} />
       </Field>
-      <SubmitButton className="w-full">Add expense &amp; split</SubmitButton>
+      <SubmitButton className="w-full" pendingLabel="Adding expense…">
+        Add expense &amp; split
+      </SubmitButton>
     </form>
   );
 }

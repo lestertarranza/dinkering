@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
+import { actionOk, type ActionState } from "@/lib/action-state";
 import {
   nextCode,
   resolveWalletOwner,
@@ -101,13 +102,16 @@ export async function createPayment(
 }
 
 /** Reverse a payment by voiding its ledger entry (audit-safe, no hard delete). */
-export async function reversePayment(formData: FormData) {
+export async function reversePayment(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   await voidLedgerForSource(supabase, "payment", id);
   const { data: pay } = await supabase
     .from("payments")
-    .select("notes")
+    .select("notes, booking_id")
     .eq("id", id)
     .single();
   await supabase
@@ -120,4 +124,6 @@ export async function reversePayment(formData: FormData) {
     .eq("id", id);
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
+  if (pay?.booking_id) revalidatePath(`/admin/bookings/${pay.booking_id}`);
+  return actionOk("Payment reversed — ledger credit voided.");
 }

@@ -11,6 +11,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { QrCode } from "@/components/QrCode";
@@ -164,12 +165,15 @@ export default async function PlayerDetail({
                 >
                   Open portal ↗
                 </Link>
-                <form action={regenerateToken}>
-                  <input type="hidden" name="id" value={p.id} />
-                  <SubmitButton variant="ghost" pendingLabel="…">
+                <ActionForm
+                  action={regenerateToken}
+                  pendingLabel="Regenerating token…"
+                  hidden={<input type="hidden" name="id" value={p.id} />}
+                >
+                  <SubmitButton variant="ghost" pendingLabel="Regenerating…">
                     Regenerate token
                   </SubmitButton>
-                </form>
+                </ActionForm>
               </div>
               <QrCode url={shareUrl} label="Scan to open player page" />
             </div>
@@ -193,7 +197,7 @@ export default async function PlayerDetail({
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Edit details
             </h2>
-            <form action={updatePlayer} className="space-y-3">
+            <ActionForm action={updatePlayer} className="space-y-3" pendingLabel="Saving…">
               <input type="hidden" name="id" value={p.id} />
               <Field label="Full name">
                 <input
@@ -229,22 +233,42 @@ export default async function PlayerDetail({
                   className={inputClass}
                 />
               </Field>
-              <SubmitButton className="w-full">Save changes</SubmitButton>
-            </form>
+              <SubmitButton className="w-full" pendingLabel="Saving…">
+                Save changes
+              </SubmitButton>
+            </ActionForm>
             <div className="mt-3 flex items-center gap-2">
               <StatusBadge status={p.active_status} />
               {p.active_status !== "active" ? (
-                <form action={setPlayerStatus}>
-                  <input type="hidden" name="id" value={p.id} />
-                  <input type="hidden" name="active_status" value="active" />
-                  <SubmitButton variant="ghost">Reactivate</SubmitButton>
-                </form>
+                <ActionForm
+                  action={setPlayerStatus}
+                  pendingLabel="Reactivating…"
+                  hidden={
+                    <>
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="active_status" value="active" />
+                    </>
+                  }
+                >
+                  <SubmitButton variant="ghost" pendingLabel="…">
+                    Reactivate
+                  </SubmitButton>
+                </ActionForm>
               ) : (
-                <form action={setPlayerStatus}>
-                  <input type="hidden" name="id" value={p.id} />
-                  <input type="hidden" name="active_status" value="inactive" />
-                  <SubmitButton variant="ghost">Deactivate</SubmitButton>
-                </form>
+                <ActionForm
+                  action={setPlayerStatus}
+                  pendingLabel="Deactivating…"
+                  hidden={
+                    <>
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="active_status" value="inactive" />
+                    </>
+                  }
+                >
+                  <SubmitButton variant="ghost" pendingLabel="…">
+                    Deactivate
+                  </SubmitButton>
+                </ActionForm>
               )}
             </div>
           </Card>
@@ -283,6 +307,7 @@ export default async function PlayerDetail({
                       message="Remove this player from the group?"
                       variant="ghost"
                       hidden={{ membership_id: m.id, player_id: p.id }}
+                      pendingLabel="Removing…"
                     >
                       Remove
                     </ConfirmButton>
@@ -295,7 +320,7 @@ export default async function PlayerDetail({
                 No other groups available to join.
               </p>
             ) : (
-              <form action={assignToGroup} className="space-y-2">
+              <ActionForm action={assignToGroup} className="space-y-2" pendingLabel="Adding…">
                 <input type="hidden" name="player_id" value={p.id} />
                 <select name="player_group_id" required className={inputClass}>
                   <option value="">Select a group…</option>
@@ -309,10 +334,10 @@ export default async function PlayerDetail({
                   <input type="checkbox" name="is_primary" /> Make primary
                   member
                 </label>
-                <SubmitButton variant="secondary" className="w-full">
+                <SubmitButton variant="secondary" className="w-full" pendingLabel="Adding…">
                   Add to group
                 </SubmitButton>
-              </form>
+              </ActionForm>
             )}
           </Card>
 
@@ -321,7 +346,11 @@ export default async function PlayerDetail({
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Manual adjustment
             </h2>
-            <form action={addManualAdjustment} className="space-y-3">
+            <ActionForm
+              action={addManualAdjustment}
+              className="space-y-3"
+              pendingLabel="Posting adjustment…"
+            >
               <input type="hidden" name="player_id" value={p.id} />
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Type">
@@ -352,10 +381,10 @@ export default async function PlayerDetail({
               <Field label="Reason (required)">
                 <input name="reason" required className={inputClass} />
               </Field>
-              <SubmitButton variant="secondary" className="w-full">
+              <SubmitButton variant="secondary" className="w-full" pendingLabel="Posting…">
                 Post adjustment
               </SubmitButton>
-            </form>
+            </ActionForm>
           </Card>
 
           {/* Danger zone */}
@@ -371,6 +400,7 @@ export default async function PlayerDetail({
               action={deletePlayer}
               message={`Delete or archive ${p.name}? Financial history is preserved.`}
               hidden={{ id: p.id }}
+              pendingLabel="Deleting…"
             >
               Delete / archive player
             </ConfirmButton>

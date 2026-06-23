@@ -10,6 +10,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import {
@@ -249,11 +250,22 @@ export default async function BookingDetail({
         {(["booked", "played", "cancelled", "refunded"] as const)
           .filter((s) => s !== b.status)
           .map((s) => (
-            <form key={s} action={setBookingStatus}>
-              <input type="hidden" name="id" value={b.id} />
-              <input type="hidden" name="status" value={s} />
-              <SubmitButton variant="secondary">Mark {s}</SubmitButton>
-            </form>
+            <ActionForm
+              key={s}
+              action={setBookingStatus}
+              className="inline"
+              pendingLabel={`Marking ${s}…`}
+              hidden={
+                <>
+                  <input type="hidden" name="id" value={b.id} />
+                  <input type="hidden" name="status" value={s} />
+                </>
+              }
+            >
+              <SubmitButton variant="secondary" pendingLabel="…">
+                Mark {s}
+              </SubmitButton>
+            </ActionForm>
           ))}
       </div>
 
@@ -290,13 +302,21 @@ export default async function BookingDetail({
                         {r.actual_status ? (
                           <StatusBadge status={r.actual_status} />
                         ) : null}
-                        <form action={setResponse} className="flex gap-1">
-                          <input type="hidden" name="booking_id" value={b.id} />
-                          <input
-                            type="hidden"
-                            name="player_id"
-                            value={r.player_id}
-                          />
+                        <ActionForm
+                          action={setResponse}
+                          className="flex gap-1"
+                          pendingLabel="Updating…"
+                          hidden={
+                            <>
+                              <input type="hidden" name="booking_id" value={b.id} />
+                              <input
+                                type="hidden"
+                                name="player_id"
+                                value={r.player_id}
+                              />
+                            </>
+                          }
+                        >
                           <select
                             name="response_status"
                             defaultValue={r.response_status}
@@ -307,8 +327,10 @@ export default async function BookingDetail({
                             <option value="not_going">Not going</option>
                             <option value="no_response">No response</option>
                           </select>
-                          <SubmitButton variant="ghost">Set</SubmitButton>
-                        </form>
+                          <SubmitButton variant="ghost" pendingLabel="…">
+                            Set
+                          </SubmitButton>
+                        </ActionForm>
                       </div>
                     </li>
                   ))}
@@ -316,8 +338,12 @@ export default async function BookingDetail({
               )}
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <form action={addAttendee} className="flex flex-1 gap-2">
-                  <input type="hidden" name="booking_id" value={b.id} />
+                <ActionForm
+                  action={addAttendee}
+                  className="flex flex-1 gap-2"
+                  pendingLabel="Adding player…"
+                  hidden={<input type="hidden" name="booking_id" value={b.id} />}
+                >
                   <select name="player_id" className={inputClass} required>
                     <option value="">Add player to roster…</option>
                     {availablePlayers.map((p) => (
@@ -326,15 +352,20 @@ export default async function BookingDetail({
                       </option>
                     ))}
                   </select>
-                  <SubmitButton variant="secondary">Add</SubmitButton>
-                </form>
+                  <SubmitButton variant="secondary" pendingLabel="Adding…">
+                    Add
+                  </SubmitButton>
+                </ActionForm>
                 {availablePlayers.length > 0 ? (
-                  <form action={addAllActivePlayers}>
-                    <input type="hidden" name="booking_id" value={b.id} />
-                    <SubmitButton variant="ghost">
+                  <ActionForm
+                    action={addAllActivePlayers}
+                    pendingLabel="Adding all players…"
+                    hidden={<input type="hidden" name="booking_id" value={b.id} />}
+                  >
+                    <SubmitButton variant="ghost" pendingLabel="Adding…">
                       + Add all active players
                     </SubmitButton>
-                  </form>
+                  </ActionForm>
                 ) : null}
               </div>
             </div>
@@ -346,8 +377,12 @@ export default async function BookingDetail({
               <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
                 Confirm actual attendance
               </h2>
-              <form action={confirmAttendance} className="p-4">
-                <input type="hidden" name="booking_id" value={b.id} />
+              <ActionForm
+                action={confirmAttendance}
+                className="p-4"
+                pendingLabel="Saving attendance…"
+                hidden={<input type="hidden" name="booking_id" value={b.id} />}
+              >
                 <div className="space-y-2">
                   {roster.map((r) => (
                     <div
@@ -376,9 +411,11 @@ export default async function BookingDetail({
                   ))}
                 </div>
                 <div className="mt-4">
-                  <SubmitButton>Save attendance</SubmitButton>
+                  <SubmitButton pendingLabel="Saving…">
+                    Save attendance
+                  </SubmitButton>
                 </div>
-              </form>
+              </ActionForm>
             </Card>
           ) : null}
 
@@ -394,12 +431,17 @@ export default async function BookingDetail({
                   message="Charge everyone who played? This splits the court cost equally across all attended (or RSVP'd going) players and replaces any existing shares."
                   variant="secondary"
                   hidden={{ booking_id: b.id }}
+                  pendingLabel="Charging…"
                 >
                   ⚡ Charge everyone who attended
                 </ConfirmButton>
               </div>
-              <form action={generateShares} className="p-4">
-                <input type="hidden" name="booking_id" value={b.id} />
+              <ActionForm
+                action={generateShares}
+                className="p-4"
+                pendingLabel="Generating shares…"
+                hidden={<input type="hidden" name="booking_id" value={b.id} />}
+              >
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[560px] text-sm">
                     <thead>
@@ -489,11 +531,14 @@ export default async function BookingDetail({
                   and replaces the previous shares.
                 </p>
                 <div className="mt-3">
-                  <ConfirmSubmit message="Generate / regenerate shares? This voids and replaces existing shares for this booking.">
+                  <ConfirmSubmit
+                    message="Generate / regenerate shares? This voids and replaces existing shares for this booking."
+                    pendingLabel="Generating…"
+                  >
                     Generate shares from this roster
                   </ConfirmSubmit>
                 </div>
-              </form>
+              </ActionForm>
             </Card>
           ) : null}
 
@@ -610,7 +655,7 @@ export default async function BookingDetail({
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Edit booking
             </h2>
-            <BookingForm action={updateBooking} booking={b} />
+            <BookingForm action={updateBooking} booking={b} feedback />
           </Card>
           <Card className="border-rose-200 p-4">
             <h2 className="mb-2 text-sm font-semibold text-rose-700">
@@ -620,6 +665,7 @@ export default async function BookingDetail({
               action={deleteBooking}
               message="Delete this booking? If it has shares it will be cancelled instead."
               hidden={{ id: b.id }}
+              pendingLabel="Deleting…"
             >
               Delete / cancel booking
             </ConfirmButton>

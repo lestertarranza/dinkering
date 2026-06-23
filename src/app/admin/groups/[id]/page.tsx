@@ -10,6 +10,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLink } from "@/components/CopyLink";
 import { LedgerTable } from "@/components/LedgerTable";
@@ -169,10 +170,15 @@ export default async function GroupDetail({
               >
                 Open portal ↗
               </Link>
-              <form action={regenerateGroupToken}>
-                <input type="hidden" name="id" value={g.id} />
-                <SubmitButton variant="ghost">Regenerate token</SubmitButton>
-              </form>
+              <ActionForm
+                action={regenerateGroupToken}
+                pendingLabel="Regenerating token…"
+                hidden={<input type="hidden" name="id" value={g.id} />}
+              >
+                <SubmitButton variant="ghost" pendingLabel="Regenerating…">
+                  Regenerate token
+                </SubmitButton>
+              </ActionForm>
             </div>
           </Card>
 
@@ -221,27 +227,35 @@ export default async function GroupDetail({
                     </div>
                     <div className="flex items-center gap-1">
                       {!m.is_primary ? (
-                        <form action={setPrimaryMember}>
-                          <input
-                            type="hidden"
-                            name="membership_id"
-                            value={m.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="player_group_id"
-                            value={g.id}
-                          />
-                          <SubmitButton variant="ghost">
+                        <ActionForm
+                          action={setPrimaryMember}
+                          pendingLabel="Updating…"
+                          hidden={
+                            <>
+                              <input
+                                type="hidden"
+                                name="membership_id"
+                                value={m.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="player_group_id"
+                                value={g.id}
+                              />
+                            </>
+                          }
+                        >
+                          <SubmitButton variant="ghost" pendingLabel="…">
                             Make primary
                           </SubmitButton>
-                        </form>
+                        </ActionForm>
                       ) : null}
                       <ConfirmButton
                         action={removeMember}
                         message="Remove this member from the group?"
                         variant="ghost"
                         hidden={{ membership_id: m.id, player_group_id: g.id }}
+                        pendingLabel="Removing…"
                       >
                         Remove
                       </ConfirmButton>
@@ -255,7 +269,7 @@ export default async function GroupDetail({
                 All active players are already members.
               </p>
             ) : (
-              <form action={addMember} className="space-y-2">
+              <ActionForm action={addMember} className="space-y-2" pendingLabel="Adding member…">
                 <input type="hidden" name="player_group_id" value={g.id} />
                 <select name="player_id" required className={inputClass}>
                   <option value="">Add a player…</option>
@@ -269,10 +283,10 @@ export default async function GroupDetail({
                   <input type="checkbox" name="is_primary" /> Make primary
                   member
                 </label>
-                <SubmitButton variant="secondary" className="w-full">
+                <SubmitButton variant="secondary" className="w-full" pendingLabel="Adding…">
                   Add member
                 </SubmitButton>
-              </form>
+              </ActionForm>
             )}
           </Card>
 
@@ -321,6 +335,7 @@ export default async function GroupDetail({
                     message={`Pull ${pullable.length} member balance(s) into "${g.name}"? This posts transfer entries and cannot be auto-undone.`}
                     variant="secondary"
                     hidden={{ player_group_id: g.id }}
+                    pendingLabel="Pulling balances…"
                   >
                     Pull balances into group
                   </ConfirmButton>
@@ -333,7 +348,7 @@ export default async function GroupDetail({
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Edit group
             </h2>
-            <form action={updateGroup} className="space-y-3">
+            <ActionForm action={updateGroup} className="space-y-3" pendingLabel="Saving…">
               <input type="hidden" name="id" value={g.id} />
               <Field label="Name">
                 <input
@@ -359,15 +374,21 @@ export default async function GroupDetail({
                   className={inputClass}
                 />
               </Field>
-              <SubmitButton className="w-full">Save</SubmitButton>
-            </form>
+              <SubmitButton className="w-full" pendingLabel="Saving…">
+                Save
+              </SubmitButton>
+            </ActionForm>
           </Card>
 
           <Card className="p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Manual adjustment
             </h2>
-            <form action={addManualAdjustment} className="space-y-3">
+            <ActionForm
+              action={addManualAdjustment}
+              className="space-y-3"
+              pendingLabel="Posting adjustment…"
+            >
               <input type="hidden" name="player_group_id" value={g.id} />
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Type">
@@ -390,10 +411,10 @@ export default async function GroupDetail({
               <Field label="Reason (required)">
                 <input name="reason" required className={inputClass} />
               </Field>
-              <SubmitButton variant="secondary" className="w-full">
+              <SubmitButton variant="secondary" className="w-full" pendingLabel="Posting…">
                 Post adjustment
               </SubmitButton>
-            </form>
+            </ActionForm>
           </Card>
 
           <Card className="border-rose-200 p-4">
@@ -407,6 +428,7 @@ export default async function GroupDetail({
               action={deleteGroup}
               message={`Delete ${g.name}? Only allowed if it has no ledger history.`}
               hidden={{ id: g.id }}
+              pendingLabel="Deleting…"
             >
               Delete group
             </ConfirmButton>

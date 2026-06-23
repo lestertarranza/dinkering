@@ -113,7 +113,11 @@ export default async function BookingsPage() {
           <h2 className="mb-3 text-sm font-semibold text-slate-700">
             Add booking
           </h2>
-          <BookingForm action={createBooking} submitLabel="Create booking" />
+          <BookingForm
+            action={createBooking}
+            submitLabel="Create booking"
+            pendingLabel="Creating…"
+          />
         </Card>
 
         <div className="space-y-6 lg:order-1 lg:col-span-2">

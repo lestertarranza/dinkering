@@ -1,31 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ActionForm } from "@/components/ActionForm";
 import { formatMoney } from "@/lib/format";
+import type { FormAction } from "@/lib/action-state";
 import type { Booking } from "@/lib/types";
 
-export function BookingForm({
-  action,
+function BookingFields({
   booking,
-  submitLabel = "Save booking",
+  courts,
+  setCourts,
+  hours,
+  setHours,
+  rate,
+  setRate,
+  other,
+  setOther,
+  total,
 }: {
-  action: (formData: FormData) => void | Promise<void>;
   booking?: Partial<Booking>;
-  submitLabel?: string;
+  courts: number;
+  setCourts: (n: number) => void;
+  hours: number;
+  setHours: (n: number) => void;
+  rate: number;
+  setRate: (n: number) => void;
+  other: number;
+  setOther: (n: number) => void;
+  total: number;
 }) {
-  const [courts, setCourts] = useState(booking?.courts_booked ?? 1);
-  const [hours, setHours] = useState(booking?.hours ?? 1);
-  const [rate, setRate] = useState(booking?.rate_per_court_per_hour ?? 0);
-  const [other, setOther] = useState(booking?.other_fees ?? 0);
-
-  const total =
-    Number(courts) * Number(hours) * Number(rate) + Number(other);
-
   return (
-    <form action={action} className="space-y-3">
-      {booking?.id ? <input type="hidden" name="id" value={booking.id} /> : null}
+    <>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Booking code">
           <input
@@ -164,7 +171,75 @@ export function BookingForm({
           {formatMoney(total)}
         </span>
       </div>
-      <SubmitButton className="w-full">{submitLabel}</SubmitButton>
+    </>
+  );
+}
+
+export function BookingForm({
+  action,
+  booking,
+  submitLabel = "Save booking",
+  feedback = false,
+  pendingLabel = "Saving…",
+}: {
+  action: FormAction | ((formData: FormData) => void | Promise<void>);
+  booking?: Partial<Booking>;
+  submitLabel?: string;
+  /** When true, show success/error feedback (requires a FormAction). */
+  feedback?: boolean;
+  pendingLabel?: string;
+}) {
+  const [courts, setCourts] = useState(booking?.courts_booked ?? 1);
+  const [hours, setHours] = useState(booking?.hours ?? 1);
+  const [rate, setRate] = useState(booking?.rate_per_court_per_hour ?? 0);
+  const [other, setOther] = useState(booking?.other_fees ?? 0);
+
+  const total =
+    Number(courts) * Number(hours) * Number(rate) + Number(other);
+
+  const fields = (
+    <BookingFields
+      booking={booking}
+      courts={courts}
+      setCourts={setCourts}
+      hours={hours}
+      setHours={setHours}
+      rate={rate}
+      setRate={setRate}
+      other={other}
+      setOther={setOther}
+      total={total}
+    />
+  );
+
+  const submit = (
+    <SubmitButton className="w-full" pendingLabel={pendingLabel}>
+      {submitLabel}
+    </SubmitButton>
+  );
+
+  const hidden: ReactNode =
+    booking?.id ? <input type="hidden" name="id" value={booking.id} /> : null;
+
+  if (feedback) {
+    return (
+      <ActionForm
+        action={action as FormAction}
+        className="space-y-3"
+        pendingLabel={pendingLabel}
+        hidden={hidden}
+      >
+        {fields}
+        {submit}
+      </ActionForm>
+    );
+  }
+
+  return (
+    <form action={action as (formData: FormData) => void | Promise<void>} className="space-y-3">
+      {hidden}
+      {fields}
+      {submit}
     </form>
   );
 }

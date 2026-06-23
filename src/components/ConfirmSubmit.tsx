@@ -11,22 +11,25 @@ export function ConfirmSubmit({
   message,
   children,
   variant = "primary",
+  pendingLabel = "Saving…",
 }: {
   message: string;
   children: React.ReactNode;
   variant?: "primary" | "secondary" | "danger" | "ghost";
+  pendingLabel?: string;
 }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
       disabled={pending}
+      aria-busy={pending}
       onClick={(e) => {
         if (!confirm(message)) e.preventDefault();
       }}
       className={buttonClass(variant)}
     >
-      {pending ? "Saving…" : children}
+      {pending ? pendingLabel : children}
     </button>
   );
 }

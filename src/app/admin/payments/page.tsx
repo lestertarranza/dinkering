@@ -114,6 +114,7 @@ export default async function PaymentsPage({
                           message="Reverse this payment? Its ledger credit will be voided."
                           variant="ghost"
                           hidden={{ id: p.id }}
+                          pendingLabel="Reversing…"
                         >
                           Reverse
                         </ConfirmButton>

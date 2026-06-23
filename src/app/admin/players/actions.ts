@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
+import { formatMoney } from "@/lib/format";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -10,7 +12,10 @@ import type { ActiveStatus, AdjustmentType } from "@/lib/types";
  * plus a matching ledger entry (charge => debit, credit => credit).
  * Works for either a player or a group.
  */
-export async function addManualAdjustment(formData: FormData) {
+export async function addManualAdjustment(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const player_id = (formData.get("player_id") as string) || null;
   const player_group_id = (formData.get("player_group_id") as string) || null;
   const amount = Math.abs(parseFloat(String(formData.get("amount") || "0")));
@@ -20,7 +25,9 @@ export async function addManualAdjustment(formData: FormData) {
     String(formData.get("adjustment_date") || "") ||
     new Date().toISOString().slice(0, 10);
 
-  if (!reason || !amount || (!player_id && !player_group_id)) return;
+  if (!reason || !amount || (!player_id && !player_group_id)) {
+    return actionErr("Enter an amount, reason, and wallet.");
+  }
 
   const { supabase, user } = await requireAdmin();
 
@@ -51,6 +58,10 @@ export async function addManualAdjustment(formData: FormData) {
 
   if (player_id) revalidatePath(`/admin/players/${player_id}`);
   if (player_group_id) revalidatePath(`/admin/groups/${player_group_id}`);
+  revalidatePath("/admin");
+  return actionOk(
+    `Recorded ${type} of ${formatMoney(amount)}: ${reason}`,
+  );
 }
 
 export async function createPlayer(formData: FormData) {
@@ -64,9 +75,13 @@ export async function createPlayer(formData: FormData) {
   revalidatePath("/admin/players");
 }
 
-export async function updatePlayer(formData: FormData) {
+export async function updatePlayer(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const name = String(formData.get("name") || "").trim();
+  if (!name) return actionErr("Name is required.");
   const display_name = String(formData.get("display_name") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
   const active_status = String(
@@ -80,22 +95,29 @@ export async function updatePlayer(formData: FormData) {
     .eq("id", id);
   revalidatePath("/admin/players");
   revalidatePath(`/admin/players/${id}`);
+  return actionOk("Player saved.");
 }
 
-export async function setPlayerStatus(formData: FormData) {
+export async function setPlayerStatus(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const active_status = String(formData.get("active_status")) as ActiveStatus;
   const { supabase } = await requireAdmin();
   await supabase.from("players").update({ active_status }).eq("id", id);
   revalidatePath("/admin/players");
   revalidatePath(`/admin/players/${id}`);
+  return actionOk(`Player marked ${active_status}.`);
 }
 
-export async function regenerateToken(formData: FormData) {
+export async function regenerateToken(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   const { data } = await supabase.rpc("gen_share_token");
-  // Fallback if rpc not exposed: generate client-side hex.
   const token =
     (data as string | null) ??
     Array.from(crypto.getRandomValues(new Uint8Array(24)))
@@ -103,10 +125,16 @@ export async function regenerateToken(formData: FormData) {
       .join("");
   await supabase.from("players").update({ public_token: token }).eq("id", id);
   revalidatePath(`/admin/players/${id}`);
+  return actionOk("New player link token generated — old links no longer work.");
 }
 
 /** Rotate the public team-board token, invalidating the previous share link. */
-export async function regenerateRosterToken() {
+export async function regenerateRosterToken(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- useActionState signature
+  _prev: ActionState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- useActionState signature
+  _formData: FormData,
+): Promise<ActionState> {
   const { supabase } = await requireAdmin();
   const { data } = await supabase.rpc("gen_share_token");
   const token =
@@ -119,16 +147,19 @@ export async function regenerateRosterToken() {
     .update({ roster_token: token })
     .eq("id", true);
   revalidatePath("/admin/players");
+  return actionOk("Team board & schedule links rotated — share the new URLs.");
 }
 
-export async function assignToGroup(formData: FormData) {
+export async function assignToGroup(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const player_id = String(formData.get("player_id"));
   const player_group_id = String(formData.get("player_group_id"));
   const wantPrimary = formData.get("is_primary") === "on";
-  if (!player_group_id) return;
+  if (!player_group_id) return actionErr("Select a group.");
   const { supabase } = await requireAdmin();
 
-  // Skip if already an active member of the group.
   const { data: existing } = await supabase
     .from("player_group_members")
     .select("id")
@@ -137,8 +168,7 @@ export async function assignToGroup(formData: FormData) {
     .is("end_date", null)
     .limit(1);
   if (existing && existing.length > 0) {
-    revalidatePath(`/admin/players/${player_id}`);
-    return;
+    return actionErr("Player is already in this group.");
   }
 
   const { count } = await supabase
@@ -164,9 +194,13 @@ export async function assignToGroup(formData: FormData) {
   });
   revalidatePath(`/admin/players/${player_id}`);
   revalidatePath(`/admin/groups/${player_group_id}`);
+  return actionOk("Added to group.");
 }
 
-export async function removeFromGroup(formData: FormData) {
+export async function removeFromGroup(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const membership_id = String(formData.get("membership_id"));
   const player_id = String(formData.get("player_id"));
   const { supabase } = await requireAdmin();
@@ -175,25 +209,28 @@ export async function removeFromGroup(formData: FormData) {
     .update({ end_date: new Date().toISOString().slice(0, 10) })
     .eq("id", membership_id);
   revalidatePath(`/admin/players/${player_id}`);
+  return actionOk("Removed from group.");
 }
 
-export async function deletePlayer(formData: FormData) {
+export async function deletePlayer(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
-  // Only allow hard delete if the player has no ledger history (financial safety).
   const { count } = await supabase
     .from("ledger_entries")
     .select("id", { count: "exact", head: true })
     .eq("player_id", id);
   if (count && count > 0) {
-    // Archive instead of destroying financial history.
     await supabase
       .from("players")
       .update({ active_status: "archived" })
       .eq("id", id);
-  } else {
-    await supabase.from("players").delete().eq("id", id);
+    revalidatePath("/admin/players");
+    redirect("/admin/players");
   }
+  await supabase.from("players").delete().eq("id", id);
   revalidatePath("/admin/players");
   redirect("/admin/players");
 }

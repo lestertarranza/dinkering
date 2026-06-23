@@ -19,6 +19,7 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
+      aria-busy={pending}
       className={buttonClass(variant, className)}
     >
       {pending ? (pendingLabel ?? "Saving…") : children}

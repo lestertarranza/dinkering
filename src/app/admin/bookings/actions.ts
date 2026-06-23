@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
+import { formatMoney } from "@/lib/format";
 import {
   nextCode,
   round2,
@@ -52,14 +54,19 @@ export async function createBooking(formData: FormData) {
   if (data?.id) redirect(`/admin/bookings/${data.id}`);
 }
 
-export async function updateBooking(formData: FormData) {
+export async function updateBooking(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
+  const play_date = String(formData.get("play_date"));
+  if (!play_date) return actionErr("Play date is required.");
   const { supabase } = await requireAdmin();
   await supabase
     .from("bookings")
     .update({
       booking_code: String(formData.get("booking_code") || "").trim() || null,
-      play_date: String(formData.get("play_date")),
+      play_date,
       start_time: String(formData.get("start_time") || "") || null,
       end_time: String(formData.get("end_time") || "") || null,
       venue: String(formData.get("venue") || "").trim() || null,
@@ -79,23 +86,36 @@ export async function updateBooking(formData: FormData) {
     .eq("id", id);
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
+  return actionOk("Booking saved.");
 }
 
-export async function setBookingStatus(formData: FormData) {
+export async function setBookingStatus(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const status = String(formData.get("status")) as BookingStatus;
   const { supabase } = await requireAdmin();
   await supabase.from("bookings").update({ status }).eq("id", id);
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
+  return actionOk(`Booking marked as ${status}.`);
 }
 
 /** Add a player to a booking's roster (creates an attendance row). */
-export async function addAttendee(formData: FormData) {
+export async function addAttendee(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
   const player_id = String(formData.get("player_id"));
-  if (!player_id) return;
+  if (!player_id) return actionErr("Select a player to add.");
   const { supabase } = await requireAdmin();
+  const { data: player } = await supabase
+    .from("players")
+    .select("name")
+    .eq("id", player_id)
+    .single();
   await supabase
     .from("booking_attendance")
     .upsert(
@@ -103,12 +123,16 @@ export async function addAttendee(formData: FormData) {
       { onConflict: "booking_id,player_id", ignoreDuplicates: true },
     );
   revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(`${player?.name ?? "Player"} added to roster.`);
 }
 
 /** Add every active player to a booking's roster in one click. */
-export async function addAllActivePlayers(formData: FormData) {
+export async function addAllActivePlayers(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
-  if (!booking_id) return;
+  if (!booking_id) return actionErr("Missing booking.");
   const { supabase } = await requireAdmin();
   const { data: players } = await supabase
     .from("players")
@@ -128,10 +152,14 @@ export async function addAllActivePlayers(formData: FormData) {
       });
   }
   revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(`Added ${rows.length} active player${rows.length === 1 ? "" : "s"} to roster.`);
 }
 
 /** Admin records or overrides a player's RSVP response. */
-export async function setResponse(formData: FormData) {
+export async function setResponse(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
   const player_id = String(formData.get("player_id"));
   const response_status = String(
@@ -145,10 +173,14 @@ export async function setResponse(formData: FormData) {
       { onConflict: "booking_id,player_id" },
     );
   revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk("RSVP updated.");
 }
 
 /** Confirm actual attendance after the game. */
-export async function confirmAttendance(formData: FormData) {
+export async function confirmAttendance(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
   const { supabase } = await requireAdmin();
   const ids = formData.getAll("attendee_ids").map(String);
@@ -170,6 +202,7 @@ export async function confirmAttendance(formData: FormData) {
       );
   }
   revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(`Attendance saved for ${ids.length} player${ids.length === 1 ? "" : "s"}.`);
 }
 
 type ShareRow = {
@@ -188,7 +221,10 @@ type BookingRecord = {
 /**
  * Generate booking shares from the submitted roster.
  */
-export async function generateShares(formData: FormData) {
+export async function generateShares(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
   const { supabase } = await requireAdmin();
 
@@ -197,7 +233,7 @@ export async function generateShares(formData: FormData) {
     .select("*")
     .eq("id", booking_id)
     .single();
-  if (!booking) return;
+  if (!booking) return actionErr("Booking not found.");
 
   const playerIds = formData
     .getAll("share_player_ids")
@@ -211,8 +247,23 @@ export async function generateShares(formData: FormData) {
     return { player_id: pid, share_units: units, override_share_amount: override };
   });
 
-  await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
+  if (rows.length === 0) {
+    return actionErr("Select at least one player to include in shares.");
+  }
+
+  try {
+    await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
+  } catch (e) {
+    return actionErr(
+      e instanceof Error ? e.message : "Could not generate shares.",
+    );
+  }
+
   revalidatePath(`/admin/bookings/${booking_id}`);
+  revalidatePath("/admin");
+  return actionOk(
+    `Shares generated for ${rows.length} player${rows.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} total).`,
+  );
 }
 
 const CHARGEABLE_ACTUAL = new Set(["attended", "late_cancel", "guest"]);
@@ -222,7 +273,10 @@ const CHARGEABLE_ACTUAL = new Set(["attended", "late_cancel", "guest"]);
  * across players whose confirmed attendance is chargeable, or — if attendance
  * hasn't been confirmed yet — those who RSVP'd "going".
  */
-export async function chargeAttendees(formData: FormData) {
+export async function chargeAttendees(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
   const { supabase } = await requireAdmin();
 
@@ -231,7 +285,7 @@ export async function chargeAttendees(formData: FormData) {
     .select("*")
     .eq("id", booking_id)
     .single();
-  if (!booking) return;
+  if (!booking) return actionErr("Booking not found.");
 
   const { data: roster } = await supabase
     .from("booking_attendance")
@@ -243,17 +297,35 @@ export async function chargeAttendees(formData: FormData) {
       ? CHARGEABLE_ACTUAL.has(r.actual_status as string)
       : r.response_status === "going",
   );
+  if (included.length === 0) {
+    return actionErr("No chargeable players — confirm attendance or RSVP first.");
+  }
+
   const rows: ShareRow[] = included.map((r) => ({
     player_id: r.player_id as string,
     share_units: 1,
     override_share_amount: null,
   }));
 
-  await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
+  try {
+    await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
+  } catch (e) {
+    return actionErr(
+      e instanceof Error ? e.message : "Could not charge attendees.",
+    );
+  }
+
   revalidatePath(`/admin/bookings/${booking_id}`);
+  revalidatePath("/admin");
+  return actionOk(
+    `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} split equally).`,
+  );
 }
 
-export async function deleteBooking(formData: FormData) {
+export async function deleteBooking(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   const { data: shares } = await supabase
@@ -261,10 +333,12 @@ export async function deleteBooking(formData: FormData) {
     .select("id")
     .eq("booking_id", id);
   if ((shares ?? []).length > 0) {
-    // Has financial history — cancel instead of deleting.
     await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
     revalidatePath(`/admin/bookings/${id}`);
-    return;
+    revalidatePath("/admin/bookings");
+    return actionOk(
+      "Booking cancelled — it had shares, so it was marked cancelled instead of deleted.",
+    );
   }
   await supabase.from("bookings").delete().eq("id", id);
   revalidatePath("/admin/bookings");

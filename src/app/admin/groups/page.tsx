@@ -80,7 +80,9 @@ export default async function GroupsPage() {
             <Field label="Notes">
               <textarea name="notes" rows={2} className={inputClass} />
             </Field>
-            <SubmitButton className="w-full">Create group</SubmitButton>
+            <SubmitButton className="w-full" pendingLabel="Creating group…">
+              Create group
+            </SubmitButton>
           </form>
         </Card>
 

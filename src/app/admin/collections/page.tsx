@@ -10,6 +10,8 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { CopyReminder } from "@/components/ShareActions";
+import { ActionForm } from "@/components/ActionForm";
+import { SubmitButton } from "@/components/SubmitButton";
 import {
   formatMoney,
   describeBalance,
@@ -151,7 +153,11 @@ export default async function CollectionsPage() {
         </Card>
 
         <Card className="p-4">
-          <form action={updateGcashNumber} className="space-y-2">
+          <ActionForm
+            action={updateGcashNumber}
+            className="space-y-2"
+            pendingLabel="Saving GCash number…"
+          >
             <Field
               label="GCash number"
               hint="Shown in payment reminder messages"
@@ -163,10 +169,10 @@ export default async function CollectionsPage() {
                 className={inputClass}
               />
             </Field>
-            <button type="submit" className={buttonClass("secondary")}>
+            <SubmitButton variant="secondary" pendingLabel="Saving…">
               Save GCash
-            </button>
-          </form>
+            </SubmitButton>
+          </ActionForm>
         </Card>
       </div>
 

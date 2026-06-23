@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
+import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
+import { formatMoney } from "@/lib/format";
 import {
   nextCode,
   voidLedgerForSource,
@@ -121,7 +123,10 @@ export async function createExpense(formData: FormData) {
   if (expenseRow?.id) redirect(`/admin/expenses/${expenseRow.id}`);
 }
 
-export async function regenerateExpenseShares(formData: FormData) {
+export async function regenerateExpenseShares(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const expense_id = String(formData.get("expense_id"));
   const { supabase } = await requireAdmin();
   const { data: expense } = await supabase
@@ -129,7 +134,7 @@ export async function regenerateExpenseShares(formData: FormData) {
     .select("*")
     .eq("id", expense_id)
     .single();
-  if (!expense) return;
+  if (!expense) return actionErr("Expense not found.");
 
   const rows: ShareRow[] = formData
     .getAll("share_player_ids")
@@ -144,11 +149,28 @@ export async function regenerateExpenseShares(formData: FormData) {
       };
     });
 
-  await rebuildExpenseShares(supabase, expense as TeamExpense, rows);
+  if (rows.length === 0) {
+    return actionErr("Select at least one player to include in the split.");
+  }
+
+  try {
+    await rebuildExpenseShares(supabase, expense as TeamExpense, rows);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not regenerate split.";
+    return actionErr(msg);
+  }
+
   revalidatePath(`/admin/expenses/${expense_id}`);
+  revalidatePath("/admin");
+  return actionOk(
+    `Split regenerated for ${rows.length} player${rows.length === 1 ? "" : "s"} (${formatMoney(expense.total_cost)} total).`,
+  );
 }
 
-export async function reverseExpense(formData: FormData) {
+export async function reverseExpense(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   const { data: shares } = await supabase
@@ -165,9 +187,14 @@ export async function reverseExpense(formData: FormData) {
     .eq("id", id);
   revalidatePath(`/admin/expenses/${id}`);
   revalidatePath("/admin/expenses");
+  revalidatePath("/admin");
+  return actionOk("Expense reversed — shares and buyer credit voided.");
 }
 
-export async function deleteExpense(formData: FormData) {
+export async function deleteExpense(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   const id = String(formData.get("id"));
   const { supabase } = await requireAdmin();
   const { data: shares } = await supabase
@@ -175,9 +202,10 @@ export async function deleteExpense(formData: FormData) {
     .select("id")
     .eq("team_expense_id", id);
   if ((shares ?? []).length > 0) {
-    // keep history: reverse instead
-    await reverseExpense(formData);
-    return;
+    const result = await reverseExpense(null, formData);
+    return actionOk(
+      `${result?.message ?? "Expense reversed."} It had shares, so it was reversed instead of deleted.`,
+    );
   }
   await supabase.from("team_expenses").delete().eq("id", id);
   revalidatePath("/admin/expenses");

@@ -8,6 +8,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatMoney, formatDate, SETTLE_TOLERANCE } from "@/lib/format";
 import type { Player, TeamExpense, TeamExpenseShare } from "@/lib/types";
@@ -139,8 +140,12 @@ export default async function ExpenseDetail({
         <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
           Split shares
         </h2>
-        <form action={regenerateExpenseShares} className="p-4">
-          <input type="hidden" name="expense_id" value={e.id} />
+        <ActionForm
+          action={regenerateExpenseShares}
+          className="p-4"
+          pendingLabel="Regenerating split…"
+          hidden={<input type="hidden" name="expense_id" value={e.id} />}
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[520px] text-sm">
               <thead>
@@ -207,9 +212,11 @@ export default async function ExpenseDetail({
             reimbursement credit.
           </p>
           <div className="mt-3">
-            <SubmitButton>Regenerate split</SubmitButton>
+            <SubmitButton pendingLabel="Regenerating…">
+              Regenerate split
+            </SubmitButton>
           </div>
-        </form>
+        </ActionForm>
       </Card>
 
       <Card className="mt-5 border-rose-200 p-4">
@@ -219,6 +226,7 @@ export default async function ExpenseDetail({
             action={reverseExpense}
             message="Reverse this expense? All shares and the buyer credit will be voided."
             hidden={{ id: e.id }}
+            pendingLabel="Reversing…"
           >
             Reverse expense
           </ConfirmButton>
@@ -227,6 +235,7 @@ export default async function ExpenseDetail({
             message="Delete this expense? If it has shares it will be reversed instead."
             variant="ghost"
             hidden={{ id: e.id }}
+            pendingLabel="Deleting…"
           >
             Delete
           </ConfirmButton>
