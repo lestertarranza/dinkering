@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, PageHeader, Badge, EmptyState, buttonClass } from "@/components/ui";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatMoney, formatDate } from "@/lib/format";
+import { round2 } from "@/lib/ledger";
+import { buildAutomaticSettlements } from "@/lib/settlement-audit";
 import type {
   Booking,
   Payment,
@@ -16,12 +18,36 @@ import { reversePayment } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+type Category = "all" | "court" | "expense" | "credit";
+
+const CATEGORIES: { key: Category; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "court", label: "Court bookings" },
+  { key: "expense", label: "Team expenses" },
+  { key: "credit", label: "Advance & credit" },
+];
+
 export default async function PaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ booking?: string; expense?: string; page?: string }>;
+  searchParams: Promise<{
+    booking?: string;
+    expense?: string;
+    page?: string;
+    cat?: string;
+  }>;
 }) {
-  const { booking = "", expense = "", page: pageParam } = await searchParams;
+  const {
+    booking = "",
+    expense = "",
+    page: pageParam,
+    cat: catParam,
+  } = await searchParams;
+  const cat: Category = (["all", "court", "expense", "credit"].includes(
+    catParam ?? "",
+  )
+    ? catParam
+    : "all") as Category;
   const supabase = await createClient();
 
   const PAGE_SIZE = 50;
@@ -29,22 +55,36 @@ export default async function PaymentsPage({
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
+  // Paginated list of real payment rows, filtered to the active category.
+  let listQuery = supabase
+    .from("payments")
+    .select(
+      "*, players(name), player_groups(name), bookings(booking_code), team_expenses(expense_code, description)",
+      { count: "exact" },
+    )
+    .order("payment_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (cat === "court") listQuery = listQuery.not("booking_id", "is", null);
+  else if (cat === "expense")
+    listQuery = listQuery.not("team_expense_id", "is", null);
+  else if (cat === "credit")
+    listQuery = listQuery
+      .is("booking_id", null)
+      .is("team_expense_id", null);
+
   const [
     { data: payments, count: paymentCount },
+    { data: summaryRows },
     { data: players },
     { data: groups },
     { data: bookings },
     { data: expenses },
+    audit,
   ] = await Promise.all([
+    listQuery.range(from, to),
     supabase
       .from("payments")
-      .select(
-        "*, players(name), player_groups(name), bookings(booking_code), team_expenses(expense_code, description)",
-        { count: "exact" },
-      )
-      .order("payment_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .range(from, to),
+      .select("amount, notes, booking_id, team_expense_id"),
     supabase
       .from("players")
       .select("id, name")
@@ -62,26 +102,71 @@ export default async function PaymentsPage({
       .eq("status", "open")
       .order("purchase_date", { ascending: false })
       .limit(50),
+    buildAutomaticSettlements(supabase),
   ]);
+
+  // Per-category "money received" totals (real payments, excluding reversed).
+  const received = { court: 0, expense: 0, credit: 0 };
+  const counts = { court: 0, expense: 0, credit: 0 };
+  for (const r of (summaryRows ?? []) as {
+    amount: number;
+    notes: string | null;
+    booking_id: string | null;
+    team_expense_id: string | null;
+  }[]) {
+    if ((r.notes ?? "").startsWith("[REVERSED")) continue;
+    const amt = Number(r.amount);
+    if (r.booking_id) {
+      received.court = round2(received.court + amt);
+      counts.court += 1;
+    } else if (r.team_expense_id) {
+      received.expense = round2(received.expense + amt);
+      counts.expense += 1;
+    } else {
+      received.credit = round2(received.credit + amt);
+      counts.credit += 1;
+    }
+  }
 
   const total = paymentCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const showingFrom = total === 0 ? 0 : from + 1;
   const showingTo = Math.min(from + PAGE_SIZE, total);
-  const pageQuery = (n: number) => {
+  const linkFor = (next: { cat?: Category; page?: number }) => {
     const sp = new URLSearchParams();
     if (booking) sp.set("booking", booking);
     if (expense) sp.set("expense", expense);
-    if (n > 1) sp.set("page", String(n));
+    const c = next.cat ?? cat;
+    if (c !== "all") sp.set("cat", c);
+    if ((next.page ?? 1) > 1) sp.set("page", String(next.page));
     const qs = sp.toString();
     return qs ? `/admin/payments?${qs}` : "/admin/payments";
   };
+
+  const autoForCat =
+    cat === "court"
+      ? audit.court
+      : cat === "expense"
+        ? audit.expense
+        : cat === "credit"
+          ? []
+          : [...audit.court, ...audit.expense].sort((a, b) =>
+              a.date < b.date ? 1 : a.date > b.date ? -1 : 0,
+            );
+  const autoTotal =
+    cat === "court"
+      ? audit.courtTotal
+      : cat === "expense"
+        ? audit.expenseTotal
+        : cat === "credit"
+          ? 0
+          : round2(audit.courtTotal + audit.expenseTotal);
 
   return (
     <div>
       <PageHeader
         title="Payments"
-        description="Record payments and advance credits. Overpayments stay as wallet credit."
+        description="Record payments and advance credits. Overpayments stay as wallet credit, then auto-settle the oldest charges."
       />
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -121,8 +206,128 @@ export default async function PaymentsPage({
         </div>
 
         <div className="lg:order-1 lg:col-span-2">
+          {/* Category segregation tabs */}
+          <div className="mb-4 flex flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+            {CATEGORIES.map((c) => {
+              const active = c.key === cat;
+              const badge =
+                c.key === "court"
+                  ? counts.court
+                  : c.key === "expense"
+                    ? counts.expense
+                    : c.key === "credit"
+                      ? counts.credit
+                      : counts.court + counts.expense + counts.credit;
+              return (
+                <Link
+                  key={c.key}
+                  href={linkFor({ cat: c.key, page: 1 })}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {c.label}
+                  <span className="ml-1.5 text-xs text-slate-400">{badge}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Per-category settlement summary */}
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <Card className="p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                {cat === "court"
+                  ? "Collected for court bookings"
+                  : cat === "expense"
+                    ? "Collected for team expenses"
+                    : cat === "credit"
+                      ? "Advance / general credit"
+                      : "Payments recorded"}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-emerald-600">
+                {formatMoney(
+                  cat === "court"
+                    ? received.court
+                    : cat === "expense"
+                      ? received.expense
+                      : cat === "credit"
+                        ? received.credit
+                        : round2(
+                            received.court + received.expense + received.credit,
+                          ),
+                )}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Money actually received and recorded as payments.
+              </p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs uppercase tracking-wide text-slate-500">
+                Auto-settled from credit / group funds
+              </p>
+              <p className="mt-1 text-xl font-semibold text-sky-600">
+                {formatMoney(autoTotal)}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Charges covered by existing wallet credit — no new payment.
+              </p>
+            </Card>
+          </div>
+
+          {/* Automatic settlements (derived, read-only) */}
+          {cat !== "credit" && autoForCat.length > 0 ? (
+            <div className="mb-5">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                Auto-settled from credit / group funds
+                <Badge tone="info">{autoForCat.length}</Badge>
+              </h2>
+              <div className="space-y-2">
+                {autoForCat.slice(0, 100).map((s) => {
+                  const href =
+                    s.category === "court"
+                      ? `/admin/bookings/${s.parentId}`
+                      : `/admin/expenses/${s.parentId}`;
+                  return (
+                    <Card
+                      key={s.id}
+                      className="flex items-center justify-between gap-3 border-sky-100 bg-sky-50/40 p-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                          {s.payerName}
+                          <Badge tone="info">Auto</Badge>
+                          <Badge tone={s.category === "court" ? "neutral" : "warning"}>
+                            {s.category === "court" ? "Court" : "Team expense"}
+                          </Badge>
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          <Link href={href} className="hover:underline">
+                            {s.chargeLabel}
+                          </Link>
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {formatDate(s.date)} · {s.fundingLabel}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-sky-700">
+                        {formatMoney(s.amount)}
+                      </span>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Real payments list */}
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">
+            Payments received
+          </h2>
           {(payments ?? []).length === 0 ? (
-            <EmptyState title="No payments yet" />
+            <EmptyState title="No payments in this category yet" />
           ) : (
             <div className="space-y-2">
               {(
@@ -146,6 +351,16 @@ export default async function PaymentsPage({
                     : isBulk
                       ? "Bulk split"
                       : "Advance / general credit";
+                const catTone = p.booking_id
+                  ? "neutral"
+                  : p.team_expense_id
+                    ? "warning"
+                    : "settled";
+                const catLabel = p.booking_id
+                  ? "Court"
+                  : p.team_expense_id
+                    ? "Team expense"
+                    : "Advance";
                 // Funding trail: the per-slice note left by bulk settlement,
                 // cleaned of the leading "[REVERSED …]" / "Bulk settlement ·".
                 const trail = note
@@ -162,6 +377,7 @@ export default async function PaymentsPage({
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
                         {p.players?.name ?? p.player_groups?.name ?? "—"}
+                        <Badge tone={catTone}>{catLabel}</Badge>
                         {isBulk ? <Badge tone="info">Auto-allocated</Badge> : null}
                         {reversed ? <Badge tone="neutral">Reversed</Badge> : null}
                       </p>
@@ -215,7 +431,7 @@ export default async function PaymentsPage({
               <div className="flex items-center gap-2">
                 {page > 1 ? (
                   <Link
-                    href={pageQuery(page - 1)}
+                    href={linkFor({ page: page - 1 })}
                     className={buttonClass("ghost")}
                   >
                     ← Newer
@@ -226,7 +442,7 @@ export default async function PaymentsPage({
                 </span>
                 {page < totalPages ? (
                   <Link
-                    href={pageQuery(page + 1)}
+                    href={linkFor({ page: page + 1 })}
                     className={buttonClass("ghost")}
                   >
                     Older →
