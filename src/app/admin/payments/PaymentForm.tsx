@@ -7,17 +7,26 @@ import { createPayment, type PaymentState } from "./actions";
 
 type Opt = { id: string; name: string };
 type BookingOpt = { id: string; booking_code: string | null; play_date: string };
+type ExpenseOpt = {
+  id: string;
+  expense_code: string | null;
+  description: string;
+};
 
 export function PaymentForm({
   players,
   groups,
   bookings,
+  expenses,
   defaultBooking,
+  defaultExpense,
 }: {
   players: Opt[];
   groups: Opt[];
   bookings: BookingOpt[];
+  expenses: ExpenseOpt[];
   defaultBooking?: string;
+  defaultExpense?: string;
 }) {
   const [state, formAction, pending] = useActionState<PaymentState, FormData>(
     createPayment,
@@ -97,6 +106,24 @@ export function PaymentForm({
           {bookings.map((b) => (
             <option key={b.id} value={b.id}>
               {b.booking_code} · {formatDate(b.play_date)}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field
+        label="For team expense"
+        hint="Optional — used only when no booking is selected"
+      >
+        <select
+          name="team_expense_id"
+          defaultValue={defaultExpense}
+          className={inputClass}
+        >
+          <option value="">None</option>
+          {expenses.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.expense_code ? `${e.expense_code} · ` : ""}
+              {e.description}
             </option>
           ))}
         </select>

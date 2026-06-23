@@ -10,7 +10,14 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { formatMoney, formatDate, SETTLE_TOLERANCE } from "@/lib/format";
+import {
+  formatMoney,
+  formatDate,
+  isSettled,
+  SETTLE_TOLERANCE,
+} from "@/lib/format";
+import { resolveWalletOwner, round2 } from "@/lib/ledger";
+import { chargeRemainingBySource } from "@/lib/payment-allocation";
 import type { Player, TeamExpense, TeamExpenseShare } from "@/lib/types";
 import { regenerateExpenseShares, reverseExpense, deleteExpense } from "../actions";
 
@@ -65,6 +72,41 @@ export default async function ExpenseDetail({
   const rawUnassigned = Number(e.total_cost) - totalAssigned;
   const unassigned =
     Math.abs(rawUnassigned) < SETTLE_TOLERANCE ? 0 : rawUnassigned;
+
+  // Per-share settlement status. Within each payer's wallet we apply credits
+  // and payments to charges oldest-first (FIFO), so a share covered by an
+  // existing wallet credit reports as settled with no manual payment needed.
+  const remainingByShareId = new Map<string, number>();
+  if (e.status !== "reversed") {
+    const seenWallets = new Set<string>();
+    for (const s of shareList) {
+      if (!s.player_id) continue;
+      const owner = await resolveWalletOwner(supabase, s.player_id, e.purchase_date);
+      const key = `${owner.player_id ?? ""}|${owner.player_group_id ?? ""}`;
+      if (seenWallets.has(key)) continue;
+      seenWallets.add(key);
+      const map = await chargeRemainingBySource(supabase, owner);
+      for (const [sid, rem] of map) remainingByShareId.set(sid, rem);
+    }
+  }
+
+  const settlement = shareList.map((s) => {
+    const owed = Number(s.amount_owed);
+    const remaining = Math.min(owed, remainingByShareId.get(s.id) ?? 0);
+    const paid = Math.max(0, round2(owed - remaining));
+    return {
+      share: s,
+      name: s.players?.name ?? "Unknown player",
+      owed,
+      paid,
+      remaining: round2(remaining),
+    };
+  });
+  const totalPaid = round2(settlement.reduce((sum, x) => sum + x.paid, 0));
+  const rawOutstanding = round2(
+    settlement.reduce((sum, x) => sum + x.remaining, 0),
+  );
+  const outstanding = isSettled(rawOutstanding) ? 0 : rawOutstanding;
 
   // Union of active players and anyone who currently has a share.
   const candidateMap = new Map<string, string>();
@@ -135,6 +177,90 @@ export default async function ExpenseDetail({
         <Badge tone="info">{methodLabels[e.split_method] ?? e.split_method}</Badge>
         {e.status === "reversed" ? <Badge tone="neutral">Reversed</Badge> : null}
       </div>
+
+      {e.status !== "reversed" && settlement.length > 0 ? (
+        <Card className="mb-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <h2 className="text-sm font-semibold text-slate-700">
+              Who has paid
+            </h2>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500">
+                Collected{" "}
+                <span className="font-semibold text-emerald-700">
+                  {formatMoney(totalPaid)}
+                </span>{" "}
+                · Outstanding{" "}
+                <span
+                  className={`font-semibold ${
+                    outstanding > 0 ? "text-rose-700" : "text-slate-500"
+                  }`}
+                >
+                  {formatMoney(outstanding)}
+                </span>
+              </span>
+              <Link
+                href={`/admin/payments?expense=${e.id}`}
+                className={buttonClass("secondary")}
+              >
+                + Record payment
+              </Link>
+            </div>
+          </div>
+          <div className="overflow-x-auto p-4">
+            <table className="w-full min-w-[480px] text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 font-medium">Player</th>
+                  <th className="py-2 text-right font-medium">Share</th>
+                  <th className="py-2 text-right font-medium">Paid</th>
+                  <th className="py-2 text-right font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {settlement.map((row) => {
+                  const settled = isSettled(row.remaining);
+                  const partly = !settled && row.paid > SETTLE_TOLERANCE;
+                  return (
+                    <tr key={row.share.id}>
+                      <td className="py-2 font-medium text-slate-700">
+                        {row.name}
+                      </td>
+                      <td className="py-2 text-right text-slate-600">
+                        {formatMoney(row.owed)}
+                      </td>
+                      <td className="py-2 text-right text-emerald-600">
+                        {row.paid > SETTLE_TOLERANCE
+                          ? formatMoney(row.paid)
+                          : "—"}
+                      </td>
+                      <td className="py-2 text-right">
+                        {settled ? (
+                          <Badge tone="going">Settled</Badge>
+                        ) : partly ? (
+                          <Badge tone="info">
+                            {formatMoney(row.remaining)} left
+                          </Badge>
+                        ) : (
+                          <Badge tone="collect">
+                            {formatMoney(row.remaining)} due
+                          </Badge>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="mt-3 text-xs text-slate-400">
+              A player whose wallet already holds credit is settled
+              automatically — the credit offsets their share with no manual
+              payment. Use bulk payment to apply a lump sum across a player&apos;s
+              oldest charges including this expense.
+            </p>
+          </div>
+        </Card>
+      ) : null}
 
       <Card>
         <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
