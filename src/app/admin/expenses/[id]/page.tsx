@@ -16,7 +16,7 @@ import {
   isSettled,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
-import { resolveWalletOwner, round2 } from "@/lib/ledger";
+import { resolveWalletOwnersForPlayers, round2 } from "@/lib/ledger";
 import { chargeRemainingBySource } from "@/lib/payment-allocation";
 import type { Player, TeamExpense, TeamExpenseShare } from "@/lib/types";
 import { regenerateExpenseShares, reverseExpense, deleteExpense } from "../actions";
@@ -76,16 +76,36 @@ export default async function ExpenseDetail({
   // Per-share settlement status. Within each payer's wallet we apply credits
   // and payments to charges oldest-first (FIFO), so a share covered by an
   // existing wallet credit reports as settled with no manual payment needed.
+  // Wallets are resolved in one batch query and each distinct wallet's ledger
+  // is read in parallel to keep this page fast.
   const remainingByShareId = new Map<string, number>();
   if (e.status !== "reversed") {
-    const seenWallets = new Set<string>();
-    for (const s of shareList) {
-      if (!s.player_id) continue;
-      const owner = await resolveWalletOwner(supabase, s.player_id, e.purchase_date);
+    const sharePlayerIds = [
+      ...new Set(
+        shareList
+          .map((s) => s.player_id)
+          .filter((pid): pid is string => Boolean(pid)),
+      ),
+    ];
+    const owners = await resolveWalletOwnersForPlayers(
+      supabase,
+      sharePlayerIds,
+      e.purchase_date,
+    );
+    const distinctWallets = new Map<
+      string,
+      { player_id: string | null; player_group_id: string | null }
+    >();
+    for (const owner of owners.values()) {
       const key = `${owner.player_id ?? ""}|${owner.player_group_id ?? ""}`;
-      if (seenWallets.has(key)) continue;
-      seenWallets.add(key);
-      const map = await chargeRemainingBySource(supabase, owner);
+      if (!distinctWallets.has(key)) distinctWallets.set(key, owner);
+    }
+    const walletMaps = await Promise.all(
+      [...distinctWallets.values()].map((w) =>
+        chargeRemainingBySource(supabase, w),
+      ),
+    );
+    for (const map of walletMaps) {
       for (const [sid, rem] of map) remainingByShareId.set(sid, rem);
     }
   }

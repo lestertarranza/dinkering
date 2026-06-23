@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, PageHeader, Badge, EmptyState } from "@/components/ui";
+import { Card, PageHeader, Badge, EmptyState, buttonClass } from "@/components/ui";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatMoney, formatDate } from "@/lib/format";
 import type {
@@ -19,13 +19,18 @@ export const dynamic = "force-dynamic";
 export default async function PaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ booking?: string; expense?: string }>;
+  searchParams: Promise<{ booking?: string; expense?: string; page?: string }>;
 }) {
-  const { booking = "", expense = "" } = await searchParams;
+  const { booking = "", expense = "", page: pageParam } = await searchParams;
   const supabase = await createClient();
 
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
   const [
-    { data: payments },
+    { data: payments, count: paymentCount },
     { data: players },
     { data: groups },
     { data: bookings },
@@ -35,9 +40,11 @@ export default async function PaymentsPage({
       .from("payments")
       .select(
         "*, players(name), player_groups(name), bookings(booking_code), team_expenses(expense_code, description)",
+        { count: "exact" },
       )
       .order("payment_date", { ascending: false })
-      .limit(100),
+      .order("created_at", { ascending: false })
+      .range(from, to),
     supabase
       .from("players")
       .select("id, name")
@@ -56,6 +63,19 @@ export default async function PaymentsPage({
       .order("purchase_date", { ascending: false })
       .limit(50),
   ]);
+
+  const total = paymentCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const showingFrom = total === 0 ? 0 : from + 1;
+  const showingTo = Math.min(from + PAGE_SIZE, total);
+  const pageQuery = (n: number) => {
+    const sp = new URLSearchParams();
+    if (booking) sp.set("booking", booking);
+    if (expense) sp.set("expense", expense);
+    if (n > 1) sp.set("page", String(n));
+    const qs = sp.toString();
+    return qs ? `/admin/payments?${qs}` : "/admin/payments";
+  };
 
   return (
     <div>
@@ -116,7 +136,22 @@ export default async function PaymentsPage({
                   } | null;
                 })[]
               ).map((p) => {
-                const reversed = (p.notes ?? "").startsWith("[REVERSED");
+                const note = p.notes ?? "";
+                const reversed = note.startsWith("[REVERSED");
+                const isBulk = note.includes("Bulk settlement");
+                const appliedTo = p.bookings?.booking_code
+                  ? `Court ${p.bookings.booking_code}`
+                  : p.team_expenses
+                    ? `Expense ${p.team_expenses.expense_code ?? p.team_expenses.description}`
+                    : isBulk
+                      ? "Bulk split"
+                      : "Advance / general credit";
+                // Funding trail: the per-slice note left by bulk settlement,
+                // cleaned of the leading "[REVERSED …]" / "Bulk settlement ·".
+                const trail = note
+                  .replace(/^\[REVERSED[^\]]*\]\s*/, "")
+                  .replace(/^Bulk settlement · /, "")
+                  .trim();
                 return (
                   <Card
                     key={p.id}
@@ -125,8 +160,9 @@ export default async function PaymentsPage({
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className="flex items-center gap-2 font-medium text-slate-900">
+                      <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
                         {p.players?.name ?? p.player_groups?.name ?? "—"}
+                        {isBulk ? <Badge tone="info">Auto-allocated</Badge> : null}
                         {reversed ? <Badge tone="neutral">Reversed</Badge> : null}
                       </p>
                       <p className="mt-1 text-xs text-slate-400">
@@ -135,14 +171,13 @@ export default async function PaymentsPage({
                         {p.reference_number
                           ? ` · ref ${p.reference_number}`
                           : ""}
-                        {p.bookings?.booking_code
-                          ? ` · ${p.bookings.booking_code}`
-                          : p.team_expenses
-                            ? ` · ${p.team_expenses.expense_code ?? p.team_expenses.description}`
-                            : (p.notes ?? "").includes("Bulk settlement")
-                              ? " · bulk split"
-                              : " · advance"}
+                        {` · ${appliedTo}`}
                       </p>
+                      {trail && trail !== appliedTo ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          ↳ {trail}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-3">
                       <span
@@ -171,8 +206,36 @@ export default async function PaymentsPage({
               })}
             </div>
           )}
+          {total > 0 ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-slate-400">
+                Showing {showingFrom}–{showingTo} of {total} payment
+                {total === 1 ? "" : "s"}
+              </p>
+              <div className="flex items-center gap-2">
+                {page > 1 ? (
+                  <Link
+                    href={pageQuery(page - 1)}
+                    className={buttonClass("ghost")}
+                  >
+                    ← Newer
+                  </Link>
+                ) : null}
+                <span className="text-xs text-slate-400">
+                  Page {page} / {totalPages}
+                </span>
+                {page < totalPages ? (
+                  <Link
+                    href={pageQuery(page + 1)}
+                    className={buttonClass("ghost")}
+                  >
+                    Older →
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <p className="mt-3 text-center text-xs text-slate-400">
-            Showing latest 100 payments.{" "}
             <Link href="/admin" className="text-emerald-600 hover:underline">
               Back to dashboard
             </Link>

@@ -67,6 +67,54 @@ export async function resolveWalletOwner(
   return { player_id: playerId, player_group_id: null };
 }
 
+/**
+ * Batch version of resolveWalletOwner: resolve the owning wallet for many
+ * players in a single query (instead of one round-trip per player). Returns a
+ * map keyed by player id.
+ */
+export async function resolveWalletOwnersForPlayers(
+  db: DB,
+  playerIds: string[],
+  onDate: string,
+): Promise<Map<string, WalletOwner>> {
+  const result = new Map<string, WalletOwner>();
+  const ids = [...new Set(playerIds)];
+  if (ids.length === 0) return result;
+
+  const { data } = await db
+    .from("player_group_members")
+    .select(
+      "player_id, player_group_id, is_primary, start_date, end_date, player_groups!inner(type)",
+    )
+    .in("player_id", ids)
+    .in("player_groups.type", ["couple", "family", "team_fund"]);
+
+  const byPlayer = new Map<string, Record<string, unknown>[]>();
+  for (const m of (data ?? []) as Record<string, unknown>[]) {
+    const pid = m.player_id as string;
+    const start = m.start_date as string | null;
+    const end = m.end_date as string | null;
+    if ((start && start > onDate) || (end && end < onDate)) continue;
+    const list = byPlayer.get(pid) ?? [];
+    list.push(m);
+    byPlayer.set(pid, list);
+  }
+
+  for (const pid of ids) {
+    const active = byPlayer.get(pid) ?? [];
+    if (active.length > 0) {
+      active.sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+      result.set(pid, {
+        player_id: null,
+        player_group_id: active[0].player_group_id as string,
+      });
+    } else {
+      result.set(pid, { player_id: pid, player_group_id: null });
+    }
+  }
+  return result;
+}
+
 /** Void (not delete) all ledger entries originating from a given source. */
 export async function voidLedgerForSource(
   db: DB,
