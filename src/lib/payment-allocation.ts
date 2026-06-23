@@ -35,15 +35,11 @@ const CHARGE_TYPES = new Set<SourceType>([
   "manual_adjustment",
 ]);
 
-/**
- * Load unpaid charge items for a wallet, oldest first (FIFO). Credits
- * (payments / overpayment / buyer reimbursement) are applied chronologically
- * against charges so an item covered by existing credit reports as settled.
- */
-export async function getOpenCharges(
+/** Fetch a wallet's non-voided ledger rows, oldest first. */
+async function fetchWalletLedger(
   db: SupabaseClient,
   wallet: Wallet,
-): Promise<OpenCharge[]> {
+): Promise<LedgerRow[]> {
   let query = db
     .from("ledger_entries")
     .select(
@@ -61,9 +57,15 @@ export async function getOpenCharges(
     return [];
   }
 
-  const { data: entries } = await query;
-  const rows = (entries ?? []) as LedgerRow[];
+  const { data } = await query;
+  return (data ?? []) as LedgerRow[];
+}
 
+/**
+ * Apply credits to charges chronologically (FIFO) and return the open charges
+ * with their remaining unpaid amounts. Pure computation over ledger rows.
+ */
+function computeOpenCharges(rows: LedgerRow[]): OpenCharge[] {
   type Pending = OpenCharge & { remaining: number };
   const pending: Pending[] = [];
   let creditPool = 0;
@@ -110,7 +112,19 @@ export async function getOpenCharges(
     }
   }
 
-  const open = pending.filter((c) => !isSettled(c.remaining));
+  return pending.filter((c) => !isSettled(c.remaining));
+}
+
+/**
+ * Load unpaid charge items for a wallet, oldest first (FIFO), with friendly
+ * labels (booking/expense context). Used for the bulk-payment UI/allocation.
+ */
+export async function getOpenCharges(
+  db: SupabaseClient,
+  wallet: Wallet,
+): Promise<OpenCharge[]> {
+  const rows = await fetchWalletLedger(db, wallet);
+  const open = computeOpenCharges(rows);
   await enrichChargeLabels(db, open);
   return open;
 }
@@ -118,12 +132,14 @@ export async function getOpenCharges(
 /**
  * Compute remaining (unpaid) amount for every charge in a wallet, keyed by the
  * ledger source_id. A source_id absent from the map (or ≈0) is fully settled.
+ * Skips label enrichment, so it costs a single query (used on detail pages).
  */
 export async function chargeRemainingBySource(
   db: SupabaseClient,
   wallet: Wallet,
 ): Promise<Map<string, number>> {
-  const open = await getOpenCharges(db, wallet);
+  const rows = await fetchWalletLedger(db, wallet);
+  const open = computeOpenCharges(rows);
   const map = new Map<string, number>();
   for (const c of open) map.set(c.source_id, c.remaining);
   return map;

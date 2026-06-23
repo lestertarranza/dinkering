@@ -22,9 +22,12 @@ const sourceLabels: Record<string, string> = {
 export function LedgerTable({
   entries,
   bookingContext,
+  ownerNames,
 }: {
   entries: LedgerEntry[];
   bookingContext?: Map<string, BookingContext>;
+  /** Optional per-entry person attribution (used on pooled group ledgers). */
+  ownerNames?: Map<string, string>;
 }) {
   const ordered = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
@@ -72,6 +75,12 @@ export function LedgerTable({
               </td>
               <td className="px-4 py-2">
                 {entry.description || "—"}
+                {(() => {
+                  const owner = ownerNames?.get(entry.id);
+                  return owner ? (
+                    <span className="font-medium text-slate-500"> ({owner})</span>
+                  ) : null;
+                })()}
                 {entry.voided ? (
                   <span className="ml-2 align-middle">
                     <Badge tone="neutral">Voided</Badge>

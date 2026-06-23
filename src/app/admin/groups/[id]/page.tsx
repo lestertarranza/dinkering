@@ -15,6 +15,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLink } from "@/components/CopyLink";
 import { LedgerTable } from "@/components/LedgerTable";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
+import { buildLedgerOwnerNames } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
 import { addManualAdjustment } from "../../players/actions";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
@@ -66,11 +67,14 @@ export default async function GroupDetail({
         .order("name"),
     ]);
 
-  const memberList = (members ?? []) as {
+  const memberList = ((members ?? []) as {
     id: string;
     is_primary: boolean;
     players: Pick<Player, "id" | "name">;
-  }[];
+  }[]).sort((a, b) => {
+    if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1;
+    return a.players.name.localeCompare(b.players.name);
+  });
   const memberPlayerIds = memberList.map((m) => m.players.id);
   const memberPlayerIdSet = new Set(memberPlayerIds);
   const availablePlayers = (
@@ -99,10 +103,10 @@ export default async function GroupDetail({
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
   const ledgerEntries = (ledger ?? []) as LedgerEntry[];
-  const ledgerContext = await buildLedgerBookingContext(
-    supabase,
-    ledgerEntries,
-  );
+  const [ledgerContext, ledgerOwners] = await Promise.all([
+    buildLedgerBookingContext(supabase, ledgerEntries),
+    buildLedgerOwnerNames(supabase, ledgerEntries),
+  ]);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const shareUrl = `${appUrl}/g/${g.public_token}`;
 
@@ -133,6 +137,13 @@ export default async function GroupDetail({
           >
             {d.tone === "settled" ? "Settled" : formatMoney(d.amount)}
           </p>
+          <p className="mt-1 text-xs text-slate-400">
+            {d.tone === "collect"
+              ? "Charges − paid/credits. Owes the team."
+              : d.tone === "credit"
+                ? "Charges − paid/credits. Has wallet credit."
+                : "Charges − paid/credits. All squared up."}
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">
@@ -141,6 +152,10 @@ export default async function GroupDetail({
           <p className="mt-1 text-2xl font-semibold text-slate-900">
             {formatMoney(bal?.total_debit ?? 0)}
           </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Everything billed to the pool: court shares, expense shares, and
+            charge adjustments.
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">
@@ -148,6 +163,10 @@ export default async function GroupDetail({
           </p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">
             {formatMoney(bal?.total_credit ?? 0)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Everything that reduces what&apos;s owed: payments, expense
+            reimbursements, and credits.
           </p>
         </Card>
       </div>
@@ -189,6 +208,7 @@ export default async function GroupDetail({
             <LedgerTable
               entries={ledgerEntries}
               bookingContext={ledgerContext}
+              ownerNames={ledgerOwners}
             />
           </Card>
         </div>
