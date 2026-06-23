@@ -5,6 +5,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { formatMoney, formatDate } from "@/lib/format";
 import type { Booking, Payment, Player, PlayerGroup } from "@/lib/types";
 import { PaymentForm } from "./PaymentForm";
+import { BulkPaymentForm } from "./BulkPaymentForm";
 import { reversePayment } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,9 @@ export default async function PaymentsPage({
     await Promise.all([
       supabase
         .from("payments")
-        .select("*, players(name), player_groups(name), bookings(booking_code)")
+        .select(
+          "*, players(name), player_groups(name), bookings(booking_code), team_expenses(expense_code, description)",
+        )
         .order("payment_date", { ascending: false })
         .limit(100),
       supabase
@@ -41,15 +44,25 @@ export default async function PaymentsPage({
     <div>
       <PageHeader
         title="Payments"
-        description="Record payments and advance credits. Overpayments stay as wallet credit."
+        description="Record single or bulk payments. Bulk pays oldest charges first (court shares, then expenses)."
       />
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="p-4 lg:order-2">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">
-            Record payment
-          </h2>
-          <PaymentForm
+        <div className="space-y-5 lg:order-2">
+          <Card className="p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+              Bulk payment
+            </h2>
+            <BulkPaymentForm
+              players={(players ?? []) as Pick<Player, "id" | "name">[]}
+              groups={(groups ?? []) as Pick<PlayerGroup, "id" | "name">[]}
+            />
+          </Card>
+          <Card className="p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+              Single payment
+            </h2>
+            <PaymentForm
             players={(players ?? []) as Pick<Player, "id" | "name">[]}
             groups={(groups ?? []) as Pick<PlayerGroup, "id" | "name">[]}
             bookings={
@@ -60,7 +73,8 @@ export default async function PaymentsPage({
             }
             defaultBooking={booking}
           />
-        </Card>
+          </Card>
+        </div>
 
         <div className="lg:order-1 lg:col-span-2">
           {(payments ?? []).length === 0 ? (
@@ -72,6 +86,10 @@ export default async function PaymentsPage({
                   players: { name: string } | null;
                   player_groups: { name: string } | null;
                   bookings: { booking_code: string } | null;
+                  team_expenses: {
+                    expense_code: string | null;
+                    description: string;
+                  } | null;
                 })[]
               ).map((p) => {
                 const reversed = (p.notes ?? "").startsWith("[REVERSED");
@@ -95,7 +113,11 @@ export default async function PaymentsPage({
                           : ""}
                         {p.bookings?.booking_code
                           ? ` · ${p.bookings.booking_code}`
-                          : " · advance"}
+                          : p.team_expenses
+                            ? ` · ${p.team_expenses.expense_code ?? p.team_expenses.description}`
+                            : (p.notes ?? "").includes("Bulk settlement")
+                              ? " · bulk split"
+                              : " · advance"}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
