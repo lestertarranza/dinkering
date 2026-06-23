@@ -99,6 +99,7 @@ export interface Payment {
   payer_player_id: string | null;
   payer_group_id: string | null;
   booking_id: string | null;
+  team_expense_id: string | null;
   amount: number;
   payment_method: string | null;
   reference_number: string | null;
