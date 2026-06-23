@@ -1,6 +1,73 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LedgerEntry } from "./types";
 
+export type LedgerExpenseCtx = {
+  expenseId: string;
+  expenseCode: string | null;
+  expenseDesc: string;
+  paidByName: string | null;
+};
+
+/**
+ * For every team_expense_share ledger entry in the list, resolve the parent
+ * expense details (code, description, who paid it). Returns a map keyed by
+ * ledger entry id so callers can look up context in O(1).
+ */
+export async function buildLedgerExpenseContext(
+  db: SupabaseClient,
+  entries: LedgerEntry[],
+): Promise<Map<string, LedgerExpenseCtx>> {
+  const result = new Map<string, LedgerExpenseCtx>();
+
+  const expShareIds = entries
+    .filter((e) => e.source_type === "team_expense_share" && e.source_id)
+    .map((e) => e.source_id as string);
+  if (expShareIds.length === 0) return result;
+
+  const { data: shares } = await db
+    .from("team_expense_shares")
+    .select(
+      "id, team_expense_id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
+    )
+    .in("id", expShareIds);
+
+  const shareById = new Map<
+    string,
+    {
+      team_expense_id: string;
+      team_expenses: {
+        expense_code: string | null;
+        description: string;
+        players: { name: string } | null;
+        player_groups: { name: string } | null;
+      } | null;
+    }
+  >();
+  for (const s of (shares ?? []) as unknown as (typeof shareById extends Map<
+    string,
+    infer V
+  >
+    ? V & { id: string }
+    : never)[]) {
+    shareById.set(s.id, s);
+  }
+
+  for (const e of entries) {
+    if (e.source_type !== "team_expense_share" || !e.source_id) continue;
+    const s = shareById.get(e.source_id);
+    if (!s) continue;
+    const te = s.team_expenses;
+    result.set(e.id, {
+      expenseId: s.team_expense_id,
+      expenseCode: te?.expense_code ?? null,
+      expenseDesc: te?.description ?? "Team expense",
+      paidByName:
+        te?.players?.name ?? te?.player_groups?.name ?? null,
+    });
+  }
+  return result;
+}
+
 /**
  * Resolve the individual person behind each ledger entry so a pooled group's
  * shared ledger can show who a charge/credit belongs to (e.g. an expense share

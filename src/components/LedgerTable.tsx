@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { formatMoney, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import {
   formatBookingContext,
   type BookingContext,
 } from "@/lib/booking-context";
+import type { LedgerExpenseCtx } from "@/lib/ledger-attribution";
 import type { LedgerEntry } from "@/lib/types";
 
 const sourceLabels: Record<string, string> = {
@@ -23,11 +25,14 @@ export function LedgerTable({
   entries,
   bookingContext,
   ownerNames,
+  expenseContext,
 }: {
   entries: LedgerEntry[];
   bookingContext?: Map<string, BookingContext>;
   /** Optional per-entry person attribution (used on pooled group ledgers). */
   ownerNames?: Map<string, string>;
+  /** Optional expense detail context for team_expense_share entries. */
+  expenseContext?: Map<string, LedgerExpenseCtx>;
 }) {
   const ordered = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
@@ -93,6 +98,27 @@ export function LedgerTable({
                       {ctx}
                     </span>
                   ) : null;
+                })()}
+                {(() => {
+                  const ec = expenseContext?.get(entry.id);
+                  if (!ec) return null;
+                  const label = ec.expenseCode
+                    ? `${ec.expenseCode} · ${ec.expenseDesc}`
+                    : ec.expenseDesc;
+                  const paidLine = ec.paidByName
+                    ? ` · Paid by ${ec.paidByName}`
+                    : "";
+                  return (
+                    <span className="mt-0.5 block text-xs text-slate-400">
+                      <Link
+                        href={`/admin/expenses/${ec.expenseId}`}
+                        className="text-emerald-600 hover:underline"
+                      >
+                        {label}
+                      </Link>
+                      {paidLine}
+                    </span>
+                  );
                 })()}
               </td>
               <td className="px-4 py-2 text-slate-500">
