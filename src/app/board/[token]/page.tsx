@@ -79,25 +79,30 @@ export default async function TeamBoard({
   >[])
     .map((p) => {
       const pooled = pooledMap.get(p.id);
-      const balance = pooled
+      const individualBalance = playerBalMap.get(p.id) ?? 0;
+      const groupBalance = pooled
         ? groupBalMap.get(pooled.groupId) ?? 0
-        : playerBalMap.get(p.id) ?? 0;
+        : 0;
+      // Combined used for sorting — neither wallet is silently dropped.
+      const combinedBalance = individualBalance + groupBalance;
       return {
         id: p.id,
         label: p.display_name?.trim() || p.name,
         token: p.public_token,
-        balance,
+        individualBalance,
+        groupBalance,
+        combinedBalance,
         pooled,
       };
     })
     .sort((a, b) => {
       const rank = (bal: number) =>
         Math.abs(bal) < SETTLE_TOLERANCE ? 2 : bal < 0 ? 0 : 1;
-      const ra = rank(a.balance);
-      const rb = rank(b.balance);
+      const ra = rank(a.combinedBalance);
+      const rb = rank(b.combinedBalance);
       if (ra !== rb) return ra - rb;
-      if (ra === 0) return a.balance - b.balance;
-      if (ra === 1) return b.balance - a.balance;
+      if (ra === 0) return a.combinedBalance - b.combinedBalance;
+      if (ra === 1) return b.combinedBalance - a.combinedBalance;
       return a.label.localeCompare(b.label);
     });
 
@@ -118,7 +123,14 @@ export default async function TeamBoard({
       ) : (
         <Card className="divide-y divide-slate-100 overflow-hidden">
           {rows.map((r) => {
-            const d = describeBalance(r.balance);
+            // Primary: individual player wallet balance
+            const dInd = describeBalance(r.individualBalance);
+            // Secondary: group wallet (only show when non-trivial)
+            const dGrp = r.pooled
+              ? describeBalance(r.groupBalance)
+              : null;
+            const showGrp =
+              dGrp !== null && dGrp.tone !== "settled";
             return (
               <Link
                 key={r.id}
@@ -129,7 +141,21 @@ export default async function TeamBoard({
                   <p className={`truncate text-base ${publicPrimaryText}`}>
                     {r.label}
                   </p>
-                  {r.pooled ? (
+                  {showGrp ? (
+                    <p className={`truncate ${publicHintText}`}>
+                      {r.pooled!.name}:{" "}
+                      <span
+                        className={
+                          dGrp!.tone === "collect"
+                            ? "font-semibold text-rose-600"
+                            : "font-semibold text-emerald-600"
+                        }
+                      >
+                        {dGrp!.tone === "collect" ? "owes " : "credit "}
+                        {formatMoney(dGrp!.amount)}
+                      </span>
+                    </p>
+                  ) : r.pooled ? (
                     <p className={`truncate ${publicHintText}`}>
                       Shared with {r.pooled.name}
                     </p>
@@ -137,19 +163,21 @@ export default async function TeamBoard({
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-right">
                   <div>
-                    <Badge tone={d.tone} size="md">
-                      {d.label}
+                    <Badge tone={dInd.tone} size="md">
+                      {dInd.label}
                     </Badge>
                     <p
                       className={`mt-1 text-base font-bold ${
-                        d.tone === "collect"
+                        dInd.tone === "collect"
                           ? "text-rose-700"
-                          : d.tone === "credit"
+                          : dInd.tone === "credit"
                             ? "text-emerald-700"
                             : "text-slate-500"
                       }`}
                     >
-                      {d.tone === "settled" ? "—" : formatMoney(d.amount)}
+                      {dInd.tone === "settled"
+                        ? "—"
+                        : formatMoney(dInd.amount)}
                     </p>
                   </div>
                   <span className={publicChevronClass} aria-hidden>
@@ -163,8 +191,8 @@ export default async function TeamBoard({
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Positive balance = owes the team; credit = paid ahead. Couples / families
-        share one balance.
+        Badge shows your personal balance. If you share a group wallet, the
+        group&apos;s balance appears below your name when non-zero.
       </p>
       <footer className="mt-6 text-center text-sm text-slate-400">
         Shared team board · please don&apos;t post publicly
