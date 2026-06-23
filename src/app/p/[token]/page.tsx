@@ -420,7 +420,10 @@ export default async function PlayerPortal({
                   (entry.source_type === "team_expense_share" ||
                     entry.source_type === "booking_share")
                 ) {
-                  displayDesc = `${displayDesc} (${playerDisplayName})`;
+                  const groupName = pooled?.player_groups.name;
+                  displayDesc = groupName
+                    ? `${displayDesc} (${playerDisplayName} · ${groupName})`
+                    : `${displayDesc} (${playerDisplayName})`;
                 }
 
                 // Sub-context line (date + venue/time + expense detail)
