@@ -84,7 +84,7 @@ export async function GET() {
     );
   }
 
-  const csv = lines.join("\n");
+  const csv = `\uFEFF${lines.join("\n")}`;
   const date = new Date().toISOString().slice(0, 10);
 
   return new NextResponse(csv, {
