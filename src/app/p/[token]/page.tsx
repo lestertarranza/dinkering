@@ -39,12 +39,20 @@ const STATEMENT_LABELS: Record<string, string> = {
 
 export const dynamic = "force-dynamic";
 
+const LEDGER_PAGE_SIZE = 10;
+
 export default async function PlayerPortal({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ lpage?: string }>;
 }) {
-  const { token } = await params;
+  const [{ token }, { lpage: lpageParam }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
+  const lpage = Math.max(1, parseInt(lpageParam ?? "1", 10) || 1);
   const db = createAdminClient();
 
   const { data: player } = await db
@@ -73,15 +81,49 @@ export default async function PlayerPortal({
   let balance = 0;
   let ledger: LedgerEntry[] = [];
   if (pooled) {
-    const [{ data: gb }, { data: gl }] = await Promise.all([
-      db.from("group_balances").select("*").eq("player_group_id", pooled.player_group_id).single(),
-      db.from("ledger_entries").select("*").eq("player_group_id", pooled.player_group_id).order("entry_date"),
-    ]);
-    balance = Number(gb?.balance ?? 0);
-    ledger = (gl ?? []) as LedgerEntry[];
+    // Fetch both the group wallet and any personal entries the player may have
+    // (e.g. history before joining the group, or direct personal payments).
+    const [{ data: gb }, { data: pb }, { data: gl }, { data: pl }] =
+      await Promise.all([
+        db
+          .from("group_balances")
+          .select("balance")
+          .eq("player_group_id", pooled.player_group_id)
+          .single(),
+        db
+          .from("player_balances")
+          .select("balance")
+          .eq("player_id", p.id)
+          .single(),
+        db
+          .from("ledger_entries")
+          .select("*")
+          .eq("player_group_id", pooled.player_group_id)
+          .order("entry_date"),
+        db
+          .from("ledger_entries")
+          .select("*")
+          .eq("player_id", p.id)
+          .order("entry_date"),
+      ]);
+    // Combined balance = group wallet + any residual personal balance
+    balance = Number(gb?.balance ?? 0) + Number(pb?.balance ?? 0);
+    // Merge both ledgers; deduplicate by id in case a row somehow appears in both
+    const seen = new Set<string>();
+    const merged: LedgerEntry[] = [];
+    for (const row of [
+      ...((gl ?? []) as LedgerEntry[]),
+      ...((pl ?? []) as LedgerEntry[]),
+    ]) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        merged.push(row);
+      }
+    }
+    ledger = merged;
   } else {
     const [{ data: pb }, { data: pl }] = await Promise.all([
-      db.from("player_balances").select("*").eq("player_id", p.id).single(),
+      db.from("player_balances").select("balance").eq("player_id", p.id).single(),
       db.from("ledger_entries").select("*").eq("player_id", p.id).order("entry_date"),
     ]);
     balance = Number(pb?.balance ?? 0);
@@ -121,13 +163,20 @@ export default async function PlayerPortal({
     return byDate !== 0 ? byDate : a.created_at.localeCompare(b.created_at);
   });
   let runningBalance = 0;
-  const statement: { entry: LedgerEntry; running: number }[] = [];
+  const fullStatement: { entry: LedgerEntry; running: number }[] = [];
   for (const e of orderedLedger) {
     if (!e.voided)
       runningBalance += Number(e.debit_amount) - Number(e.credit_amount);
-    statement.push({ entry: e, running: runningBalance });
+    fullStatement.push({ entry: e, running: runningBalance });
   }
-  statement.reverse();
+  fullStatement.reverse();
+
+  const totalLedger = fullStatement.length;
+  const totalLedgerPages = Math.max(1, Math.ceil(totalLedger / LEDGER_PAGE_SIZE));
+  const ledgerFrom = (lpage - 1) * LEDGER_PAGE_SIZE;
+  const statement = fullStatement.slice(ledgerFrom, ledgerFrom + LEDGER_PAGE_SIZE);
+  const ledgerPageUrl = (n: number) =>
+    `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
 
   return (
     <main className={publicMainClass}>
@@ -232,7 +281,7 @@ export default async function PlayerPortal({
       </PublicSection>
 
       <PublicSection title="Charges & payments">
-        {statement.length === 0 ? (
+        {fullStatement.length === 0 ? (
           <EmptyState title="No activity yet" />
         ) : (
           <>
@@ -292,11 +341,40 @@ export default async function PlayerPortal({
                 );
               })}
             </Card>
-            <p className={`mt-2.5 px-1 ${publicHintText}`}>
+            {/* Pagination */}
+            <div className="mt-3 flex items-center justify-between gap-3 px-1">
+              <p className={publicHintText}>
+                {ledgerFrom + 1}–{Math.min(ledgerFrom + LEDGER_PAGE_SIZE, totalLedger)}{" "}
+                of {totalLedger} entr{totalLedger === 1 ? "y" : "ies"}
+              </p>
+              {totalLedgerPages > 1 ? (
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  {lpage > 1 ? (
+                    <Link
+                      href={ledgerPageUrl(lpage - 1)}
+                      className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
+                    >
+                      ← Newer
+                    </Link>
+                  ) : null}
+                  <span className={publicHintText}>
+                    {lpage} / {totalLedgerPages}
+                  </span>
+                  {lpage < totalLedgerPages ? (
+                    <Link
+                      href={ledgerPageUrl(lpage + 1)}
+                      className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
+                    >
+                      Older →
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <p className={`mt-1.5 px-1 ${publicHintText}`}>
               Charges in <span className="font-semibold text-rose-700">red</span>,
               payments in{" "}
-              <span className="font-semibold text-emerald-700">green</span>. Grey
-              line = running balance.
+              <span className="font-semibold text-emerald-700">green</span>.
             </p>
           </>
         )}
