@@ -148,7 +148,7 @@ export default async function Dashboard({
   const credPage_data = playersWithCreditAll.slice(credFrom, credFrom + PAGE_SIZE);
 
   // For each player on the current "who owes" page, batch-load their open charges.
-  let openChargesByPlayer = new Map<string, { source_type: string; source_id: string; remaining: number }[]>();
+  let openChargesByPlayer = new Map<string, { source_type: string; source_id: string; label: string; remaining: number }[]>();
   if (owePage_data.length > 0) {
     const owePlayerIds = owePage_data.map((o) => o.id);
     const { data: rawLedger } = await supabase
@@ -176,38 +176,94 @@ export default async function Dashboard({
   const bShareIds = allCharges.filter((c) => c.source_type === "booking_share").map((c) => c.source_id);
   const eShareIds = allCharges.filter((c) => c.source_type === "team_expense_share").map((c) => c.source_id);
 
-  const [{ data: bShareRows }, { data: eShareRows }] = await Promise.all([
+  const manualAdjIds = allCharges
+    .filter((c) => c.source_type === "manual_adjustment")
+    .map((c) => c.source_id);
+
+  const [{ data: bShareRows }, { data: eShareRows }, { data: maRows }] = await Promise.all([
     bShareIds.length
       ? supabase
           .from("booking_shares")
-          .select("id, bookings(id, booking_code, play_date)")
+          .select("id, bookings(id, booking_code, play_date, venue, court_number)")
           .in("id", bShareIds)
       : Promise.resolve({ data: [] }),
     eShareIds.length
       ? supabase
           .from("team_expense_shares")
-          .select("id, team_expense_id, team_expenses(expense_code, description)")
+          .select(
+            "id, team_expense_id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
+          )
           .in("id", eShareIds)
+      : Promise.resolve({ data: [] }),
+    manualAdjIds.length
+      ? supabase
+          .from("manual_adjustments")
+          .select("id, type, reason")
+          .in("id", manualAdjIds)
       : Promise.resolve({ data: [] }),
   ]);
 
-  type BShareRow = { id: string; bookings: { id: string; booking_code: string | null; play_date: string } | null };
-  type EShareRow = { id: string; team_expense_id: string; team_expenses: { expense_code: string | null; description: string } | null };
+  type BShareRow = {
+    id: string;
+    bookings: {
+      id: string;
+      booking_code: string | null;
+      play_date: string;
+      venue: string | null;
+      court_number: string | null;
+    } | null;
+  };
+  type EShareRow = {
+    id: string;
+    team_expense_id: string;
+    team_expenses: {
+      expense_code: string | null;
+      description: string;
+      players: { name: string } | null;
+      player_groups: { name: string } | null;
+    } | null;
+  };
   const bShareLabel = new Map<string, { href: string; label: string }>();
   for (const s of (bShareRows ?? []) as unknown as BShareRow[]) {
     if (!s.bookings) continue;
+    const b = s.bookings;
+    const venuePart = [b.venue, b.court_number].filter(Boolean).join(" · ");
     bShareLabel.set(s.id, {
-      href: `/admin/bookings/${s.bookings.id}`,
-      label: `Court ${s.bookings.booking_code ?? "booking"} · ${formatDate(s.bookings.play_date)}`,
+      href: `/admin/bookings/${b.id}`,
+      label: [
+        `Court ${b.booking_code ?? "booking"}`,
+        formatDate(b.play_date),
+        venuePart || null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
     });
   }
   const eShareLabel = new Map<string, { href: string; label: string }>();
   for (const s of (eShareRows ?? []) as unknown as EShareRow[]) {
+    const te = s.team_expenses;
+    const paidBy =
+      te?.players?.name ?? te?.player_groups?.name ?? null;
     eShareLabel.set(s.id, {
       href: `/admin/expenses/${s.team_expense_id}`,
-      label: s.team_expenses
-        ? `${s.team_expenses.expense_code ?? "Expense"} · ${s.team_expenses.description}`
+      label: te
+        ? [
+            `${te.expense_code ?? "Expense"} · ${te.description}`,
+            paidBy ? `Paid by ${paidBy}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
         : "Expense",
+    });
+  }
+  const maLabel = new Map<string, { label: string }>();
+  for (const m of (maRows ?? []) as unknown as {
+    id: string;
+    type: string;
+    reason: string;
+  }[]) {
+    maLabel.set(m.id, {
+      label: `Manual ${m.type}: ${m.reason}`,
     });
   }
 
@@ -416,21 +472,27 @@ export default async function Dashboard({
                       {charges.length > 0 ? (
                         <ul className="mt-1.5 space-y-0.5 border-t border-slate-200 pt-1.5">
                           {charges.map((c) => {
-                            const meta =
+                            const linked =
                               c.source_type === "booking_share"
                                 ? bShareLabel.get(c.source_id)
                                 : c.source_type === "team_expense_share"
                                   ? eShareLabel.get(c.source_id)
                                   : null;
+                            const adj =
+                              c.source_type === "manual_adjustment"
+                                ? maLabel.get(c.source_id)
+                                : null;
+                            const fallbackLabel =
+                              adj?.label ?? c.label ?? c.source_type;
                             return (
                               <li key={c.source_id} className="flex items-center justify-between gap-2 text-xs text-slate-600">
-                                {meta ? (
-                                  <Link href={meta.href} className="truncate text-emerald-700 hover:underline">
-                                    {meta.label}
+                                {linked ? (
+                                  <Link href={linked.href} className="truncate text-emerald-700 hover:underline">
+                                    {linked.label}
                                   </Link>
                                 ) : (
-                                  <span className="truncate text-slate-400">
-                                    {c.source_type === "booking_share" ? "Court share" : c.source_type === "team_expense_share" ? "Expense share" : c.source_type}
+                                  <span className="truncate text-slate-500">
+                                    {fallbackLabel}
                                   </span>
                                 )}
                                 <span className="shrink-0 font-medium text-rose-600">{formatMoney(c.remaining)}</span>
