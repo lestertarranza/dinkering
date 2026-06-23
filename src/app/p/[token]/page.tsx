@@ -12,13 +12,21 @@ import {
   buildLedgerBookingContext,
   formatBookingContext,
 } from "@/lib/booking-context";
+import {
+  PublicNavLink,
+  PublicSection,
+  publicMainClass,
+  publicPrimaryText,
+  publicMetaText,
+  publicHintText,
+} from "@/components/public-ui";
 import type {
   Booking,
   BookingAttendance,
   LedgerEntry,
   Player,
 } from "@/lib/types";
-import { submitRsvp } from "./actions";
+import { RsvpForm } from "./RsvpForm";
 
 const STATEMENT_LABELS: Record<string, string> = {
   booking_share: "Court",
@@ -47,7 +55,6 @@ export default async function PlayerPortal({
   const p = player as Player;
   const today = new Date().toISOString().slice(0, 10);
 
-  // Resolve pooled group (if any) for balance attribution.
   const { data: memberships } = await db
     .from("player_group_members")
     .select("player_group_id, end_date, player_groups!inner(id, name, type, public_token)")
@@ -62,7 +69,6 @@ export default async function PlayerPortal({
       }
     | undefined;
 
-  // Balance + ledger come from the wallet owner (group if pooled).
   let balance = 0;
   let ledger: LedgerEntry[] = [];
   if (pooled) {
@@ -109,8 +115,6 @@ export default async function PlayerPortal({
       ? settings.roster_token
       : null;
 
-  // One merged statement (charges + payments + adjustments) with a running
-  // balance, newest first.
   const orderedLedger = [...ledger].sort((a, b) => {
     const byDate = a.entry_date.localeCompare(b.entry_date);
     return byDate !== 0 ? byDate : a.created_at.localeCompare(b.created_at);
@@ -124,40 +128,20 @@ export default async function PlayerPortal({
   }
   statement.reverse();
 
-  const rsvpBtn = (value: string, label: string, current: string) => (
-    <button
-      type="submit"
-      name="response_status"
-      value={value}
-      className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-        current === value
-          ? value === "going"
-            ? "bg-emerald-600 text-white"
-            : value === "maybe"
-              ? "bg-amber-500 text-white"
-              : "bg-rose-600 text-white"
-          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
-    <main className="mx-auto max-w-lg px-4 py-6">
+    <main className={publicMainClass}>
       <header className="mb-5 text-center">
-        <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-xl">
+        <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
           🏓
         </div>
-        <h1 className="text-xl font-semibold text-slate-900">
+        <h1 className={`text-2xl ${publicPrimaryText}`}>
           {p.display_name || p.name}
         </h1>
-        <p className="text-sm text-slate-500">Dinkering Pickleball</p>
+        <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
       </header>
 
-      {/* Balance hero */}
       <Card
-        className={`mb-4 p-6 text-center ${
+        className={`mb-5 p-6 text-center ${
           d.tone === "collect"
             ? "border-rose-200 bg-rose-50"
             : d.tone === "credit"
@@ -167,60 +151,48 @@ export default async function PlayerPortal({
       >
         {d.tone === "collect" ? (
           <>
-            <p className="text-sm text-rose-700">You currently owe</p>
-            <p className="mt-1 text-3xl font-bold text-rose-700">
+            <p className="text-base font-medium text-rose-800">You currently owe</p>
+            <p className="mt-1 text-4xl font-bold text-rose-700">
               {formatMoney(d.amount)}
             </p>
           </>
         ) : d.tone === "credit" ? (
           <>
-            <p className="text-sm text-emerald-700">You have credit</p>
-            <p className="mt-1 text-3xl font-bold text-emerald-700">
+            <p className="text-base font-medium text-emerald-800">You have credit</p>
+            <p className="mt-1 text-4xl font-bold text-emerald-700">
               {formatMoney(d.amount)}
             </p>
-            <p className="mt-1 text-xs text-emerald-600">
+            <p className="mt-1.5 text-sm font-medium text-emerald-700">
               Applied automatically to future charges
             </p>
           </>
         ) : (
           <>
-            <p className="text-sm text-slate-500">Your balance</p>
-            <p className="mt-1 text-3xl font-bold text-slate-700">Settled 🎉</p>
+            <p className={`text-base ${publicMetaText}`}>Your balance</p>
+            <p className="mt-1 text-4xl font-bold text-slate-800">Settled 🎉</p>
           </>
         )}
         {pooled ? (
-          <p className="mt-3 rounded-lg bg-white/60 px-3 py-2 text-xs text-slate-500">
-            This is a shared balance with{" "}
-            <a
+          <p className="mt-3 rounded-lg bg-white/70 px-3 py-2.5 text-sm text-slate-600">
+            Shared balance with{" "}
+            <Link
               href={`/g/${pooled.player_groups.public_token}`}
-              className="font-medium text-emerald-700 underline"
+              className="font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 active:text-emerald-900"
             >
               {pooled.player_groups.name}
-            </a>
-            .
+            </Link>
           </p>
         ) : null}
       </Card>
 
       {teamToken ? (
-        <nav className="mb-4 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm">
-          <Link
-            href={`/board/${teamToken}`}
-            className="text-emerald-600 hover:underline"
-          >
-            Team balances
-          </Link>
-          <Link
-            href={`/schedule/${teamToken}`}
-            className="text-emerald-600 hover:underline"
-          >
-            Upcoming games
-          </Link>
+        <nav className="mb-5 flex flex-wrap justify-center gap-2">
+          <PublicNavLink href={`/board/${teamToken}`}>Team balances</PublicNavLink>
+          <PublicNavLink href={`/schedule/${teamToken}`}>Upcoming games</PublicNavLink>
         </nav>
       ) : null}
 
-      {/* Upcoming + RSVP */}
-      <Section title="Upcoming games">
+      <PublicSection title="Upcoming games">
         {upcoming.length === 0 ? (
           <EmptyState title="No upcoming games" />
         ) : (
@@ -228,39 +200,41 @@ export default async function PlayerPortal({
             {upcoming.map((a) => {
               const ctx = formatBookingContext(a.bookings);
               return (
-              <Card key={a.id} className="p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-slate-900">
-                      {formatDate(a.bookings.play_date)}
-                    </p>
-                    {ctx ? (
-                      <p className="text-xs text-slate-500">{ctx}</p>
-                    ) : null}
+                <Card key={a.id} className="p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className={`text-lg ${publicPrimaryText}`}>
+                        {formatDate(a.bookings.play_date)}
+                      </p>
+                      {a.bookings.booking_code ? (
+                        <p className={`mt-0.5 text-sm font-medium text-emerald-800`}>
+                          {a.bookings.booking_code}
+                        </p>
+                      ) : null}
+                      {ctx ? (
+                        <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
+                      ) : null}
+                    </div>
+                    <StatusBadge status={a.response_status} size="md" />
                   </div>
-                  <StatusBadge status={a.response_status} />
-                </div>
-                <form action={submitRsvp} className="flex gap-2">
-                  <input type="hidden" name="token" value={token} />
-                  <input type="hidden" name="booking_id" value={a.bookings.id} />
-                  {rsvpBtn("going", "Going", a.response_status)}
-                  {rsvpBtn("maybe", "Maybe", a.response_status)}
-                  {rsvpBtn("not_going", "Not going", a.response_status)}
-                </form>
-              </Card>
+                  <RsvpForm
+                    token={token}
+                    bookingId={a.bookings.id}
+                    currentStatus={a.response_status}
+                  />
+                </Card>
               );
             })}
           </div>
         )}
-      </Section>
+      </PublicSection>
 
-      {/* Charges & payments (single merged statement, newest first) */}
-      <Section title="Charges & payments">
+      <PublicSection title="Charges & payments">
         {statement.length === 0 ? (
           <EmptyState title="No activity yet" />
         ) : (
           <>
-            <Card className="divide-y divide-slate-100">
+            <Card className="divide-y divide-slate-100 overflow-hidden">
               {statement.map(({ entry, running }) => {
                 const ctx = formatBookingContext(ledgerContext.get(entry.id));
                 const charge = Number(entry.debit_amount);
@@ -275,25 +249,25 @@ export default async function PlayerPortal({
                 return (
                   <div
                     key={entry.id}
-                    className={`flex items-start justify-between gap-3 px-4 py-3 text-sm ${
+                    className={`flex items-start justify-between gap-3 px-4 py-3.5 ${
                       entry.voided ? "text-slate-400 line-through" : ""
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className="font-medium text-slate-700">
+                      <p className={`text-base ${publicPrimaryText}`}>
                         {entry.description ||
                           STATEMENT_LABELS[entry.source_type] ||
                           "Entry"}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-400">
+                      <p className={`mt-0.5 ${publicHintText}`}>
                         {formatDate(entry.entry_date)}
                         {ctx ? ` · ${ctx}` : ""}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
                       <p
-                        className={`font-semibold ${
-                          isCharge ? "text-rose-600" : "text-emerald-600"
+                        className={`text-base font-bold ${
+                          isCharge ? "text-rose-700" : "text-emerald-700"
                         }`}
                       >
                         {isCharge
@@ -301,7 +275,13 @@ export default async function PlayerPortal({
                           : `− ${formatMoney(credit)}`}
                       </p>
                       {!entry.voided ? (
-                        <p className="mt-0.5 text-xs text-slate-400">
+                        <p className={`mt-0.5 text-sm font-medium ${
+                          Math.abs(running) < SETTLE_TOLERANCE
+                            ? "text-slate-500"
+                            : running > 0
+                              ? "text-rose-600"
+                              : "text-emerald-600"
+                        }`}>
                           {balLabel}
                         </p>
                       ) : null}
@@ -310,60 +290,47 @@ export default async function PlayerPortal({
                 );
               })}
             </Card>
-            <p className="mt-2 px-1 text-xs text-slate-400">
-              Charges are in red, payments &amp; credits in green. The grey line
-              is your running balance after each item.
+            <p className={`mt-2.5 px-1 ${publicHintText}`}>
+              Charges in <span className="font-semibold text-rose-700">red</span>,
+              payments in{" "}
+              <span className="font-semibold text-emerald-700">green</span>. Grey
+              line = running balance.
             </p>
           </>
         )}
-      </Section>
+      </PublicSection>
 
-      {/* Attendance history */}
-      <Section title="Appearance history">
+      <PublicSection title="Appearance history">
         {history.length === 0 ? (
           <EmptyState title="No past games yet" />
         ) : (
-          <Card className="divide-y divide-slate-100">
+          <Card className="divide-y divide-slate-100 overflow-hidden">
             {history.map((a) => (
               <div
                 key={a.id}
-                className="flex items-center justify-between px-4 py-3 text-sm"
+                className="flex items-center justify-between gap-3 px-4 py-3.5"
               >
-                <span>
-                  <span className="font-medium text-slate-700">
+                <div>
+                  <span className={`text-base ${publicPrimaryText}`}>
                     {a.bookings.booking_code}
-                  </span>{" "}
-                  <span className="text-slate-400">
+                  </span>
+                  <span className={`ml-2 ${publicHintText}`}>
                     {formatDate(a.bookings.play_date)}
                   </span>
-                </span>
-                <StatusBadge status={a.actual_status ?? a.response_status} />
+                </div>
+                <StatusBadge
+                  status={a.actual_status ?? a.response_status}
+                  size="md"
+                />
               </div>
             ))}
           </Card>
         )}
-      </Section>
+      </PublicSection>
 
-      <footer className="mt-8 text-center text-xs text-slate-300">
+      <footer className="mt-8 text-center text-sm text-slate-400">
         Private link · do not share publicly
       </footer>
     </main>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-5">
-      <h2 className="mb-2 px-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
-        {title}
-      </h2>
-      {children}
-    </section>
   );
 }

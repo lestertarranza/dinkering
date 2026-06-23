@@ -4,9 +4,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { formatBookingContext } from "@/lib/booking-context";
+import { validatePublicTeamToken } from "@/lib/public-links";
 import {
-  validatePublicTeamToken,
-} from "@/lib/public-links";
+  PublicPageHeader,
+  PublicNavLink,
+  publicMainClass,
+  publicTapBlockClass,
+  publicChevronClass,
+  publicPrimaryText,
+  publicMetaText,
+  publicHintText,
+} from "@/components/public-ui";
 import type { Booking } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +39,6 @@ export default async function PublicSchedule({
 
   const upcoming = (bookings ?? []) as Booking[];
 
-  // RSVP counts per booking.
   const bookingIds = upcoming.map((b) => b.id);
   const { data: attendance } = bookingIds.length
     ? await db
@@ -60,32 +67,21 @@ export default async function PublicSchedule({
   }
 
   return (
-    <main className="mx-auto max-w-lg px-4 py-6">
-      <header className="mb-5 text-center">
-        <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-xl">
-          🏓
-        </div>
-        <h1 className="text-xl font-semibold text-slate-900">
-          Upcoming games
-        </h1>
-        <p className="text-sm text-slate-500">
-          Tap a game to see who&apos;s invited and RSVP status.
-        </p>
-      </header>
+    <main className={publicMainClass}>
+      <PublicPageHeader
+        icon="🏓"
+        title="Upcoming games"
+        subtitle="Tap a game to see who's invited and RSVP status."
+      />
 
-      <nav className="mb-4 flex justify-center gap-3 text-xs">
-        <Link
-          href={`/board/${token}`}
-          className="text-emerald-600 hover:underline"
-        >
-          Team balances →
-        </Link>
+      <nav className="mb-5 flex justify-center">
+        <PublicNavLink href={`/board/${token}`}>Team balances</PublicNavLink>
       </nav>
 
       {upcoming.length === 0 ? (
         <EmptyState title="No upcoming games scheduled" />
       ) : (
-        <Card className="divide-y divide-slate-100">
+        <Card className="divide-y divide-slate-100 overflow-hidden">
           {upcoming.map((b) => {
             const st = stats.get(b.id);
             const ctx = formatBookingContext(b);
@@ -93,37 +89,52 @@ export default async function PublicSchedule({
               <Link
                 key={b.id}
                 href={`/schedule/${token}/${b.id}`}
-                className="block px-4 py-3 transition hover:bg-slate-50"
+                className={publicTapBlockClass}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium text-slate-900">
+                    <p className={`text-lg ${publicPrimaryText}`}>
                       {b.booking_code ?? "Booking"}
                     </p>
-                    <p className="text-sm text-slate-600">
+                    <p className={`mt-0.5 ${publicMetaText}`}>
                       {formatDate(b.play_date)}
                     </p>
                     {ctx ? (
-                      <p className="mt-0.5 text-xs text-slate-400">{ctx}</p>
+                      <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
                     ) : null}
                     {st && st.invited > 0 ? (
-                      <p className="mt-1 text-xs text-slate-400">
-                        {st.going} going
-                        {st.maybe > 0 ? ` · ${st.maybe} maybe` : ""}
-                        {st.notGoing > 0 ? ` · ${st.notGoing} not going` : ""}
-                        {st.invited - st.going - st.maybe - st.notGoing > 0
-                          ? ` · ${
-                              st.invited - st.going - st.maybe - st.notGoing
-                            } no response`
-                          : ""}
+                      <p className="mt-2 text-sm font-medium text-emerald-800">
+                        <span className="text-emerald-700">{st.going} going</span>
+                        {st.maybe > 0 ? (
+                          <span className="text-amber-700">
+                            {" "}
+                            · {st.maybe} maybe
+                          </span>
+                        ) : null}
+                        {st.notGoing > 0 ? (
+                          <span className="text-rose-700">
+                            {" "}
+                            · {st.notGoing} not going
+                          </span>
+                        ) : null}
+                        {st.invited - st.going - st.maybe - st.notGoing > 0 ? (
+                          <span className="text-slate-600">
+                            {" "}
+                            ·{" "}
+                            {st.invited - st.going - st.maybe - st.notGoing}{" "}
+                            no response
+                          </span>
+                        ) : null}
                       </p>
                     ) : (
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p className={`mt-1 ${publicHintText}`}>
                         No players invited yet
                       </p>
                     )}
                   </div>
-                  <span className="shrink-0 text-slate-300">›</span>
+                  <span className={publicChevronClass} aria-hidden>
+                    ›
+                  </span>
                 </div>
               </Link>
             );
@@ -131,7 +142,7 @@ export default async function PublicSchedule({
         </Card>
       )}
 
-      <footer className="mt-6 text-center text-xs text-slate-300">
+      <footer className="mt-6 text-center text-sm text-slate-400">
         Shared schedule · please don&apos;t post publicly
       </footer>
     </main>

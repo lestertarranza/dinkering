@@ -8,6 +8,15 @@ import {
   publicPlayerLabel,
   validatePublicTeamToken,
 } from "@/lib/public-links";
+import {
+  PublicNavLink,
+  publicMainClass,
+  publicTapRowClass,
+  publicChevronClass,
+  publicBackLinkClass,
+  publicPrimaryText,
+  publicHintText,
+} from "@/components/public-ui";
 import type { Booking, BookingAttendance, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -67,84 +76,79 @@ export default async function PublicBookingRoster({
   const ctx = formatBookingContext(b);
 
   return (
-    <main className="mx-auto max-w-lg px-4 py-6">
+    <main className={publicMainClass}>
       <header className="mb-5">
-        <Link
-          href={`/schedule/${token}`}
-          className="mb-3 inline-block text-sm text-emerald-600 hover:underline"
-        >
+        <Link href={`/schedule/${token}`} className={publicBackLinkClass}>
           ← All upcoming games
         </Link>
-        <div className="text-center">
-          <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-xl">
+        <div className="mt-4 text-center">
+          <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
             🏓
           </div>
-          <h1 className="text-xl font-semibold text-slate-900">
+          <h1 className={`text-2xl ${publicPrimaryText}`}>
             {b.booking_code ?? "Booking"}
           </h1>
-          <p className="text-sm text-slate-600">{formatDate(b.play_date)}</p>
+          <p className="mt-1 text-base font-medium text-slate-700">
+            {formatDate(b.play_date)}
+          </p>
           {ctx ? (
-            <p className="mt-1 text-xs text-slate-400">{ctx}</p>
+            <p className={`mt-1.5 ${publicHintText}`}>{ctx}</p>
           ) : null}
         </div>
       </header>
 
       {roster.length > 0 ? (
-        <p className="mb-3 px-1 text-center text-xs text-slate-500">
-          {going} going · {maybe} maybe · {notGoing} not going
-          {noResponse > 0 ? ` · ${noResponse} no response` : ""}
+        <p className="mb-3 px-1 text-center text-sm font-semibold text-slate-700">
+          <span className="text-emerald-700">{going} going</span>
+          {" · "}
+          <span className="text-amber-700">{maybe} maybe</span>
+          {" · "}
+          <span className="text-rose-700">{notGoing} not going</span>
+          {noResponse > 0 ? (
+            <>
+              {" · "}
+              <span className="text-slate-600">{noResponse} no response</span>
+            </>
+          ) : null}
         </p>
       ) : null}
 
       {roster.length === 0 ? (
         <EmptyState title="No players invited yet" />
       ) : (
-        <Card className="divide-y divide-slate-100">
+        <Card className="divide-y divide-slate-100 overflow-hidden">
           {roster.map((r) => (
             <Link
               key={r.id}
               href={`/p/${r.players.public_token}`}
-              className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-slate-50"
+              className={publicTapRowClass}
             >
-              <div className="min-w-0">
-                <p className="truncate font-medium text-slate-900">
+              <div className="min-w-0 flex-1">
+                <p className={`text-base ${publicPrimaryText}`}>
                   {publicPlayerLabel(r.players)}
                 </p>
-                <p className="text-xs text-slate-400">
-                  Tap to open your page &amp; RSVP
-                </p>
+                <p className={publicHintText}>Tap to open your page & RSVP</p>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <StatusBadge status={r.response_status} />
-                <span className="text-slate-300">›</span>
-              </div>
+              <StatusBadge status={r.response_status} size="md" />
+              <span className={publicChevronClass} aria-hidden>
+                ›
+              </span>
             </Link>
           ))}
         </Card>
       )}
 
-      <p className="mt-4 px-1 text-center text-xs text-slate-400">
-        Tap your name to open your private page and confirm Going / Maybe /
-        Not going.
+      <p className={`mt-4 px-1 text-center ${publicHintText}`}>
+        Tap your name to open your private page and confirm Going / Maybe / Not
+        going.
       </p>
 
-      <nav className="mt-4 flex justify-center gap-3 text-xs">
-        <Link
-          href={`/board/${token}`}
-          className="text-emerald-600 hover:underline"
-        >
-          Team balances
-        </Link>
-        <span className="text-slate-300">·</span>
-        <Link
-          href={`/schedule/${token}`}
-          className="text-emerald-600 hover:underline"
-        >
-          All upcoming games
-        </Link>
+      <nav className="mt-5 flex flex-wrap justify-center gap-2">
+        <PublicNavLink href={`/board/${token}`}>Team balances</PublicNavLink>
+        <PublicNavLink href={`/schedule/${token}`}>All games</PublicNavLink>
       </nav>
 
-      <footer className="mt-6 text-center text-xs text-slate-300">
+      <footer className="mt-6 text-center text-sm text-slate-400">
         Shared schedule · please don&apos;t post publicly
       </footer>
     </main>

@@ -31,13 +31,19 @@ const toneClasses: Record<Tone, string> = {
 export function Badge({
   children,
   tone = "neutral",
+  size = "sm",
 }: {
   children: ReactNode;
   tone?: Tone;
+  size?: "sm" | "md";
 }) {
+  const sizeClass =
+    size === "md"
+      ? "px-3 py-1 text-sm font-semibold"
+      : "px-2.5 py-0.5 text-xs font-medium";
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${toneClasses[tone]}`}
+      className={`inline-flex items-center rounded-full ring-1 ring-inset ${sizeClass} ${toneClasses[tone]}`}
     >
       {children}
     </span>
@@ -69,13 +75,23 @@ const statusLabelMap: Record<string, string> = {
   late_cancel: "Late cancel",
 };
 
-export function StatusBadge({ status }: { status: string | null | undefined }) {
+export function StatusBadge({
+  status,
+  size = "sm",
+}: {
+  status: string | null | undefined;
+  size?: "sm" | "md";
+}) {
   if (!status) return <span className="text-slate-400">—</span>;
   const tone = statusToneMap[status] ?? "neutral";
   const label =
     statusLabelMap[status] ??
     status.charAt(0).toUpperCase() + status.slice(1);
-  return <Badge tone={tone}>{label}</Badge>;
+  return (
+    <Badge tone={tone} size={size}>
+      {label}
+    </Badge>
+  );
 }
 
 export function Card({
@@ -135,9 +151,9 @@ export function EmptyState({
 }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-      <p className="font-medium text-slate-700">{title}</p>
+      <p className="text-base font-semibold text-slate-800">{title}</p>
       {description ? (
-        <p className="mt-1 text-sm text-slate-500">{description}</p>
+        <p className="mt-1.5 text-sm text-slate-600">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -169,14 +185,15 @@ export function PageHeader({
 }
 
 const buttonBase =
-  "inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex touch-manipulation items-center justify-center gap-1.5 rounded-lg px-3.5 py-2.5 text-sm font-medium transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.97]";
 
 const buttonVariants = {
-  primary: "bg-emerald-600 text-white hover:bg-emerald-700",
+  primary:
+    "bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800",
   secondary:
-    "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-  danger: "bg-rose-600 text-white hover:bg-rose-700",
-  ghost: "text-slate-600 hover:bg-slate-100",
+    "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100",
+  danger: "bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800",
+  ghost: "text-slate-600 hover:bg-slate-100 active:bg-slate-200",
 };
 
 export function buttonClass(

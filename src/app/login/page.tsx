@@ -94,9 +94,6 @@ function LoginForm() {
           Create an admin user in your Supabase project&apos;s Authentication
           tab.
         </p>
-        <p className="mt-1 text-center text-[10px] text-slate-300">
-          Auto-deploy test · live
-        </p>
       </div>
     </main>
   );

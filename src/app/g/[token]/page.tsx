@@ -7,6 +7,12 @@ import {
   buildLedgerBookingContext,
   formatBookingContext,
 } from "@/lib/booking-context";
+import {
+  PublicSection,
+  publicMainClass,
+  publicPrimaryText,
+  publicHintText,
+} from "@/components/public-ui";
 import type {
   BookingShare,
   LedgerEntry,
@@ -73,17 +79,17 @@ export default async function GroupPortal({
   );
 
   return (
-    <main className="mx-auto max-w-lg px-4 py-6">
+    <main className={publicMainClass}>
       <header className="mb-5 text-center">
-        <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-600 text-xl">
+        <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
           👥
         </div>
-        <h1 className="text-xl font-semibold text-slate-900">{g.name}</h1>
-        <p className="text-sm text-slate-500">Shared pickleball wallet</p>
+        <h1 className={`text-2xl ${publicPrimaryText}`}>{g.name}</h1>
+        <p className="mt-0.5 text-base text-slate-600">Shared pickleball wallet</p>
       </header>
 
       <Card
-        className={`mb-4 p-6 text-center ${
+        className={`mb-5 p-6 text-center ${
           d.tone === "collect"
             ? "border-rose-200 bg-rose-50"
             : d.tone === "credit"
@@ -93,24 +99,24 @@ export default async function GroupPortal({
       >
         {d.tone === "collect" ? (
           <>
-            <p className="text-sm text-rose-700">This group owes</p>
-            <p className="mt-1 text-3xl font-bold text-rose-700">
+            <p className="text-base font-medium text-rose-800">This group owes</p>
+            <p className="mt-1 text-4xl font-bold text-rose-700">
               {formatMoney(d.amount)}
             </p>
           </>
         ) : d.tone === "credit" ? (
           <>
-            <p className="text-sm text-emerald-700">Group credit</p>
-            <p className="mt-1 text-3xl font-bold text-emerald-700">
+            <p className="text-base font-medium text-emerald-800">Group credit</p>
+            <p className="mt-1 text-4xl font-bold text-emerald-700">
               {formatMoney(d.amount)}
             </p>
           </>
         ) : (
-          <p className="text-2xl font-bold text-slate-700">Settled 🎉</p>
+          <p className="text-3xl font-bold text-slate-800">Settled 🎉</p>
         )}
       </Card>
 
-      <Section title="Members">
+      <PublicSection title="Members">
         <Card className="p-4">
           <div className="flex flex-wrap gap-2">
             {(members ?? []).length === 0 ? (
@@ -128,9 +134,9 @@ export default async function GroupPortal({
             )}
           </div>
         </Card>
-      </Section>
+      </PublicSection>
 
-      <Section title="Charges by member">
+      <PublicSection title="Charges by member">
         {(bShares ?? []).length === 0 && (eShares ?? []).length === 0 ? (
           <EmptyState title="No charges yet" />
         ) : (
@@ -182,9 +188,9 @@ export default async function GroupPortal({
             ))}
           </Card>
         )}
-      </Section>
+      </PublicSection>
 
-      <Section title="Payments by member">
+      <PublicSection title="Payments by member">
         {(payments ?? []).length === 0 ? (
           <EmptyState title="No payments yet" />
         ) : (
@@ -203,38 +209,21 @@ export default async function GroupPortal({
             )}
           </Card>
         )}
-      </Section>
+      </PublicSection>
 
-      <Section title="Shared ledger">
+      <PublicSection title="Shared ledger">
         <Card className="overflow-hidden">
           <LedgerTable
             entries={(ledger ?? []) as LedgerEntry[]}
             bookingContext={ledgerContext}
           />
         </Card>
-      </Section>
+      </PublicSection>
 
-      <footer className="mt-8 text-center text-xs text-slate-300">
+      <footer className="mt-8 text-center text-sm text-slate-400">
         Private link · do not share publicly
       </footer>
     </main>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mb-5">
-      <h2 className="mb-2 px-1 text-sm font-semibold uppercase tracking-wide text-slate-500">
-        {title}
-      </h2>
-      {children}
-    </section>
   );
 }
 
@@ -248,14 +237,14 @@ function Row({
   amount: number;
 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 text-sm">
-      <span>
-        <span className="font-medium text-slate-700">{left}</span>
-        <span className="ml-2 text-xs text-slate-400">{sub}</span>
-      </span>
+    <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+      <div className="min-w-0">
+        <p className={`text-base ${publicPrimaryText}`}>{left}</p>
+        <p className={`mt-0.5 ${publicHintText}`}>{sub}</p>
+      </div>
       <span
-        className={`font-medium ${
-          amount < 0 ? "text-emerald-600" : "text-rose-600"
+        className={`shrink-0 text-base font-bold ${
+          amount < 0 ? "text-emerald-700" : "text-rose-700"
         }`}
       >
         {amount < 0
