@@ -132,11 +132,11 @@ export function PaymentForm({
         <Field label="Method">
           <input
             name="payment_method"
-            placeholder="GCash / Cash / Bank"
+            placeholder="GCash / Cash / Bank / Others"
             className={inputClass}
           />
         </Field>
-        <Field label="GCash ref #" hint="Transaction or reference number">
+        <Field label="Reference number" hint="Transaction or reference number">
           <input
             name="reference_number"
             placeholder="e.g. 1234567890"

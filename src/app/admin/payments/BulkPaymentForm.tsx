@@ -176,11 +176,11 @@ export function BulkPaymentForm({
         <Field label="Method">
           <input
             name="payment_method"
-            placeholder="GCash / Cash"
+            placeholder="GCash / Cash / Bank / Others"
             className={inputClass}
           />
         </Field>
-        <Field label="GCash ref #">
+        <Field label="Reference number">
           <input
             name="reference_number"
             placeholder="e.g. 1234567890"
