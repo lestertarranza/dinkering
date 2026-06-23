@@ -34,6 +34,7 @@ export default async function PaymentsPage({
     booking?: string;
     expense?: string;
     page?: string;
+    apage?: string;
     cat?: string;
   }>;
 }) {
@@ -41,6 +42,7 @@ export default async function PaymentsPage({
     booking = "",
     expense = "",
     page: pageParam,
+    apage: apageParam,
     cat: catParam,
   } = await searchParams;
   const cat: Category = (["all", "court", "expense", "credit"].includes(
@@ -50,10 +52,11 @@ export default async function PaymentsPage({
     : "all") as Category;
   const supabase = await createClient();
 
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 20;
   const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
+  const apage = Math.max(1, parseInt(apageParam ?? "1", 10) || 1);
 
   // Paginated list of real payment rows, filtered to the active category.
   let listQuery = supabase
@@ -132,18 +135,21 @@ export default async function PaymentsPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const showingFrom = total === 0 ? 0 : from + 1;
   const showingTo = Math.min(from + PAGE_SIZE, total);
-  const linkFor = (next: { cat?: Category; page?: number }) => {
+  const linkFor = (next: { cat?: Category; page?: number; apage?: number }) => {
     const sp = new URLSearchParams();
     if (booking) sp.set("booking", booking);
     if (expense) sp.set("expense", expense);
     const c = next.cat ?? cat;
     if (c !== "all") sp.set("cat", c);
-    if ((next.page ?? 1) > 1) sp.set("page", String(next.page));
+    const p = next.page ?? (next.cat !== undefined ? 1 : page);
+    if (p > 1) sp.set("page", String(p));
+    const ap = next.apage ?? (next.cat !== undefined ? 1 : apage);
+    if (ap > 1) sp.set("apage", String(ap));
     const qs = sp.toString();
     return qs ? `/admin/payments?${qs}` : "/admin/payments";
   };
 
-  const autoForCat =
+  const autoAll =
     cat === "court"
       ? audit.court
       : cat === "expense"
@@ -161,6 +167,11 @@ export default async function PaymentsPage({
         : cat === "credit"
           ? 0
           : round2(audit.courtTotal + audit.expenseTotal);
+  const AUTO_PAGE_SIZE = 20;
+  const autoTotalCount = autoAll.length;
+  const autoTotalPages = Math.max(1, Math.ceil(autoTotalCount / AUTO_PAGE_SIZE));
+  const autoFrom = (apage - 1) * AUTO_PAGE_SIZE;
+  const autoForCat = autoAll.slice(autoFrom, autoFrom + AUTO_PAGE_SIZE);
 
   return (
     <div>
@@ -277,52 +288,7 @@ export default async function PaymentsPage({
             </Card>
           </div>
 
-          {/* Automatic settlements (derived, read-only) */}
-          {cat !== "credit" && autoForCat.length > 0 ? (
-            <div className="mb-5">
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                Auto-settled from credit / group funds
-                <Badge tone="info">{autoForCat.length}</Badge>
-              </h2>
-              <div className="space-y-2">
-                {autoForCat.slice(0, 100).map((s) => {
-                  const href =
-                    s.category === "court"
-                      ? `/admin/bookings/${s.parentId}`
-                      : `/admin/expenses/${s.parentId}`;
-                  return (
-                    <Card
-                      key={s.id}
-                      className="flex items-center justify-between gap-3 border-sky-100 bg-sky-50/40 p-4"
-                    >
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
-                          {s.payerName}
-                          <Badge tone="info">Auto</Badge>
-                          <Badge tone={s.category === "court" ? "neutral" : "warning"}>
-                            {s.category === "court" ? "Court" : "Team expense"}
-                          </Badge>
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          <Link href={href} className="hover:underline">
-                            {s.chargeLabel}
-                          </Link>
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-400">
-                          {formatDate(s.date)} · {s.fundingLabel}
-                        </p>
-                      </div>
-                      <span className="font-semibold text-sky-700">
-                        {formatMoney(s.amount)}
-                      </span>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Real payments list */}
+          {/* Real payments list — shown first */}
           <h2 className="mb-2 text-sm font-semibold text-slate-700">
             Payments received
           </h2>
@@ -451,6 +417,85 @@ export default async function PaymentsPage({
               </div>
             </div>
           ) : null}
+
+          {/* Auto-settled section — below payments received */}
+          {cat !== "credit" && autoAll.length > 0 ? (
+            <div className="mt-8">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                Auto-settled from credit / group funds
+                <Badge tone="info">{autoAll.length}</Badge>
+              </h2>
+              <div className="space-y-2">
+                {autoForCat.map((s) => {
+                  const href =
+                    s.category === "court"
+                      ? `/admin/bookings/${s.parentId}`
+                      : `/admin/expenses/${s.parentId}`;
+                  return (
+                    <Card
+                      key={s.id}
+                      className="flex items-center justify-between gap-3 border-sky-100 bg-sky-50/40 p-4"
+                    >
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                          {s.payerName}
+                          <Badge tone="info">Auto</Badge>
+                          <Badge
+                            tone={s.category === "court" ? "neutral" : "warning"}
+                          >
+                            {s.category === "court" ? "Court" : "Team expense"}
+                          </Badge>
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          <Link href={href} className="hover:underline">
+                            {s.chargeLabel}
+                          </Link>
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {formatDate(s.date)} · {s.fundingLabel}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-sky-700">
+                        {formatMoney(s.amount)}
+                      </span>
+                    </Card>
+                  );
+                })}
+              </div>
+              {autoTotalCount > AUTO_PAGE_SIZE ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-slate-400">
+                    Showing {autoFrom + 1}–
+                    {Math.min(autoFrom + AUTO_PAGE_SIZE, autoTotalCount)} of{" "}
+                    {autoTotalCount} auto-settlement
+                    {autoTotalCount === 1 ? "" : "s"}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {apage > 1 ? (
+                      <Link
+                        href={linkFor({ apage: apage - 1 })}
+                        className={buttonClass("ghost")}
+                      >
+                        ← Newer
+                      </Link>
+                    ) : null}
+                    <span className="text-xs text-slate-400">
+                      Page {apage} / {autoTotalPages}
+                    </span>
+                    {apage < autoTotalPages ? (
+                      <Link
+                        href={linkFor({ apage: apage + 1 })}
+                        className={buttonClass("ghost")}
+                      >
+                        Older →
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <p className="mt-3 text-center text-xs text-slate-400">
             <Link href="/admin" className="text-emerald-600 hover:underline">
               Back to dashboard

@@ -17,7 +17,7 @@ import {
   describeBalance,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
-import { updateGcashNumber } from "./actions";
+import { updateGcashNumber, updateBankTransfer } from "./actions";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +34,7 @@ type CollectRow = {
 function buildReminder(
   row: CollectRow,
   gcash: string | null,
+  bank: string | null,
   appUrl: string,
 ): string {
   const d = describeBalance(row.balance);
@@ -41,8 +42,12 @@ function buildReminder(
     row.kind === "player"
       ? `${appUrl}/p/${row.token}`
       : `${appUrl}/g/${row.token}`;
-  const gcashLine = gcash ? `GCash: ${gcash}. ` : "";
-  return `Hi ${row.label}, your Dinkering balance is ${formatMoney(d.amount)} owed. ${gcashLine}Please send payment and share your reference. View details: ${link}`;
+  const parts: string[] = [];
+  if (gcash) parts.push(`GCash: ${gcash}`);
+  if (bank) parts.push(`Bank Transfer: ${bank}`);
+  const paymentLine =
+    parts.length > 0 ? parts.join(" | ") + ". " : "";
+  return `Hi ${row.label}, your Dinkering balance is ${formatMoney(d.amount)} owed. ${paymentLine}Please send payment and share your reference. View details: ${link}`;
 }
 
 export default async function CollectionsPage() {
@@ -59,7 +64,7 @@ export default async function CollectionsPage() {
     { data: groups },
     { data: memberships },
   ] = await Promise.all([
-    supabase.from("app_settings").select("gcash_number").single(),
+    supabase.from("app_settings").select("gcash_number, bank_transfer_details").single(),
     supabase
       .from("players")
       .select("id, name, display_name, public_token, active_status")
@@ -76,6 +81,7 @@ export default async function CollectionsPage() {
   ]);
 
   const gcash = (settings?.gcash_number as string | null) ?? null;
+  const bank = (settings?.bank_transfer_details as string | null) ?? null;
   const playerBalMap = new Map(
     ((playerBalances ?? []) as { player_id: string; balance: number }[]).map(
       (b) => [b.player_id, Number(b.balance)],
@@ -152,7 +158,7 @@ export default async function CollectionsPage() {
           </p>
         </Card>
 
-        <Card className="p-4">
+        <Card className="space-y-4 p-4">
           <ActionForm
             action={updateGcashNumber}
             className="space-y-2"
@@ -173,6 +179,28 @@ export default async function CollectionsPage() {
               Save GCash
             </SubmitButton>
           </ActionForm>
+          <div className="border-t border-slate-100 pt-4">
+            <ActionForm
+              action={updateBankTransfer}
+              className="space-y-2"
+              pendingLabel="Saving bank details…"
+            >
+              <Field
+                label="Bank transfer details"
+                hint="e.g. BDO · John Doe · 1234567890 — shown in reminders"
+              >
+                <input
+                  name="bank_transfer_details"
+                  defaultValue={bank ?? ""}
+                  placeholder="Bank · Account name · Account number"
+                  className={inputClass}
+                />
+              </Field>
+              <SubmitButton variant="secondary" pendingLabel="Saving…">
+                Save bank details
+              </SubmitButton>
+            </ActionForm>
+          </div>
         </Card>
       </div>
 
@@ -220,7 +248,7 @@ export default async function CollectionsPage() {
                   </div>
                 </div>
                 <CopyReminder
-                  message={buildReminder(r, gcash, appUrl)}
+                  message={buildReminder(r, gcash, bank, appUrl)}
                   label="Copy reminder"
                 />
               </div>
