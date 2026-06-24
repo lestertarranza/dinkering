@@ -16,6 +16,21 @@ const sourceLabels: Record<string, string> = {
   manual_adjustment: "Adjustment",
 };
 
+/** Split a balance-transfer description into its header and per-item lines. */
+function parseTransferDesc(
+  desc: string | null,
+): { header: string; items: string[] } | null {
+  if (!desc?.startsWith("Transfer ")) return null;
+  const dashIdx = desc.indexOf(" — ");
+  if (dashIdx === -1) return null;
+  const header = desc.slice(0, dashIdx).trim();
+  const rest = desc.slice(dashIdx + 3).trim();
+  const items = rest.length > 0
+    ? rest.split(";").map((s) => s.trim()).filter(Boolean)
+    : [];
+  return { header, items };
+}
+
 /**
  * Renders a ledger with a running balance column.
  * Entries should be passed oldest-first; the running balance is computed
@@ -79,7 +94,27 @@ export function LedgerTable({
                 {formatDate(entry.entry_date)}
               </td>
               <td className="px-4 py-2">
-                {entry.description || "—"}
+                {(() => {
+                  const transfer = parseTransferDesc(entry.description);
+                  if (transfer) {
+                    return (
+                      <>
+                        <span>{transfer.header}</span>
+                        {transfer.items.length > 0 && (
+                          <ul className="mt-1 space-y-0.5">
+                            {transfer.items.map((item, i) => (
+                              <li key={i} className="flex items-baseline gap-1 text-xs text-slate-500">
+                                <span className="shrink-0 text-slate-300">↳</span>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    );
+                  }
+                  return <>{entry.description || "—"}</>;
+                })()}
                 {(() => {
                   const owner = ownerNames?.get(entry.id);
                   return owner ? (
