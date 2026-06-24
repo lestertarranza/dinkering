@@ -14,6 +14,7 @@ const links = [
   { href: "/admin/payments", label: "Payments", icon: "💸" },
   { href: "/admin/expenses", label: "Team Expenses", icon: "🛒" },
   { href: "/admin/import", label: "Import", icon: "📥" },
+  { href: "/admin/docs", label: "Help & Docs", icon: "📖" },
 ];
 
 export function AdminNav({ email }: { email: string | null }) {

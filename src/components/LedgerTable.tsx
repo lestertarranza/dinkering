@@ -8,6 +8,9 @@ import {
 import type { LedgerExpenseCtx } from "@/lib/ledger-attribution";
 import type { LedgerEntry } from "@/lib/types";
 
+// Re-export so the type is usable from the component's import path
+export type { LedgerExpenseCtx };
+
 const sourceLabels: Record<string, string> = {
   booking_share: "Court share",
   payment: "Payment",
@@ -15,6 +18,21 @@ const sourceLabels: Record<string, string> = {
   team_expense_credit: "Expense reimbursement",
   manual_adjustment: "Adjustment",
 };
+
+/** Split a balance-transfer description into its header and per-item lines. */
+function parseTransferDesc(
+  desc: string | null,
+): { header: string; items: string[] } | null {
+  if (!desc?.startsWith("Transfer ")) return null;
+  const dashIdx = desc.indexOf(" — ");
+  if (dashIdx === -1) return null;
+  const header = desc.slice(0, dashIdx).trim();
+  const rest = desc.slice(dashIdx + 3).trim();
+  const items = rest.length > 0
+    ? rest.split(";").map((s) => s.trim()).filter(Boolean)
+    : [];
+  return { header, items };
+}
 
 /**
  * Renders a ledger with a running balance column.
@@ -26,6 +44,7 @@ export function LedgerTable({
   bookingContext,
   ownerNames,
   expenseContext,
+  transferItems,
 }: {
   entries: LedgerEntry[];
   bookingContext?: Map<string, BookingContext>;
@@ -33,6 +52,8 @@ export function LedgerTable({
   ownerNames?: Map<string, string>;
   /** Optional expense detail context for team_expense_share entries. */
   expenseContext?: Map<string, LedgerExpenseCtx>;
+  /** Optional per-entry enriched item list for balance-transfer entries. */
+  transferItems?: Map<string, Array<{ text: string; href?: string }>>;
 }) {
   const ordered = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
@@ -79,7 +100,58 @@ export function LedgerTable({
                 {formatDate(entry.entry_date)}
               </td>
               <td className="px-4 py-2">
-                {entry.description || "—"}
+                {(() => {
+                  // Use pre-enriched items from the page if available, else
+                  // fall back to parsing the raw description.
+                  const enrichedItems = transferItems?.get(entry.id);
+                  // Build rich items: prefer DB-enriched (with links), else parse raw.
+                  type RichItem = { text: string; href?: string };
+                  let richHeader: string | null = null;
+                  let richItems: RichItem[] | null = null;
+
+                  if (enrichedItems) {
+                    const desc = entry.description ?? "";
+                    const dashIdx = desc.indexOf(" — ");
+                    if (dashIdx > 0) {
+                      richHeader = desc.slice(0, dashIdx).trim();
+                      richItems = enrichedItems;
+                    }
+                  } else {
+                    const parsed = parseTransferDesc(entry.description);
+                    if (parsed) {
+                      richHeader = parsed.header;
+                      richItems = parsed.items.map((t) => ({ text: t }));
+                    }
+                  }
+
+                  if (richHeader !== null && richItems !== null) {
+                    return (
+                      <>
+                        <span>{richHeader}</span>
+                        {richItems.length > 0 && (
+                          <ul className="mt-1 space-y-0.5">
+                            {richItems.map((item, i) => (
+                              <li key={i} className="flex items-baseline gap-1 text-xs text-slate-500">
+                                <span className="shrink-0 text-slate-300">↳</span>
+                                {item.href ? (
+                                  <Link
+                                    href={item.href}
+                                    className="text-emerald-600 hover:underline"
+                                  >
+                                    {item.text}
+                                  </Link>
+                                ) : (
+                                  item.text
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    );
+                  }
+                  return <>{entry.description || "—"}</>;
+                })()}
                 {(() => {
                   const owner = ownerNames?.get(entry.id);
                   return owner ? (

@@ -197,7 +197,7 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
     const { data } = await db
       .from("team_expense_shares")
       .select(
-        "id, team_expense_id, team_expenses(expense_code, description, purchase_date)",
+        "id, team_expense_id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
       )
       .in("id", expenseShareIds);
     for (const s of (data ?? []) as unknown as {
@@ -206,14 +206,21 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
       team_expenses: {
         expense_code: string | null;
         description: string;
-        purchase_date: string;
+        players: { name: string } | null;
+        player_groups: { name: string } | null;
       } | null;
     }[]) {
       const e = s.team_expenses;
+      const paidBy = e?.players?.name ?? e?.player_groups?.name ?? null;
       expenseMeta.set(s.id, {
         team_expense_id: s.team_expense_id,
         label: e
-          ? `Expense — ${e.expense_code ?? e.description}`
+          ? [
+              `Expense — ${e.expense_code ?? "Expense"} · ${e.description}`,
+              paidBy ? `Paid by ${paidBy}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
           : "Team expense share",
       });
     }

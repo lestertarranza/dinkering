@@ -12,6 +12,7 @@ import {
   buildLedgerBookingContext,
   formatBookingContext,
 } from "@/lib/booking-context";
+import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
 import {
   PublicNavLink,
   PublicSection,
@@ -252,7 +253,10 @@ export default async function PlayerPortal({
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
   const d = describeBalance(balance);
-  const ledgerContext = await buildLedgerBookingContext(db, ledger);
+  const [ledgerContext, transferItemMap] = await Promise.all([
+    buildLedgerBookingContext(db, ledger),
+    buildTransferItemEnrichment(db, ledger),
+  ]);
 
   const { data: settings } = await db
     .from("app_settings")
@@ -523,6 +527,23 @@ export default async function PlayerPortal({
                       .join(" · ")
                   : null;
 
+                // Detect balance-transfer entries — use DB-enriched items when
+                // available (resolves expense details for old & new format).
+                const transferParts = (() => {
+                  const d = entry.description;
+                  if (!d?.startsWith("Transfer ")) return null;
+                  const dashIdx = d.indexOf(" — ");
+                  if (dashIdx === -1) return null;
+                  const header = d.slice(0, dashIdx).trim();
+                  const enriched = transferItemMap.get(entry.id);
+                  if (enriched) return { header, items: enriched.map((e) => e.text) };
+                  const rest = d.slice(dashIdx + 3).trim();
+                  const items = rest.length > 0
+                    ? rest.split(";").map((s) => s.trim()).filter(Boolean)
+                    : [];
+                  return { header, items };
+                })();
+
                 return (
                   <div
                     key={entry.id}
@@ -531,9 +552,30 @@ export default async function PlayerPortal({
                     }`}
                   >
                     <div className="min-w-0">
-                      <p className={`text-base ${publicPrimaryText}`}>
-                        {displayDesc}
-                      </p>
+                      {transferParts ? (
+                        <>
+                          <p className={`text-base ${publicPrimaryText}`}>
+                            {transferParts.header}
+                          </p>
+                          {transferParts.items.length > 0 && (
+                            <ul className="mt-1 space-y-0.5">
+                              {transferParts.items.map((item, i) => (
+                                <li
+                                  key={i}
+                                  className={`flex items-baseline gap-1 ${publicHintText}`}
+                                >
+                                  <span className="shrink-0 text-slate-300">↳</span>
+                                  {item}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      ) : (
+                        <p className={`text-base ${publicPrimaryText}`}>
+                          {displayDesc}
+                        </p>
+                      )}
                       <p className={`mt-0.5 ${publicHintText}`}>
                         {formatDate(entry.entry_date)}
                         {bookingCtx ? ` · ${bookingCtx}` : ""}
