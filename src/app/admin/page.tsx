@@ -149,17 +149,34 @@ export default async function Dashboard({
   const expOutstandingMap = new Map<string, number>(); // expense_id → outstanding
 
   if (allExpShareRows.length > 0) {
-    // 1. Resolve wallets for player-assigned shares (some may route to a group).
-    const playerShareIds = [
-      ...new Set(
-        allExpShareRows.filter((s) => s.player_id).map((s) => s.player_id!),
+    // 1. Resolve wallets for player-assigned shares, using the expense's own
+    //    purchase_date (not today). This matches the expense detail page which
+    //    also resolves wallets as of the purchase date. Group by unique date
+    //    so we don't make more DB calls than necessary.
+    const expDateMap = new Map(
+      ((allExpenses ?? []) as { id: string; purchase_date: string }[]).map(
+        (e) => [e.id, e.purchase_date],
       ),
-    ];
-    const walletOwners = await resolveWalletOwnersForPlayers(
-      supabase,
-      playerShareIds,
-      today,
     );
+    const playersByDate = new Map<string, Set<string>>();
+    for (const s of allExpShareRows.filter((s) => s.player_id)) {
+      const date = expDateMap.get(s.team_expense_id) ?? today;
+      const set = playersByDate.get(date) ?? new Set<string>();
+      set.add(s.player_id!);
+      playersByDate.set(date, set);
+    }
+    // Call resolveWalletOwnersForPlayers once per unique purchase_date.
+    const walletOwnersByPlayerDate = new Map<string, { player_id: string | null; player_group_id: string | null }>();
+    await Promise.all(
+      [...playersByDate.entries()].map(async ([date, pids]) => {
+        const owners = await resolveWalletOwnersForPlayers(supabase, [...pids], date);
+        for (const [pid, owner] of owners) {
+          walletOwnersByPlayerDate.set(`${pid}:${date}`, owner);
+        }
+      }),
+    );
+    // Build a unified view of walletOwner per player, keyed by `pid:date`.
+    const walletOwners = walletOwnersByPlayerDate;
 
     // 2. Collect all distinct wallets.
     const walletPIds = new Set<string>();
@@ -172,6 +189,15 @@ export default async function Dashboard({
     for (const s of allExpShareRows) {
       if (s.player_group_id) walletGIds.add(s.player_group_id);
     }
+    // Helper: look up the resolved wallet for a player share using the date key.
+    const getShareWallet = (s: ExpenseShareRow) => {
+      if (s.player_id) {
+        const date = expDateMap.get(s.team_expense_id) ?? today;
+        return walletOwners.get(`${s.player_id}:${date}`)
+          ?? { player_id: s.player_id, player_group_id: null };
+      }
+      return { player_id: null, player_group_id: s.player_group_id };
+    };
 
     // 3. Batch-fetch ledger entries for all wallets.
     const [{ data: pLedger }, { data: gLedger }] = await Promise.all([
@@ -222,10 +248,19 @@ export default async function Dashboard({
       }
     }
 
-    // 6. Sum per expense.
+    // 6. Sum per expense — look up remaining using the correct wallet key.
     for (const s of allExpShareRows) {
-      // A fully-settled share won't appear in the open-charges map → remaining = 0.
-      const remaining = shareRemainingMap.get(s.id) ?? 0;
+      const w = getShareWallet(s);
+      const walletKey = w.player_group_id
+        ? `g:${w.player_group_id}`
+        : w.player_id
+          ? `p:${w.player_id}`
+          : null;
+      // Try the FIFO result; fall back to 0 if not present (fully settled).
+      const remaining =
+        walletKey && shareRemainingMap.has(s.id)
+          ? (shareRemainingMap.get(s.id) ?? 0)
+          : 0;
       expOutstandingMap.set(
         s.team_expense_id,
         round2((expOutstandingMap.get(s.team_expense_id) ?? 0) + remaining),
