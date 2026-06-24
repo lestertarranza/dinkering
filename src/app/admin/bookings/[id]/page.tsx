@@ -314,10 +314,16 @@ export default async function BookingDetail({
                   {[...roster]
                     .sort((a, b) => {
                       const rank = (r: typeof a) => {
-                        if (r.actual_status === "attended") return 0;
-                        if (!r.actual_status && r.response_status === "going") return 1;
-                        if (r.actual_status && r.actual_status !== "absent") return 2;
-                        return 3;
+                        if (r.actual_status === "attended") {
+                          // Sub-sort by RSVP: Going first, then Maybe, No response, Not going
+                          if (r.response_status === "going")        return 0;
+                          if (r.response_status === "maybe")        return 1;
+                          if (r.response_status === "no_response")  return 2;
+                          return 3; // not_going but attended
+                        }
+                        if (!r.actual_status && r.response_status === "going") return 4;
+                        if (r.actual_status && r.actual_status !== "absent")   return 5;
+                        return 6;
                       };
                       const dr = rank(a) - rank(b);
                       return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
