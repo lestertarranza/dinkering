@@ -19,7 +19,7 @@ import {
 import { resolveWalletOwnersForPlayers, round2 } from "@/lib/ledger";
 import { chargeRemainingBySource } from "@/lib/payment-allocation";
 import type { Player, TeamExpense, TeamExpenseShare } from "@/lib/types";
-import { regenerateExpenseShares, reverseExpense, deleteExpense } from "../actions";
+import { regenerateExpenseShares, reverseExpense, deleteExpense, markExpenseSharePaid } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -235,12 +235,14 @@ export default async function ExpenseDetail({
                   <th className="py-2 text-right font-medium">Share</th>
                   <th className="py-2 text-right font-medium">Paid</th>
                   <th className="py-2 text-right font-medium">Status</th>
+                  <th className="py-2 font-medium" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {settlement.map((row) => {
                   const settled = isSettled(row.remaining);
                   const partly = !settled && row.paid > SETTLE_TOLERANCE;
+                  const due = row.remaining >= SETTLE_TOLERANCE;
                   return (
                     <tr key={row.share.id}>
                       <td className="py-2 font-medium text-slate-700">
@@ -266,6 +268,24 @@ export default async function ExpenseDetail({
                             {formatMoney(row.remaining)} due
                           </Badge>
                         )}
+                      </td>
+                      <td className="py-1 pl-3">
+                        {due ? (
+                          <ConfirmButton
+                            action={markExpenseSharePaid}
+                            message={`Record ${formatMoney(row.remaining)} payment from ${row.name} for this expense?`}
+                            variant="secondary"
+                            hidden={{
+                              expense_id: e.id,
+                              player_id: row.share.player_id ?? "",
+                              player_group_id: row.share.player_group_id ?? "",
+                              amount: row.remaining.toFixed(2),
+                            }}
+                            pendingLabel="Recording…"
+                          >
+                            Mark paid
+                          </ConfirmButton>
+                        ) : null}
                       </td>
                     </tr>
                   );

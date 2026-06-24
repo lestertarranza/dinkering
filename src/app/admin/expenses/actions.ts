@@ -9,6 +9,7 @@ import { formatMoney } from "@/lib/format";
 import {
   nextCode,
   voidLedgerForSource,
+  resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildExpenseSharesAtomic } from "@/lib/ledger-rpc";
 import type { SplitMethod, TeamExpense } from "@/lib/types";
@@ -210,4 +211,70 @@ export async function deleteExpense(
   await supabase.from("team_expenses").delete().eq("id", id);
   revalidatePath("/admin/expenses");
   redirect("/admin/expenses");
+}
+
+/**
+ * Quick "mark as paid" directly from the expense detail page.
+ * Records a payment for the outstanding share amount for a specific player
+ * (or group), tagged to this team expense. Respects group wallet routing.
+ */
+export async function markExpenseSharePaid(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const expense_id = String(formData.get("expense_id") || "");
+  const player_id = String(formData.get("player_id") || "") || null;
+  const player_group_id =
+    String(formData.get("player_group_id") || "") || null;
+  const amount = Math.abs(
+    parseFloat(String(formData.get("amount") || "0")),
+  );
+  const payment_date =
+    String(formData.get("payment_date") || "") ||
+    new Date().toISOString().slice(0, 10);
+
+  if (!expense_id || !amount || (!player_id && !player_group_id))
+    return actionErr("Missing required fields.");
+
+  const { supabase } = await requireAdmin();
+
+  // Resolve the wallet — respect group pooling for players.
+  const wallet = player_group_id
+    ? { player_id: null, player_group_id }
+    : await resolveWalletOwner(supabase, player_id!, payment_date);
+
+  const code = await nextCode(supabase, "payments", "payment_code", "PAY");
+
+  const { data: pay, error: payErr } = await supabase
+    .from("payments")
+    .insert({
+      payment_code: code,
+      payment_date,
+      payer_player_id: player_id,
+      payer_group_id: player_group_id,
+      team_expense_id: expense_id,
+      amount,
+      notes: "Marked as paid from expense page",
+    })
+    .select("id")
+    .single();
+
+  if (payErr || !pay?.id)
+    return actionErr(payErr?.message ?? "Could not record payment.");
+
+  await supabase.from("ledger_entries").insert({
+    entry_date: payment_date,
+    player_id: wallet.player_id,
+    player_group_id: wallet.player_group_id,
+    source_type: "payment",
+    source_id: pay.id,
+    description: `Payment ${code} (team expense)`,
+    debit_amount: 0,
+    credit_amount: amount,
+  });
+
+  revalidatePath(`/admin/expenses/${expense_id}`);
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin");
+  return actionOk(`Recorded ${formatMoney(amount)} — ${code}.`);
 }
