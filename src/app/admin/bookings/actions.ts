@@ -8,6 +8,7 @@ import { formatMoney } from "@/lib/format";
 import {
   nextCode,
   round2,
+  resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
@@ -343,4 +344,73 @@ export async function deleteBooking(
   await supabase.from("bookings").delete().eq("id", id);
   revalidatePath("/admin/bookings");
   redirect("/admin/bookings");
+}
+
+/**
+ * Quick "mark as paid" directly from the booking detail page.
+ * Records a payment for the outstanding share amount for a specific player
+ * or group, tagged to this booking. Respects group wallet routing.
+ */
+export async function markBookingSharePaid(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const booking_id = String(formData.get("booking_id") || "");
+  const payerKey = String(formData.get("payer") || "");
+  const amount = Math.abs(
+    parseFloat(String(formData.get("amount") || "0")),
+  );
+  const payment_date =
+    String(formData.get("payment_date") || "") ||
+    new Date().toISOString().slice(0, 10);
+
+  if (!booking_id || !payerKey || !amount)
+    return actionErr("Missing required fields.");
+
+  const player_id = payerKey.startsWith("p:") ? payerKey.slice(2) : null;
+  const group_id = payerKey.startsWith("g:") ? payerKey.slice(2) : null;
+  if (!player_id && !group_id)
+    return actionErr("Invalid payer.");
+
+  const { supabase } = await requireAdmin();
+
+  // Resolve wallet — if player is in a pooled group, credit goes there.
+  const wallet = group_id
+    ? { player_id: null, player_group_id: group_id }
+    : await resolveWalletOwner(supabase, player_id!, payment_date);
+
+  const code = await nextCode(supabase, "payments", "payment_code", "PAY");
+
+  const { data: pay, error: payErr } = await supabase
+    .from("payments")
+    .insert({
+      payment_code: code,
+      payment_date,
+      payer_player_id: player_id,
+      payer_group_id: group_id,
+      booking_id,
+      amount,
+      notes: "Marked as paid from booking page",
+    })
+    .select("id")
+    .single();
+
+  if (payErr || !pay?.id)
+    return actionErr(payErr?.message ?? "Could not record payment.");
+
+  await supabase.from("ledger_entries").insert({
+    entry_date: payment_date,
+    player_id: wallet.player_id,
+    player_group_id: wallet.player_group_id,
+    source_type: "payment",
+    source_id: pay.id,
+    description: `Payment ${code} (booking)`,
+    debit_amount: 0,
+    credit_amount: amount,
+  });
+
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin");
+  return actionOk(`Recorded ${formatMoney(amount)} — ${code}.`);
 }

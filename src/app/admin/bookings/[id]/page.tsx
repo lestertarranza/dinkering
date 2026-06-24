@@ -38,6 +38,7 @@ import {
   generateShares,
   chargeAttendees,
   deleteBooking,
+  markBookingSharePaid,
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -574,12 +575,16 @@ export default async function BookingDetail({
                         <th className="py-2 text-right font-medium">Share</th>
                         <th className="py-2 text-right font-medium">Paid</th>
                         <th className="py-2 text-right font-medium">Balance</th>
+                        {b.status === "played" ? (
+                          <th className="py-2 font-medium" />
+                        ) : null}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {reconLines.map((line) => {
                         const bal = round2(line.charged - line.paid);
                         const settled = Math.abs(bal) < SETTLE_TOLERANCE;
+                        const due = bal >= SETTLE_TOLERANCE;
                         return (
                           <tr key={line.key}>
                             <td className="py-2">
@@ -622,6 +627,25 @@ export default async function BookingDetail({
                                   ? `${formatMoney(bal)} due`
                                   : `${formatMoney(Math.abs(bal))} over`}
                             </td>
+                            {b.status === "played" ? (
+                              <td className="py-1 pl-3 text-right">
+                                {due ? (
+                                  <ConfirmButton
+                                    action={markBookingSharePaid}
+                                    message={`Record ${formatMoney(bal)} payment from ${line.name} for this booking?`}
+                                    variant="secondary"
+                                    hidden={{
+                                      booking_id: b.id,
+                                      payer: line.key,
+                                      amount: bal.toFixed(2),
+                                    }}
+                                    pendingLabel="Recording…"
+                                  >
+                                    Mark paid
+                                  </ConfirmButton>
+                                ) : null}
+                              </td>
+                            ) : null}
                           </tr>
                         );
                       })}
