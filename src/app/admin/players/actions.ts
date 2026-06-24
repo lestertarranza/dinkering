@@ -113,11 +113,23 @@ export async function transferBalance(
   ]);
 
   // Build item summary from the JSON payload
+  // Format each item as: "Type (₱amount) — details"
+  // e.g. "Expense (₱11.84) — EXP-001 · Pickleball Balls · Paid by Jude"
+  // If the label contains " — " we put the amount between type and details,
+  // otherwise we append it at the end.
   let itemsSummary = "";
   try {
     const items = JSON.parse(itemsJson) as { label: string; amount: number }[];
     itemsSummary = items
-      .map((i) => `${i.label} (${formatMoney(i.amount)})`)
+      .map((i) => {
+        const dashIdx = i.label.indexOf(" — ");
+        if (dashIdx > 0) {
+          const type = i.label.slice(0, dashIdx);
+          const detail = i.label.slice(dashIdx + 3);
+          return `${type} (${formatMoney(i.amount)}) — ${detail}`;
+        }
+        return `${i.label} (${formatMoney(i.amount)})`;
+      })
       .join("; ");
   } catch {
     itemsSummary = "selected charges";
