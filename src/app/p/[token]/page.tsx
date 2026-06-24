@@ -39,12 +39,20 @@ const STATEMENT_LABELS: Record<string, string> = {
 
 export const dynamic = "force-dynamic";
 
+const LEDGER_PAGE_SIZE = 10;
+
 export default async function PlayerPortal({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ lpage?: string }>;
 }) {
-  const { token } = await params;
+  const [{ token }, { lpage: lpageParam }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
+  const lpage = Math.max(1, parseInt(lpageParam ?? "1", 10) || 1);
   const db = createAdminClient();
 
   const { data: player } = await db
@@ -72,20 +80,154 @@ export default async function PlayerPortal({
 
   let balance = 0;
   let ledger: LedgerEntry[] = [];
+
   if (pooled) {
-    const [{ data: gb }, { data: gl }] = await Promise.all([
-      db.from("group_balances").select("*").eq("player_group_id", pooled.player_group_id).single(),
-      db.from("ledger_entries").select("*").eq("player_group_id", pooled.player_group_id).order("entry_date"),
+    // Fetch balances, both ledgers, and this player's source-record IDs in parallel.
+    // The source IDs let us filter the group ledger to only entries that belong to
+    // this specific player (not the whole group).
+    const [
+      { data: gb },
+      { data: pb },
+      { data: gl },
+      { data: pl },
+      { data: myBookingShares },
+      { data: myExpenseShares },
+      { data: myPayments },
+      { data: myExpensesBought },
+      { data: myManualAdj },
+    ] = await Promise.all([
+      db
+        .from("group_balances")
+        .select("balance")
+        .eq("player_group_id", pooled.player_group_id)
+        .single(),
+      db
+        .from("player_balances")
+        .select("balance")
+        .eq("player_id", p.id)
+        .single(),
+      db
+        .from("ledger_entries")
+        .select("*")
+        .eq("player_group_id", pooled.player_group_id)
+        .order("entry_date"),
+      db
+        .from("ledger_entries")
+        .select("*")
+        .eq("player_id", p.id)
+        .order("entry_date"),
+      db.from("booking_shares").select("id").eq("player_id", p.id),
+      db.from("team_expense_shares").select("id").eq("player_id", p.id),
+      db.from("payments").select("id").eq("payer_player_id", p.id),
+      db.from("team_expenses").select("id").eq("paid_by_player_id", p.id),
+      db.from("manual_adjustments").select("id").eq("player_id", p.id),
     ]);
-    balance = Number(gb?.balance ?? 0);
-    ledger = (gl ?? []) as LedgerEntry[];
+
+    // Combined balance = group wallet + any residual personal balance
+    balance = Number(gb?.balance ?? 0) + Number(pb?.balance ?? 0);
+
+    // Build lookup sets per source type
+    const bookingShareIds = new Set(
+      (myBookingShares ?? []).map((r) => r.id as string),
+    );
+    const expenseShareIds = new Set(
+      (myExpenseShares ?? []).map((r) => r.id as string),
+    );
+    const paymentIds = new Set(
+      (myPayments ?? []).map((r) => r.id as string),
+    );
+    const expenseBoughtIds = new Set(
+      (myExpensesBought ?? []).map((r) => r.id as string),
+    );
+    const manualAdjIds = new Set(
+      (myManualAdj ?? []).map((r) => r.id as string),
+    );
+
+    // Keep only group entries that belong to this player
+    const playerGroupEntries = ((gl ?? []) as LedgerEntry[]).filter((e) => {
+      if (!e.source_id) return false;
+      switch (e.source_type) {
+        case "booking_share":
+          return bookingShareIds.has(e.source_id);
+        case "team_expense_share":
+          return expenseShareIds.has(e.source_id);
+        case "payment":
+          return paymentIds.has(e.source_id);
+        case "team_expense_credit":
+          return expenseBoughtIds.has(e.source_id);
+        case "manual_adjustment":
+          return manualAdjIds.has(e.source_id);
+        default:
+          return false;
+      }
+    });
+
+    // Merge with personal ledger (pre-group history), dedup by id
+    const seen = new Set<string>();
+    const merged: LedgerEntry[] = [];
+    for (const row of [
+      ...playerGroupEntries,
+      ...((pl ?? []) as LedgerEntry[]),
+    ]) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        merged.push(row);
+      }
+    }
+    ledger = merged;
   } else {
     const [{ data: pb }, { data: pl }] = await Promise.all([
-      db.from("player_balances").select("*").eq("player_id", p.id).single(),
-      db.from("ledger_entries").select("*").eq("player_id", p.id).order("entry_date"),
+      db
+        .from("player_balances")
+        .select("balance")
+        .eq("player_id", p.id)
+        .single(),
+      db
+        .from("ledger_entries")
+        .select("*")
+        .eq("player_id", p.id)
+        .order("entry_date"),
     ]);
     balance = Number(pb?.balance ?? 0);
     ledger = (pl ?? []) as LedgerEntry[];
+  }
+
+  // Enrich expense-share entries with expense description + who paid —
+  // applies for both pooled and non-pooled players.
+  type ExpShareMeta = {
+    expenseCode: string | null;
+    expenseDesc: string;
+    paidByName: string | null;
+  };
+  const expShareMeta = new Map<string, ExpShareMeta>();
+  const expShareIds = ledger
+    .filter((e) => e.source_type === "team_expense_share" && e.source_id)
+    .map((e) => e.source_id as string);
+  if (expShareIds.length > 0) {
+    const { data: ess } = await db
+      .from("team_expense_shares")
+      .select(
+        "id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
+      )
+      .in("id", expShareIds);
+    for (const s of (ess ?? []) as unknown as {
+      id: string;
+      team_expenses: {
+        expense_code: string | null;
+        description: string;
+        players: { name: string } | null;
+        player_groups: { name: string } | null;
+      } | null;
+    }[]) {
+      expShareMeta.set(s.id, {
+        expenseCode: s.team_expenses?.expense_code ?? null,
+        expenseDesc: s.team_expenses?.description ?? "Team expense",
+        paidByName:
+          s.team_expenses?.players?.name ??
+          s.team_expenses?.player_groups?.name ??
+          null,
+      });
+    }
   }
 
   const { data: attendance } = await db
@@ -107,56 +249,6 @@ export default async function PlayerPortal({
   const d = describeBalance(balance);
   const ledgerContext = await buildLedgerBookingContext(db, ledger);
 
-  // ── Per-entry enrichment ─────────────────────────────────────────────────
-  // Expense shares → show expense name, code, and who paid it
-  type ExpShareCtx = { expenseCode: string | null; expenseDesc: string; paidByName: string | null };
-  const expShareCtx = new Map<string, ExpShareCtx>();
-  const expShareIds = ledger
-    .filter((e) => e.source_type === "team_expense_share" && e.source_id)
-    .map((e) => e.source_id as string);
-  if (expShareIds.length > 0) {
-    const { data: ess } = await db
-      .from("team_expense_shares")
-      .select(
-        "id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
-      )
-      .in("id", expShareIds);
-    for (const s of (ess ?? []) as unknown as {
-      id: string;
-      team_expenses: {
-        expense_code: string | null;
-        description: string;
-        players: { name: string } | null;
-        player_groups: { name: string } | null;
-      } | null;
-    }[]) {
-      expShareCtx.set(s.id, {
-        expenseCode: s.team_expenses?.expense_code ?? null,
-        expenseDesc: s.team_expenses?.description ?? "Team expense",
-        paidByName:
-          s.team_expenses?.players?.name ??
-          s.team_expenses?.player_groups?.name ??
-          null,
-      });
-    }
-  }
-
-  // Manual adjustments → enrich with reason from DB as safety-net for old records
-  const manualAdjCtx = new Map<string, string>();
-  const manualAdjIds = ledger
-    .filter((e) => e.source_type === "manual_adjustment" && e.source_id)
-    .map((e) => e.source_id as string);
-  if (manualAdjIds.length > 0) {
-    const { data: madj } = await db
-      .from("manual_adjustments")
-      .select("id, type, reason")
-      .in("id", manualAdjIds);
-    for (const m of (madj ?? []) as { id: string; type: string; reason: string }[]) {
-      manualAdjCtx.set(m.id, `Manual ${m.type}: ${m.reason}`);
-    }
-  }
-  // ─────────────────────────────────────────────────────────────────────────
-
   const { data: settings } = await db
     .from("app_settings")
     .select("roster_token, roster_public")
@@ -171,13 +263,20 @@ export default async function PlayerPortal({
     return byDate !== 0 ? byDate : a.created_at.localeCompare(b.created_at);
   });
   let runningBalance = 0;
-  const statement: { entry: LedgerEntry; running: number }[] = [];
+  const fullStatement: { entry: LedgerEntry; running: number }[] = [];
   for (const e of orderedLedger) {
     if (!e.voided)
       runningBalance += Number(e.debit_amount) - Number(e.credit_amount);
-    statement.push({ entry: e, running: runningBalance });
+    fullStatement.push({ entry: e, running: runningBalance });
   }
-  statement.reverse();
+  fullStatement.reverse();
+
+  const totalLedger = fullStatement.length;
+  const totalLedgerPages = Math.max(1, Math.ceil(totalLedger / LEDGER_PAGE_SIZE));
+  const ledgerFrom = (lpage - 1) * LEDGER_PAGE_SIZE;
+  const statement = fullStatement.slice(ledgerFrom, ledgerFrom + LEDGER_PAGE_SIZE);
+  const ledgerPageUrl = (n: number) =>
+    `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
 
   return (
     <main className={publicMainClass}>
@@ -282,42 +381,15 @@ export default async function PlayerPortal({
       </PublicSection>
 
       <PublicSection title="Charges & payments">
-        {statement.length === 0 ? (
+        {fullStatement.length === 0 ? (
           <EmptyState title="No activity yet" />
         ) : (
           <>
             <Card className="divide-y divide-slate-100 overflow-hidden">
               {statement.map(({ entry, running }) => {
-                // Booking context — venue, time, court (already resolved)
-                const bookingCtx = formatBookingContext(ledgerContext.get(entry.id));
-
-                // Expense share sub-context
-                const ec = entry.source_type === "team_expense_share" && entry.source_id
-                  ? expShareCtx.get(entry.source_id)
-                  : null;
-                const expenseSubCtx = ec
-                  ? [
-                      ec.expenseCode
-                        ? `${ec.expenseCode} · ${ec.expenseDesc}`
-                        : ec.expenseDesc,
-                      ec.paidByName ? `Paid by ${ec.paidByName}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-                  : null;
-
-                // Manual adjustment description (DB reason is source of truth)
-                const manualDesc =
-                  entry.source_type === "manual_adjustment" && entry.source_id
-                    ? (manualAdjCtx.get(entry.source_id) ?? entry.description ?? "Manual adjustment")
-                    : null;
-
-                const displayLabel =
-                  manualDesc ??
-                  entry.description ??
-                  STATEMENT_LABELS[entry.source_type] ??
-                  "Entry";
-
+                const bookingCtx = formatBookingContext(
+                  ledgerContext.get(entry.id),
+                );
                 const charge = Number(entry.debit_amount);
                 const credit = Number(entry.credit_amount);
                 const isCharge = charge > 0;
@@ -327,6 +399,47 @@ export default async function PlayerPortal({
                     : running > 0
                       ? `${formatMoney(running)} owed`
                       : `${formatMoney(-running)} credit`;
+
+                // Expense share enrichment — augment label and add sub-context
+                const playerDisplayName =
+                  p.display_name?.trim() || p.name;
+                const isGroupEntry = entry.player_group_id !== null;
+                const eMeta =
+                  entry.source_type === "team_expense_share" &&
+                  entry.source_id
+                    ? expShareMeta.get(entry.source_id)
+                    : null;
+
+                // Description: append "(PlayerName)" for shares in a group wallet
+                let displayDesc =
+                  entry.description ||
+                  STATEMENT_LABELS[entry.source_type] ||
+                  "Entry";
+                if (
+                  isGroupEntry &&
+                  (entry.source_type === "team_expense_share" ||
+                    entry.source_type === "booking_share")
+                ) {
+                  const groupName = pooled?.player_groups.name;
+                  displayDesc = groupName
+                    ? `${displayDesc} (${playerDisplayName} · ${groupName})`
+                    : `${displayDesc} (${playerDisplayName})`;
+                }
+
+                // Sub-context line (date + venue/time + expense detail)
+                const expenseSubCtx = eMeta
+                  ? [
+                      eMeta.expenseCode
+                        ? `${eMeta.expenseCode} · ${eMeta.expenseDesc}`
+                        : eMeta.expenseDesc,
+                      eMeta.paidByName
+                        ? `Paid by ${eMeta.paidByName}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : null;
+
                 return (
                   <div
                     key={entry.id}
@@ -336,7 +449,7 @@ export default async function PlayerPortal({
                   >
                     <div className="min-w-0">
                       <p className={`text-base ${publicPrimaryText}`}>
-                        {displayLabel}
+                        {displayDesc}
                       </p>
                       <p className={`mt-0.5 ${publicHintText}`}>
                         {formatDate(entry.entry_date)}
@@ -374,11 +487,40 @@ export default async function PlayerPortal({
                 );
               })}
             </Card>
-            <p className={`mt-2.5 px-1 ${publicHintText}`}>
+            {/* Pagination */}
+            <div className="mt-3 flex items-center justify-between gap-3 px-1">
+              <p className={publicHintText}>
+                {ledgerFrom + 1}–{Math.min(ledgerFrom + LEDGER_PAGE_SIZE, totalLedger)}{" "}
+                of {totalLedger} entr{totalLedger === 1 ? "y" : "ies"}
+              </p>
+              {totalLedgerPages > 1 ? (
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  {lpage > 1 ? (
+                    <Link
+                      href={ledgerPageUrl(lpage - 1)}
+                      className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
+                    >
+                      ← Newer
+                    </Link>
+                  ) : null}
+                  <span className={publicHintText}>
+                    {lpage} / {totalLedgerPages}
+                  </span>
+                  {lpage < totalLedgerPages ? (
+                    <Link
+                      href={ledgerPageUrl(lpage + 1)}
+                      className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
+                    >
+                      Older →
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <p className={`mt-1.5 px-1 ${publicHintText}`}>
               Charges in <span className="font-semibold text-rose-700">red</span>,
               payments in{" "}
-              <span className="font-semibold text-emerald-700">green</span>. Grey
-              line = running balance.
+              <span className="font-semibold text-emerald-700">green</span>.
             </p>
           </>
         )}
