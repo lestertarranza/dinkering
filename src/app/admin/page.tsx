@@ -403,7 +403,7 @@ export default async function Dashboard({
                     <li key={o.id}>
                       <details className="rounded-lg border border-slate-200 bg-slate-50/60">
                         <summary className={summaryClass}>
-                          <Link href={`/admin/players/${o.id}`} className="font-medium text-emerald-700 hover:underline" onClick={(e) => e.stopPropagation()}>
+                          <Link href={`/admin/players/${o.id}`} className="font-medium text-emerald-700 hover:underline">
                             {o.name}
                           </Link>
                           <span className="shrink-0 font-semibold text-rose-600">{formatMoney(o.balance)}</span>
@@ -466,7 +466,7 @@ export default async function Dashboard({
                         <summary className={summaryClass}>
                           <span className="flex items-center gap-2">
                             <Badge tone="neutral">Group</Badge>
-                            <Link href={`/admin/groups/${o.id}`} className="font-medium text-emerald-700 hover:underline" onClick={(e) => e.stopPropagation()}>
+                            <Link href={`/admin/groups/${o.id}`} className="font-medium text-emerald-700 hover:underline">
                               {o.name}
                             </Link>
                           </span>
