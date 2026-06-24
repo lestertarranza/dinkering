@@ -79,6 +79,8 @@ export default async function PlayerPortal({
     | undefined;
 
   let balance = 0;
+  let groupWalletBalance: number | null = null; // null = player not in a pooled group
+  let personalWalletBalance = 0;
   let ledger: LedgerEntry[] = [];
 
   if (pooled) {
@@ -123,8 +125,10 @@ export default async function PlayerPortal({
       db.from("manual_adjustments").select("id").eq("player_id", p.id),
     ]);
 
-    // Combined balance = group wallet + any residual personal balance
-    balance = Number(gb?.balance ?? 0) + Number(pb?.balance ?? 0);
+    // Keep wallets separate for display; combine for ledger running-balance math.
+    groupWalletBalance = Number(gb?.balance ?? 0);
+    personalWalletBalance = Number(pb?.balance ?? 0);
+    balance = groupWalletBalance + personalWalletBalance;
 
     // Build lookup sets per source type
     const bookingShareIds = new Set(
@@ -188,7 +192,8 @@ export default async function PlayerPortal({
         .eq("player_id", p.id)
         .order("entry_date"),
     ]);
-    balance = Number(pb?.balance ?? 0);
+    personalWalletBalance = Number(pb?.balance ?? 0);
+    balance = personalWalletBalance;
     ledger = (pl ?? []) as LedgerEntry[];
   }
 
@@ -291,50 +296,128 @@ export default async function PlayerPortal({
         <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
       </header>
 
-      <Card
-        className={`mb-5 p-6 text-center ${
-          d.tone === "collect"
-            ? "border-rose-200 bg-rose-50"
-            : d.tone === "credit"
-              ? "border-emerald-200 bg-emerald-50"
-              : "bg-white"
-        }`}
-      >
-        {d.tone === "collect" ? (
-          <>
-            <p className="text-base font-medium text-rose-800">You currently owe</p>
-            <p className="mt-1 text-4xl font-bold text-rose-700">
-              {formatMoney(d.amount)}
-            </p>
-          </>
-        ) : d.tone === "credit" ? (
-          <>
-            <p className="text-base font-medium text-emerald-800">You have credit</p>
-            <p className="mt-1 text-4xl font-bold text-emerald-700">
-              {formatMoney(d.amount)}
-            </p>
-            <p className="mt-1.5 text-sm font-medium text-emerald-700">
-              Applied automatically to future charges
-            </p>
-          </>
-        ) : (
-          <>
-            <p className={`text-base ${publicMetaText}`}>Your balance</p>
-            <p className="mt-1 text-4xl font-bold text-slate-800">Settled 🎉</p>
-          </>
-        )}
-        {pooled ? (
-          <p className="mt-3 rounded-lg bg-white/70 px-3 py-2.5 text-sm text-slate-600">
-            Shared balance with{" "}
-            <Link
-              href={`/g/${pooled.player_groups.public_token}`}
-              className="font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 active:text-emerald-900"
-            >
-              {pooled.player_groups.name}
-            </Link>
-          </p>
-        ) : null}
-      </Card>
+      {pooled ? (
+        /* ── Pooled player: two clearly labelled wallet panels ── */
+        <div className="mb-5 grid grid-cols-2 gap-3">
+          {/* Shared / group wallet */}
+          {(() => {
+            const dg = describeBalance(groupWalletBalance ?? 0);
+            return (
+              <Card
+                className={`p-4 text-center ${
+                  dg.tone === "collect"
+                    ? "border-rose-200 bg-rose-50"
+                    : dg.tone === "credit"
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-slate-200 bg-white"
+                }`}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Shared wallet
+                </p>
+                <Link
+                  href={`/g/${pooled.player_groups.public_token}`}
+                  className="mt-0.5 block text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 active:text-emerald-900"
+                >
+                  {pooled.player_groups.name}
+                </Link>
+                <p
+                  className={`mt-2 text-2xl font-bold ${
+                    dg.tone === "collect"
+                      ? "text-rose-700"
+                      : dg.tone === "credit"
+                        ? "text-emerald-700"
+                        : "text-slate-500"
+                  }`}
+                >
+                  {dg.tone === "settled" ? "Settled 🎉" : formatMoney(dg.amount)}
+                </p>
+                <p className={`mt-1 text-xs ${publicHintText}`}>
+                  {dg.tone === "collect"
+                    ? "shared — owes the team"
+                    : dg.tone === "credit"
+                      ? "shared credit"
+                      : "all paid up"}
+                </p>
+              </Card>
+            );
+          })()}
+
+          {/* Personal wallet */}
+          {(() => {
+            const dp = describeBalance(personalWalletBalance);
+            return (
+              <Card
+                className={`p-4 text-center ${
+                  dp.tone === "collect"
+                    ? "border-rose-200 bg-rose-50"
+                    : dp.tone === "credit"
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-slate-200 bg-white"
+                }`}
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Personal wallet
+                </p>
+                <p className={`mt-0.5 text-sm ${publicHintText}`}>your own</p>
+                <p
+                  className={`mt-2 text-2xl font-bold ${
+                    dp.tone === "collect"
+                      ? "text-rose-700"
+                      : dp.tone === "credit"
+                        ? "text-emerald-700"
+                        : "text-slate-500"
+                  }`}
+                >
+                  {dp.tone === "settled" ? "Settled 🎉" : formatMoney(dp.amount)}
+                </p>
+                <p className={`mt-1 text-xs ${publicHintText}`}>
+                  {dp.tone === "collect"
+                    ? "personal — owes the team"
+                    : dp.tone === "credit"
+                      ? "personal credit"
+                      : "all paid up"}
+                </p>
+              </Card>
+            );
+          })()}
+        </div>
+      ) : (
+        /* ── Non-pooled player: single balance card ── */
+        <Card
+          className={`mb-5 p-6 text-center ${
+            d.tone === "collect"
+              ? "border-rose-200 bg-rose-50"
+              : d.tone === "credit"
+                ? "border-emerald-200 bg-emerald-50"
+                : "bg-white"
+          }`}
+        >
+          {d.tone === "collect" ? (
+            <>
+              <p className="text-base font-medium text-rose-800">You currently owe</p>
+              <p className="mt-1 text-4xl font-bold text-rose-700">
+                {formatMoney(d.amount)}
+              </p>
+            </>
+          ) : d.tone === "credit" ? (
+            <>
+              <p className="text-base font-medium text-emerald-800">You have credit</p>
+              <p className="mt-1 text-4xl font-bold text-emerald-700">
+                {formatMoney(d.amount)}
+              </p>
+              <p className="mt-1.5 text-sm font-medium text-emerald-700">
+                Applied automatically to future charges
+              </p>
+            </>
+          ) : (
+            <>
+              <p className={`text-base ${publicMetaText}`}>Your balance</p>
+              <p className="mt-1 text-4xl font-bold text-slate-800">Settled 🎉</p>
+            </>
+          )}
+        </Card>
+      )}
 
       {teamToken ? (
         <nav className="mb-5 flex flex-wrap justify-center gap-2">
