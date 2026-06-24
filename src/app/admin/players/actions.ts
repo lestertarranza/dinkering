@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
+import { resolveWalletOwner } from "@/lib/ledger";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -61,6 +62,135 @@ export async function addManualAdjustment(
   revalidatePath("/admin");
   return actionOk(
     `Recorded ${type} of ${formatMoney(amount)}: ${reason}`,
+  );
+}
+
+/**
+ * Transfer all or selected open charges from one player's wallet to another.
+ * Creates a matched pair of manual adjustments:
+ *   – credit to the source wallet (removes their debt)
+ *   – charge to the target wallet (adds equivalent debt)
+ * The items being transferred are embedded in the adjustment notes so the
+ * audit trail is preserved on both player ledgers.
+ */
+export async function transferBalance(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const sourcePlayerId = String(formData.get("source_player_id") || "");
+  const targetPlayerId = String(formData.get("target_player_id") || "");
+  const amount = Math.abs(
+    parseFloat(String(formData.get("amount") || "0")),
+  );
+  const itemsJson = String(formData.get("items_json") || "[]");
+  const date =
+    String(formData.get("transfer_date") || "") ||
+    new Date().toISOString().slice(0, 10);
+  const extraNotes = String(formData.get("notes") || "").trim();
+
+  if (!sourcePlayerId || !targetPlayerId)
+    return actionErr("Select both source and target players.");
+  if (sourcePlayerId === targetPlayerId)
+    return actionErr("Source and target must be different players.");
+  if (!amount || amount <= 0)
+    return actionErr("Select at least one charge to transfer.");
+
+  const { supabase, user } = await requireAdmin();
+
+  // Look up player names for descriptions
+  const [{ data: src }, { data: tgt }] = await Promise.all([
+    supabase.from("players").select("name").eq("id", sourcePlayerId).single(),
+    supabase.from("players").select("name").eq("id", targetPlayerId).single(),
+  ]);
+  if (!src || !tgt) return actionErr("Player not found.");
+  const sourceName = src.name as string;
+  const targetName = tgt.name as string;
+
+  // Resolve wallets (respects group pooling)
+  const [sourceWallet, targetWallet] = await Promise.all([
+    resolveWalletOwner(supabase, sourcePlayerId, date),
+    resolveWalletOwner(supabase, targetPlayerId, date),
+  ]);
+
+  // Build item summary from the JSON payload
+  let itemsSummary = "";
+  try {
+    const items = JSON.parse(itemsJson) as { label: string; amount: number }[];
+    itemsSummary = items
+      .map((i) => `${i.label} (${formatMoney(i.amount)})`)
+      .join("; ");
+  } catch {
+    itemsSummary = "selected charges";
+  }
+
+  const baseDesc = [itemsSummary, extraNotes].filter(Boolean).join(" — ");
+
+  const createdBy = user?.email ?? "admin";
+
+  // 1. Credit the source wallet (removes their debt)
+  const { data: creditAdj, error: creditErr } = await supabase
+    .from("manual_adjustments")
+    .insert({
+      player_id: sourceWallet.player_id,
+      player_group_id: sourceWallet.player_group_id,
+      amount,
+      type: "credit",
+      reason: `Balance transfer to ${targetName} — ${baseDesc}`,
+      adjustment_date: date,
+      created_by: createdBy,
+    })
+    .select("id")
+    .single();
+  if (creditErr || !creditAdj?.id)
+    return actionErr("Could not create credit adjustment.");
+
+  await supabase.from("ledger_entries").insert({
+    entry_date: date,
+    player_id: sourceWallet.player_id,
+    player_group_id: sourceWallet.player_group_id,
+    source_type: "manual_adjustment",
+    source_id: creditAdj.id,
+    description: `Transfer to ${targetName} — ${baseDesc}`,
+    debit_amount: 0,
+    credit_amount: amount,
+  });
+
+  // 2. Charge the target wallet (adds equivalent debt)
+  const { data: debitAdj, error: debitErr } = await supabase
+    .from("manual_adjustments")
+    .insert({
+      player_id: targetWallet.player_id,
+      player_group_id: targetWallet.player_group_id,
+      amount,
+      type: "charge",
+      reason: `Balance transfer from ${sourceName} — ${baseDesc}`,
+      adjustment_date: date,
+      created_by: createdBy,
+    })
+    .select("id")
+    .single();
+  if (debitErr || !debitAdj?.id)
+    return actionErr(
+      "Credit posted but debit failed — check ledgers manually.",
+    );
+
+  await supabase.from("ledger_entries").insert({
+    entry_date: date,
+    player_id: targetWallet.player_id,
+    player_group_id: targetWallet.player_group_id,
+    source_type: "manual_adjustment",
+    source_id: debitAdj.id,
+    description: `Transfer from ${sourceName} — ${baseDesc}`,
+    debit_amount: amount,
+    credit_amount: 0,
+  });
+
+  revalidatePath(`/admin/players/${sourcePlayerId}`);
+  revalidatePath(`/admin/players/${targetPlayerId}`);
+  revalidatePath("/admin");
+
+  return actionOk(
+    `Transferred ${formatMoney(amount)} from ${sourceName} to ${targetName}.`,
   );
 }
 

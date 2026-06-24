@@ -111,9 +111,17 @@ export default async function PlayerDetail({
         title={p.name}
         description={p.display_name ?? undefined}
         action={
-          <Link href="/admin/players" className={buttonClass("ghost")}>
-            ← All players
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              href={`/admin/players/${p.id}/transfer`}
+              className={buttonClass("secondary")}
+            >
+              Transfer balance
+            </Link>
+            <Link href="/admin/players" className={buttonClass("ghost")}>
+              ← All players
+            </Link>
+          </div>
         }
       />
 
