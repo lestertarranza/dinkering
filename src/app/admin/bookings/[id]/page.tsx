@@ -384,88 +384,76 @@ export default async function BookingDetail({
               <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
                 Confirm actual attendance
               </h2>
-              <ActionForm
-                action={confirmAttendance}
-                className="p-4"
-                pendingLabel="Saving attendance…"
-                hidden={<input type="hidden" name="booking_id" value={b.id} />}
-              >
-                <div className="space-y-2">
-                  {/* Sort: confirmed attended first, then going (pre-filled attended), then rest */}
-                  {[...roster]
-                    .sort((a, b) => {
-                      const rank = (r: typeof a) => {
-                        if (r.actual_status === "attended") return 0;
-                        if (!r.actual_status && r.response_status === "going") return 1;
-                        if (r.actual_status && r.actual_status !== "absent") return 2;
-                        return 3;
-                      };
-                      const dr = rank(a) - rank(b);
-                      return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
-                    })
-                    .map((r) => {
-                      // Pre-fill going players as "attended" if not yet confirmed
-                      const defaultActual =
-                        r.actual_status ??
-                        (r.response_status === "going" ? "attended" : "absent");
-                      const isConfirmedAttended = r.actual_status === "attended";
-                      return (
-                        <div
-                          key={r.id}
-                          className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 ${
-                            isConfirmedAttended ? "bg-emerald-50" : ""
+              {/* Each row is its own ActionForm — no nesting, dropdown value is
+                  submitted by whichever player's Confirm button is clicked. */}
+              <div className="space-y-1.5 p-4">
+                {[...roster]
+                  .sort((a, b) => {
+                    const rank = (r: typeof a) => {
+                      if (r.actual_status === "attended") return 0;
+                      if (!r.actual_status && r.response_status === "going") return 1;
+                      if (r.actual_status && r.actual_status !== "absent") return 2;
+                      return 3;
+                    };
+                    const dr = rank(a) - rank(b);
+                    return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
+                  })
+                  .map((r) => {
+                    const defaultActual =
+                      r.actual_status ??
+                      (r.response_status === "going" ? "attended" : "absent");
+                    const isConfirmedAttended = r.actual_status === "attended";
+                    return (
+                      <ActionForm
+                        key={r.id}
+                        action={setPlayerActualStatus}
+                        pendingLabel="…"
+                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 ${
+                          isConfirmedAttended ? "bg-emerald-50" : "bg-slate-50"
+                        }`}
+                        hidden={
+                          <>
+                            <input type="hidden" name="booking_id" value={b.id} />
+                            <input type="hidden" name="player_id" value={r.player_id} />
+                          </>
+                        }
+                      >
+                        <span
+                          className={`flex-1 text-sm ${
+                            isConfirmedAttended
+                              ? "font-medium text-emerald-800"
+                              : "text-slate-700"
                           }`}
                         >
-                          <input
-                            type="hidden"
-                            name="attendee_ids"
-                            value={r.player_id}
-                          />
-                          <span className={`text-sm ${isConfirmedAttended ? "font-medium text-emerald-800" : "text-slate-700"}`}>
-                            {r.players?.name}
+                          {r.players?.name}
+                        </span>
+                        <select
+                          name="actual_status"
+                          defaultValue={defaultActual}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                        >
+                          <option value="attended">Attended</option>
+                          <option value="absent">Absent</option>
+                          <option value="late_cancel">Late cancel</option>
+                          <option value="guest">Guest</option>
+                        </select>
+                        {isConfirmedAttended ? (
+                          <span className="w-20 text-center text-xs font-medium text-emerald-600">
+                            ✓ Confirmed
                           </span>
-                          <div className="flex items-center gap-2">
-                            <select
-                              name={`actual-${r.player_id}`}
-                              defaultValue={defaultActual}
-                              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                            >
-                              <option value="attended">Attended</option>
-                              <option value="absent">Absent</option>
-                              <option value="late_cancel">Late cancel</option>
-                              <option value="guest">Guest</option>
-                            </select>
-                            {/* Per-row quick confirm as Attended */}
-                            {!isConfirmedAttended ? (
-                              <ActionForm
-                                action={setPlayerActualStatus}
-                                pendingLabel="…"
-                                hidden={
-                                  <>
-                                    <input type="hidden" name="booking_id" value={b.id} />
-                                    <input type="hidden" name="player_id" value={r.player_id} />
-                                    <input type="hidden" name="actual_status" value="attended" />
-                                  </>
-                                }
-                              >
-                                <SubmitButton variant="secondary" pendingLabel="…">
-                                  Confirm
-                                </SubmitButton>
-                              </ActionForm>
-                            ) : (
-                              <span className="text-xs font-medium text-emerald-600">✓ Confirmed</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-                <div className="mt-4">
-                  <SubmitButton pendingLabel="Saving…">
-                    Save all attendance
-                  </SubmitButton>
-                </div>
-              </ActionForm>
+                        ) : (
+                          <SubmitButton variant="secondary" pendingLabel="…">
+                            Confirm
+                          </SubmitButton>
+                        )}
+                      </ActionForm>
+                    );
+                  })}
+                <p className="pt-1 text-xs text-slate-400">
+                  Going players are pre-selected as Attended. Change the
+                  dropdown if needed, then click Confirm.
+                </p>
+              </div>
             </Card>
           ) : null}
 
