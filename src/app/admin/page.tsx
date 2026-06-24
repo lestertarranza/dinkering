@@ -8,7 +8,7 @@ import {
   describeBalance,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
-import { round2 } from "@/lib/ledger";
+import { round2, resolveWalletOwnersForPlayers } from "@/lib/ledger";
 import {
   batchComputePlayerOpenCharges,
   type LedgerRow,
@@ -54,7 +54,6 @@ export default async function Dashboard({
     { data: paidTotals },
     { data: bookingShares },
     { data: expenseShares },
-    { data: expensePayments },
     { data: dashTotals },
     { data: recentPayments },
     { data: allExpenses },
@@ -72,11 +71,7 @@ export default async function Dashboard({
       .select("id, booking_code, play_date, start_time, end_time, venue, status, total_booking_cost"),
     supabase.from("booking_payment_totals").select("booking_id, total_paid"),
     supabase.from("booking_shares").select("booking_id, amount_owed"),
-    supabase.from("team_expense_shares").select("team_expense_id, amount_owed"),
-    supabase
-      .from("payments")
-      .select("team_expense_id, amount, notes")
-      .not("team_expense_id", "is", null),
+    supabase.from("team_expense_shares").select("id, team_expense_id, player_id, player_group_id, amount_owed"),
     supabase.from("dashboard_totals").select("*").single(),
     supabase
       .from("payments")
@@ -145,24 +140,106 @@ export default async function Dashboard({
   const upcomingAll = allBookings.filter((b) => b.play_date >= today && b.status === "booked").sort((a, b) => a.play_date.localeCompare(b.play_date));
   const unpaidBookingsAll = allBookings.filter((b) => (b.status === "booked" || b.status === "played") && (shareMap.get(b.id) ?? 0) >= SETTLE_TOLERANCE && bookingDue(b) >= SETTLE_TOLERANCE).sort((a, b) => b.play_date.localeCompare(a.play_date));
 
-  // ── Team expense outstanding ──────────────────────────────────────────────
-  const expShareTotalMap = new Map<string, number>();
-  for (const s of (expenseShares ?? []) as { team_expense_id: string; amount_owed: number }[]) {
-    expShareTotalMap.set(s.team_expense_id, (expShareTotalMap.get(s.team_expense_id) ?? 0) + Number(s.amount_owed));
+  // ── Team expense outstanding — FIFO wallet-based (matches expense detail) ─
+  // Uses the same per-wallet ledger balance approach as the "Who has paid"
+  // section on the expense detail page so the numbers are consistent.
+  type ExpenseShareRow = { id: string; team_expense_id: string; player_id: string | null; player_group_id: string | null; amount_owed: number };
+  const allExpShareRows = (expenseShares ?? []) as ExpenseShareRow[];
+
+  const expOutstandingMap = new Map<string, number>(); // expense_id → outstanding
+
+  if (allExpShareRows.length > 0) {
+    // 1. Resolve wallets for player-assigned shares (some may route to a group).
+    const playerShareIds = [
+      ...new Set(
+        allExpShareRows.filter((s) => s.player_id).map((s) => s.player_id!),
+      ),
+    ];
+    const walletOwners = await resolveWalletOwnersForPlayers(
+      supabase,
+      playerShareIds,
+      today,
+    );
+
+    // 2. Collect all distinct wallets.
+    const walletPIds = new Set<string>();
+    const walletGIds = new Set<string>();
+    for (const owner of walletOwners.values()) {
+      if (owner.player_id) walletPIds.add(owner.player_id);
+      if (owner.player_group_id) walletGIds.add(owner.player_group_id);
+    }
+    // Shares assigned directly to a group → that group's wallet.
+    for (const s of allExpShareRows) {
+      if (s.player_group_id) walletGIds.add(s.player_group_id);
+    }
+
+    // 3. Batch-fetch ledger entries for all wallets.
+    const [{ data: pLedger }, { data: gLedger }] = await Promise.all([
+      walletPIds.size
+        ? supabase
+            .from("ledger_entries")
+            .select("entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_id")
+            .in("player_id", [...walletPIds])
+            .eq("voided", false)
+            .order("entry_date")
+            .order("created_at")
+        : Promise.resolve({ data: [] }),
+      walletGIds.size
+        ? supabase
+            .from("ledger_entries")
+            .select("entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_group_id")
+            .in("player_group_id", [...walletGIds])
+            .eq("voided", false)
+            .order("entry_date")
+            .order("created_at")
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    // 4. Group by wallet key and run FIFO per wallet.
+    const walletEntries = new Map<string, LedgerRow[]>();
+    for (const row of (pLedger ?? []) as (LedgerRow & { player_id: string })[]) {
+      const key = `p:${row.player_id}`;
+      const list = walletEntries.get(key) ?? [];
+      list.push(row);
+      walletEntries.set(key, list);
+    }
+    for (const row of (gLedger ?? []) as (LedgerRow & { player_group_id: string })[]) {
+      const key = `g:${row.player_group_id}`;
+      const list = walletEntries.get(key) ?? [];
+      list.push(row);
+      walletEntries.set(key, list);
+    }
+
+    const chargesByWallet = batchComputePlayerOpenCharges(walletEntries);
+
+    // 5. Build share_id → remaining map from FIFO results.
+    const shareRemainingMap = new Map<string, number>();
+    for (const charges of chargesByWallet.values()) {
+      for (const c of charges) {
+        if (c.source_type === "team_expense_share") {
+          shareRemainingMap.set(c.source_id, c.remaining);
+        }
+      }
+    }
+
+    // 6. Sum per expense.
+    for (const s of allExpShareRows) {
+      // A fully-settled share won't appear in the open-charges map → remaining = 0.
+      const remaining = shareRemainingMap.get(s.id) ?? 0;
+      expOutstandingMap.set(
+        s.team_expense_id,
+        round2((expOutstandingMap.get(s.team_expense_id) ?? 0) + remaining),
+      );
+    }
   }
-  const expPaidMap = new Map<string, number>();
-  for (const p of (expensePayments ?? []) as { team_expense_id: string; amount: number; notes: string | null }[]) {
-    if ((p.notes ?? "").startsWith("[REVERSED")) continue;
-    const id = p.team_expense_id as string;
-    expPaidMap.set(id, (expPaidMap.get(id) ?? 0) + Number(p.amount));
-  }
-  const expDue = (id: string) => round2((expShareTotalMap.get(id) ?? 0) - (expPaidMap.get(id) ?? 0));
+
+  const expDue = (id: string) => expOutstandingMap.get(id) ?? 0;
 
   type ExpenseRow = { id: string; expense_code: string | null; description: string; purchase_date: string; total_cost: number; status: string; split_method: string; notes: string | null; players: { name: string } | null; player_groups: { name: string } | null };
   const expenses = (allExpenses ?? []) as unknown as ExpenseRow[];
 
   const unpaidExpensesAll = expenses
-    .filter((e) => e.status === "open" && (expShareTotalMap.get(e.id) ?? 0) >= SETTLE_TOLERANCE && expDue(e.id) >= SETTLE_TOLERANCE)
+    .filter((e) => e.status === "open" && expDue(e.id) >= SETTLE_TOLERANCE)
     .sort((a, b) => b.purchase_date.localeCompare(a.purchase_date));
 
   // ── Who owes / who has credit ─────────────────────────────────────────────
