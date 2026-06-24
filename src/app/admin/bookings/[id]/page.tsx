@@ -347,10 +347,12 @@ export default async function BookingDetail({
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <ActionForm
                   action={addAttendee}
-                  className="flex flex-1 gap-2"
+                  className="flex-1"
                   pendingLabel="Adding player…"
                   hidden={<input type="hidden" name="booking_id" value={b.id} />}
                 >
+                  {/* Feedback renders above this row as a block element */}
+                  <div className="flex gap-2">
                   <select name="player_id" className={inputClass} required>
                     <option value="">Add player to roster…</option>
                     {availablePlayers.map((p) => (
@@ -362,6 +364,7 @@ export default async function BookingDetail({
                   <SubmitButton variant="secondary" pendingLabel="Adding…">
                     Add
                   </SubmitButton>
+                  </div>
                 </ActionForm>
                 {availablePlayers.length > 0 ? (
                   <ActionForm
@@ -408,7 +411,7 @@ export default async function BookingDetail({
                         key={r.id}
                         action={setPlayerActualStatus}
                         pendingLabel="…"
-                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 ${
+                        className={`rounded-lg px-3 py-1.5 ${
                           isConfirmedAttended ? "bg-emerald-50" : "bg-slate-50"
                         }`}
                         hidden={
@@ -418,34 +421,37 @@ export default async function BookingDetail({
                           </>
                         }
                       >
-                        <span
-                          className={`flex-1 text-sm ${
-                            isConfirmedAttended
-                              ? "font-medium text-emerald-800"
-                              : "text-slate-700"
-                          }`}
-                        >
-                          {r.players?.name}
-                        </span>
-                        <select
-                          name="actual_status"
-                          defaultValue={defaultActual}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                        >
-                          <option value="attended">Attended</option>
-                          <option value="absent">Absent</option>
-                          <option value="late_cancel">Late cancel</option>
-                          <option value="guest">Guest</option>
-                        </select>
-                        {isConfirmedAttended ? (
-                          <span className="w-20 text-center text-xs font-medium text-emerald-600">
-                            ✓ Confirmed
+                        {/* Feedback renders above this row as a block — not inside the flex row */}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`flex-1 text-sm ${
+                              isConfirmedAttended
+                                ? "font-medium text-emerald-800"
+                                : "text-slate-700"
+                            }`}
+                          >
+                            {r.players?.name}
                           </span>
-                        ) : (
-                          <SubmitButton variant="secondary" pendingLabel="…">
-                            Confirm
-                          </SubmitButton>
-                        )}
+                          <select
+                            name="actual_status"
+                            defaultValue={defaultActual}
+                            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                          >
+                            <option value="attended">Attended</option>
+                            <option value="absent">Absent</option>
+                            <option value="late_cancel">Late cancel</option>
+                            <option value="guest">Guest</option>
+                          </select>
+                          {isConfirmedAttended ? (
+                            <span className="w-20 text-center text-xs font-medium text-emerald-600">
+                              ✓ Confirmed
+                            </span>
+                          ) : (
+                            <SubmitButton variant="secondary" pendingLabel="…">
+                              Confirm
+                            </SubmitButton>
+                          )}
+                        </div>
                       </ActionForm>
                     );
                   })}
