@@ -178,6 +178,27 @@ export async function setResponse(
 }
 
 /** Confirm actual attendance after the game. */
+/** Quick single-player attendance confirm — one click from the row button. */
+export async function setPlayerActualStatus(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const booking_id = String(formData.get("booking_id"));
+  const player_id = String(formData.get("player_id"));
+  const actual_status = String(
+    formData.get("actual_status") || "attended",
+  ) as ActualStatus;
+  const { supabase } = await requireAdmin();
+  await supabase
+    .from("booking_attendance")
+    .upsert(
+      { booking_id, player_id, actual_status, confirmed_by_admin: true },
+      { onConflict: "booking_id,player_id" },
+    );
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(`Marked as ${actual_status}.`);
+}
+
 export async function confirmAttendance(
   _prev: ActionState,
   formData: FormData,
