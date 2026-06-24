@@ -107,6 +107,56 @@ export default async function PlayerPortal({
   const d = describeBalance(balance);
   const ledgerContext = await buildLedgerBookingContext(db, ledger);
 
+  // ── Per-entry enrichment ─────────────────────────────────────────────────
+  // Expense shares → show expense name, code, and who paid it
+  type ExpShareCtx = { expenseCode: string | null; expenseDesc: string; paidByName: string | null };
+  const expShareCtx = new Map<string, ExpShareCtx>();
+  const expShareIds = ledger
+    .filter((e) => e.source_type === "team_expense_share" && e.source_id)
+    .map((e) => e.source_id as string);
+  if (expShareIds.length > 0) {
+    const { data: ess } = await db
+      .from("team_expense_shares")
+      .select(
+        "id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
+      )
+      .in("id", expShareIds);
+    for (const s of (ess ?? []) as unknown as {
+      id: string;
+      team_expenses: {
+        expense_code: string | null;
+        description: string;
+        players: { name: string } | null;
+        player_groups: { name: string } | null;
+      } | null;
+    }[]) {
+      expShareCtx.set(s.id, {
+        expenseCode: s.team_expenses?.expense_code ?? null,
+        expenseDesc: s.team_expenses?.description ?? "Team expense",
+        paidByName:
+          s.team_expenses?.players?.name ??
+          s.team_expenses?.player_groups?.name ??
+          null,
+      });
+    }
+  }
+
+  // Manual adjustments → enrich with reason from DB as safety-net for old records
+  const manualAdjCtx = new Map<string, string>();
+  const manualAdjIds = ledger
+    .filter((e) => e.source_type === "manual_adjustment" && e.source_id)
+    .map((e) => e.source_id as string);
+  if (manualAdjIds.length > 0) {
+    const { data: madj } = await db
+      .from("manual_adjustments")
+      .select("id, type, reason")
+      .in("id", manualAdjIds);
+    for (const m of (madj ?? []) as { id: string; type: string; reason: string }[]) {
+      manualAdjCtx.set(m.id, `Manual ${m.type}: ${m.reason}`);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const { data: settings } = await db
     .from("app_settings")
     .select("roster_token, roster_public")
@@ -238,7 +288,36 @@ export default async function PlayerPortal({
           <>
             <Card className="divide-y divide-slate-100 overflow-hidden">
               {statement.map(({ entry, running }) => {
-                const ctx = formatBookingContext(ledgerContext.get(entry.id));
+                // Booking context — venue, time, court (already resolved)
+                const bookingCtx = formatBookingContext(ledgerContext.get(entry.id));
+
+                // Expense share sub-context
+                const ec = entry.source_type === "team_expense_share" && entry.source_id
+                  ? expShareCtx.get(entry.source_id)
+                  : null;
+                const expenseSubCtx = ec
+                  ? [
+                      ec.expenseCode
+                        ? `${ec.expenseCode} · ${ec.expenseDesc}`
+                        : ec.expenseDesc,
+                      ec.paidByName ? `Paid by ${ec.paidByName}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : null;
+
+                // Manual adjustment description (DB reason is source of truth)
+                const manualDesc =
+                  entry.source_type === "manual_adjustment" && entry.source_id
+                    ? (manualAdjCtx.get(entry.source_id) ?? entry.description ?? "Manual adjustment")
+                    : null;
+
+                const displayLabel =
+                  manualDesc ??
+                  entry.description ??
+                  STATEMENT_LABELS[entry.source_type] ??
+                  "Entry";
+
                 const charge = Number(entry.debit_amount);
                 const credit = Number(entry.credit_amount);
                 const isCharge = charge > 0;
@@ -257,14 +336,17 @@ export default async function PlayerPortal({
                   >
                     <div className="min-w-0">
                       <p className={`text-base ${publicPrimaryText}`}>
-                        {entry.description ||
-                          STATEMENT_LABELS[entry.source_type] ||
-                          "Entry"}
+                        {displayLabel}
                       </p>
                       <p className={`mt-0.5 ${publicHintText}`}>
                         {formatDate(entry.entry_date)}
-                        {ctx ? ` · ${ctx}` : ""}
+                        {bookingCtx ? ` · ${bookingCtx}` : ""}
                       </p>
+                      {expenseSubCtx ? (
+                        <p className={`mt-0.5 ${publicHintText}`}>
+                          {expenseSubCtx}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="shrink-0 text-right">
                       <p

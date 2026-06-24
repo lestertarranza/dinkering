@@ -17,6 +17,7 @@ import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { QrCode } from "@/components/QrCode";
 import { LedgerTable } from "@/components/LedgerTable";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
+import { buildLedgerExpenseContext } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import {
@@ -97,10 +98,10 @@ export default async function PlayerDetail({
   const balance = Number(bal?.balance ?? 0);
   const d = describeBalance(balance);
   const ledgerEntries = (ledger ?? []) as LedgerEntry[];
-  const ledgerContext = await buildLedgerBookingContext(
-    supabase,
-    ledgerEntries,
-  );
+  const [ledgerContext, ledgerExpenseCtx] = await Promise.all([
+    buildLedgerBookingContext(supabase, ledgerEntries),
+    buildLedgerExpenseContext(supabase, ledgerEntries),
+  ]);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const shareUrl = `${appUrl}/p/${p.public_token}`;
 
@@ -237,6 +238,7 @@ export default async function PlayerDetail({
             <LedgerTable
               entries={ledgerEntries}
               bookingContext={ledgerContext}
+              expenseContext={ledgerExpenseCtx}
             />
           </Card>
         </div>

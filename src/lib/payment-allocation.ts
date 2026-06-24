@@ -19,7 +19,7 @@ type Wallet = {
   player_group_id: string | null;
 };
 
-type LedgerRow = {
+export type LedgerRow = {
   entry_date: string;
   created_at: string;
   source_type: SourceType;
@@ -234,6 +234,21 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
       }
     }
   }
+}
+
+/**
+ * Compute open charges for multiple players in one pass — takes a pre-loaded
+ * map of player_id → non-voided ledger rows and returns the open charges per
+ * player (no DB calls). Used by the dashboard to avoid N+1 queries.
+ */
+export function batchComputePlayerOpenCharges(
+  entriesByPlayer: Map<string, LedgerRow[]>,
+): Map<string, OpenCharge[]> {
+  const result = new Map<string, OpenCharge[]>();
+  for (const [playerId, rows] of entriesByPlayer) {
+    result.set(playerId, computeOpenCharges(rows));
+  }
+  return result;
 }
 
 export { planBulkAllocation, totalOpenDue } from "@/lib/payment-allocation-plan";
