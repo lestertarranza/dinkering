@@ -130,7 +130,13 @@ export default async function BookingDetail({
       .filter((p) => !isReversed(p))
       .reduce((s, p) => s + Number(p.amount), 0),
   );
+  const today = new Date().toISOString().slice(0, 10);
   const billable = b.status === "booked" || b.status === "played";
+  // Show attendance confirmation for played bookings OR booked games whose
+  // date has already passed (no need to manually mark as Played first).
+  const isPostGame =
+    b.status === "played" ||
+    (b.status === "booked" && b.play_date < today);
   // Outstanding is what players still owe = charged shares − payments, so it
   // reconciles exactly with the per-player table below (and player balances),
   // instead of the raw court cost which can differ by a few centavos.
@@ -302,7 +308,7 @@ export default async function BookingDetail({
                   No players added yet. Use the form below or let them RSVP
                   via their portal.
                 </p>
-              ) : b.status === "played" ? (
+              ) : isPostGame ? (
                 /* ── POST-GAME: attendance confirmation ── */
                 <div className="mb-4 space-y-1.5">
                   {[...roster]
@@ -509,10 +515,18 @@ export default async function BookingDetail({
                     <tbody className="divide-y divide-slate-100">
                       {[...roster]
                         .sort((a, b) => {
-                          // Players with an existing share (included) first, then alphabetically
-                          const aHas = shareByPlayer.has(a.player_id) ? 0 : 1;
-                          const bHas = shareByPlayer.has(b.player_id) ? 0 : 1;
-                          if (aHas !== bHas) return aHas - bHas;
+                          // Mirror the defaultInclude logic: existing share OR
+                          // chargeable actual_status OR going RSVP = included.
+                          const included = (r: typeof a) => {
+                            const ex = shareByPlayer.get(r.player_id);
+                            return ex != null ||
+                              (r.actual_status
+                                ? chargeable.has(r.actual_status)
+                                : r.response_status === "going");
+                          };
+                          const ai = included(a) ? 0 : 1;
+                          const bi = included(b) ? 0 : 1;
+                          if (ai !== bi) return ai - bi;
                           return (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
                         })
                         .map((r) => {
