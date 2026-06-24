@@ -379,7 +379,18 @@ export default async function BookingDetail({
               ) : (
                 /* ── PRE-GAME: RSVP management ── */
                 <ul className="mb-4 space-y-2">
-                  {roster.map((r) => (
+                  {[...roster]
+                    .sort((a, b) => {
+                      const rsvpRank = (r: typeof a) => {
+                        if (r.response_status === "going") return 0;
+                        if (r.response_status === "maybe") return 1;
+                        if (r.response_status === "no_response") return 2;
+                        return 3; // not_going
+                      };
+                      const dr = rsvpRank(a) - rsvpRank(b);
+                      return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
+                    })
+                    .map((r) => (
                     <li
                       key={r.id}
                       className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
@@ -496,7 +507,15 @@ export default async function BookingDetail({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {roster.map((r) => {
+                      {[...roster]
+                        .sort((a, b) => {
+                          // Players with an existing share (included) first, then alphabetically
+                          const aHas = shareByPlayer.has(a.player_id) ? 0 : 1;
+                          const bHas = shareByPlayer.has(b.player_id) ? 0 : 1;
+                          if (aHas !== bHas) return aHas - bHas;
+                          return (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
+                        })
+                        .map((r) => {
                         const existing = shareByPlayer.get(r.player_id);
                         const defaultInclude =
                           existing != null ||
