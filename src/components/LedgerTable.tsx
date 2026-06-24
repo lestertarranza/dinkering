@@ -8,6 +8,9 @@ import {
 import type { LedgerExpenseCtx } from "@/lib/ledger-attribution";
 import type { LedgerEntry } from "@/lib/types";
 
+// Re-export so the type is usable from the component's import path
+export type { LedgerExpenseCtx };
+
 const sourceLabels: Record<string, string> = {
   booking_share: "Court share",
   payment: "Payment",
@@ -41,6 +44,7 @@ export function LedgerTable({
   bookingContext,
   ownerNames,
   expenseContext,
+  transferItems,
 }: {
   entries: LedgerEntry[];
   bookingContext?: Map<string, BookingContext>;
@@ -48,6 +52,8 @@ export function LedgerTable({
   ownerNames?: Map<string, string>;
   /** Optional expense detail context for team_expense_share entries. */
   expenseContext?: Map<string, LedgerExpenseCtx>;
+  /** Optional per-entry enriched item list for balance-transfer entries. */
+  transferItems?: Map<string, string[]>;
 }) {
   const ordered = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
@@ -95,7 +101,19 @@ export function LedgerTable({
               </td>
               <td className="px-4 py-2">
                 {(() => {
-                  const transfer = parseTransferDesc(entry.description);
+                  // Use pre-enriched items from the page if available, else
+                  // fall back to parsing the raw description.
+                  const enrichedItems = transferItems?.get(entry.id);
+                  const transfer = enrichedItems
+                    ? (() => {
+                        const desc = entry.description ?? "";
+                        const dashIdx = desc.indexOf(" — ");
+                        return dashIdx > 0
+                          ? { header: desc.slice(0, dashIdx).trim(), items: enrichedItems }
+                          : null;
+                      })()
+                    : parseTransferDesc(entry.description);
+
                   if (transfer) {
                     return (
                       <>

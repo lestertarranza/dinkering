@@ -12,6 +12,7 @@ import {
   buildLedgerBookingContext,
   formatBookingContext,
 } from "@/lib/booking-context";
+import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
 import {
   PublicNavLink,
   PublicSection,
@@ -252,7 +253,10 @@ export default async function PlayerPortal({
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
   const d = describeBalance(balance);
-  const ledgerContext = await buildLedgerBookingContext(db, ledger);
+  const [ledgerContext, transferItemMap] = await Promise.all([
+    buildLedgerBookingContext(db, ledger),
+    buildTransferItemEnrichment(db, ledger),
+  ]);
 
   const { data: settings } = await db
     .from("app_settings")
@@ -523,13 +527,16 @@ export default async function PlayerPortal({
                       .join(" · ")
                   : null;
 
-                // Detect balance-transfer entries and extract per-item lines.
+                // Detect balance-transfer entries — use DB-enriched items when
+                // available (resolves expense details for old & new format).
                 const transferParts = (() => {
                   const d = entry.description;
                   if (!d?.startsWith("Transfer ")) return null;
                   const dashIdx = d.indexOf(" — ");
                   if (dashIdx === -1) return null;
                   const header = d.slice(0, dashIdx).trim();
+                  const enriched = transferItemMap.get(entry.id);
+                  if (enriched) return { header, items: enriched };
                   const rest = d.slice(dashIdx + 3).trim();
                   const items = rest.length > 0
                     ? rest.split(";").map((s) => s.trim()).filter(Boolean)
