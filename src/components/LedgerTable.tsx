@@ -53,7 +53,7 @@ export function LedgerTable({
   /** Optional expense detail context for team_expense_share entries. */
   expenseContext?: Map<string, LedgerExpenseCtx>;
   /** Optional per-entry enriched item list for balance-transfer entries. */
-  transferItems?: Map<string, string[]>;
+  transferItems?: Map<string, Array<{ text: string; href?: string }>>;
 }) {
   const ordered = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
@@ -104,26 +104,45 @@ export function LedgerTable({
                   // Use pre-enriched items from the page if available, else
                   // fall back to parsing the raw description.
                   const enrichedItems = transferItems?.get(entry.id);
-                  const transfer = enrichedItems
-                    ? (() => {
-                        const desc = entry.description ?? "";
-                        const dashIdx = desc.indexOf(" — ");
-                        return dashIdx > 0
-                          ? { header: desc.slice(0, dashIdx).trim(), items: enrichedItems }
-                          : null;
-                      })()
-                    : parseTransferDesc(entry.description);
+                  // Build rich items: prefer DB-enriched (with links), else parse raw.
+                  type RichItem = { text: string; href?: string };
+                  let richHeader: string | null = null;
+                  let richItems: RichItem[] | null = null;
 
-                  if (transfer) {
+                  if (enrichedItems) {
+                    const desc = entry.description ?? "";
+                    const dashIdx = desc.indexOf(" — ");
+                    if (dashIdx > 0) {
+                      richHeader = desc.slice(0, dashIdx).trim();
+                      richItems = enrichedItems;
+                    }
+                  } else {
+                    const parsed = parseTransferDesc(entry.description);
+                    if (parsed) {
+                      richHeader = parsed.header;
+                      richItems = parsed.items.map((t) => ({ text: t }));
+                    }
+                  }
+
+                  if (richHeader !== null && richItems !== null) {
                     return (
                       <>
-                        <span>{transfer.header}</span>
-                        {transfer.items.length > 0 && (
+                        <span>{richHeader}</span>
+                        {richItems.length > 0 && (
                           <ul className="mt-1 space-y-0.5">
-                            {transfer.items.map((item, i) => (
+                            {richItems.map((item, i) => (
                               <li key={i} className="flex items-baseline gap-1 text-xs text-slate-500">
                                 <span className="shrink-0 text-slate-300">↳</span>
-                                {item}
+                                {item.href ? (
+                                  <Link
+                                    href={item.href}
+                                    className="text-emerald-600 hover:underline"
+                                  >
+                                    {item.text}
+                                  </Link>
+                                ) : (
+                                  item.text
+                                )}
                               </li>
                             ))}
                           </ul>

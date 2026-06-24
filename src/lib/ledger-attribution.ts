@@ -12,8 +12,8 @@ import type { LedgerEntry } from "./types";
 export async function buildTransferItemEnrichment(
   db: SupabaseClient,
   entries: LedgerEntry[],
-): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>();
+): Promise<Map<string, Array<{ text: string; href?: string }>>> {
+  const result = new Map<string, Array<{ text: string; href?: string }>>();
 
   const transferEntries = entries.filter(
     (e) => e.description?.startsWith("Transfer "),
@@ -34,32 +34,34 @@ export async function buildTransferItemEnrichment(
     }
   }
 
-  // Fetch expense details for all referenced codes.
+  // Fetch expense details for all referenced codes (include id for linking).
   const expByCode = new Map<
     string,
-    { description: string; paidByName: string | null }
+    { id: string; description: string; paidByName: string | null }
   >();
   if (expCodes.size > 0) {
     const { data } = await db
       .from("team_expenses")
       .select(
-        "expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name)",
+        "id, expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name)",
       )
       .in("expense_code", [...expCodes]);
     for (const e of (data ?? []) as unknown as {
+      id: string;
       expense_code: string;
       description: string;
       players: { name: string } | null;
       player_groups: { name: string } | null;
     }[]) {
       expByCode.set(e.expense_code.toUpperCase(), {
+        id: e.id,
         description: e.description,
         paidByName: e.players?.name ?? e.player_groups?.name ?? null,
       });
     }
   }
 
-  // Re-format each item with full detail.
+  // Re-format each item with full detail and an optional link.
   for (const entry of transferEntries) {
     const desc = entry.description ?? "";
     const dashIdx = desc.indexOf(" — ");
@@ -67,16 +69,20 @@ export async function buildTransferItemEnrichment(
     const rest = desc.slice(dashIdx + 3).trim();
     const rawItems = rest.split(";").map((s) => s.trim()).filter(Boolean);
 
-    const enriched = rawItems.map((item) => {
+    const enriched: Array<{ text: string; href?: string }> = rawItems.map((item) => {
       // Already enriched (new format): "Expense (₱X) — EXP-001 · Desc · Paid by Y"
-      // Detect by "TYPE (₱…) — " pattern.
-      if (/^(Expense|Court|Adjustment) \(₱/.test(item)) return item;
+      if (/^(Expense|Court|Adjustment) \(₱/.test(item)) {
+        // Still try to resolve an href for the expense link
+        const expMatch = item.match(/\b(EXP-\d+)\b/i);
+        const exp = expMatch ? expByCode.get(expMatch[1].toUpperCase()) : null;
+        return { text: item, href: exp ? `/admin/expenses/${exp.id}` : undefined };
+      }
 
       // Old format: "Expense — EXP-001 (₱11.84)"
       const oldMatch = item.match(
         /^(Expense|Court|Adjustment)\s*—\s*([A-Z]+-\d+)[^(]*\((₱[\d,.]+)\)/i,
       );
-      if (!oldMatch) return item;
+      if (!oldMatch) return { text: item };
 
       const [, type, code, amountStr] = oldMatch;
       const expCode = code.toUpperCase();
@@ -84,11 +90,14 @@ export async function buildTransferItemEnrichment(
 
       if (type === "Expense" && exp) {
         const paidLine = exp.paidByName ? ` · Paid by ${exp.paidByName}` : "";
-        return `Expense (${amountStr}) — ${expCode} · ${exp.description}${paidLine}`;
+        return {
+          text: `Expense (${amountStr}) — ${expCode} · ${exp.description}${paidLine}`,
+          href: `/admin/expenses/${exp.id}`,
+        };
       }
 
-      // Court or unresolved: put amount before the dash
-      return `${type} (${amountStr}) — ${code}`;
+      // Court or unresolved: put amount before the dash, no link
+      return { text: `${type} (${amountStr}) — ${code}` };
     });
 
     result.set(entry.id, enriched);

@@ -536,7 +536,7 @@ export default async function PlayerPortal({
                   if (dashIdx === -1) return null;
                   const header = d.slice(0, dashIdx).trim();
                   const enriched = transferItemMap.get(entry.id);
-                  if (enriched) return { header, items: enriched };
+                  if (enriched) return { header, items: enriched.map((e) => e.text) };
                   const rest = d.slice(dashIdx + 3).trim();
                   const items = rest.length > 0
                     ? rest.split(";").map((s) => s.trim()).filter(Boolean)
