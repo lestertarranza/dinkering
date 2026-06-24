@@ -138,7 +138,16 @@ export default async function CollectionsPage() {
     .filter((r) => r.balance >= SETTLE_TOLERANCE)
     .sort((a, b) => b.balance - a.balance);
 
-  const totalOwed = rows.reduce((s, r) => s + r.balance, 0);
+  // Deduplicate group balances: multiple members of the same group each show
+  // the group wallet balance, so we must count each group's balance only once.
+  const seenGroupTokens = new Set<string>();
+  const totalOwed = rows.reduce((s, r) => {
+    if (r.kind === "group") {
+      if (seenGroupTokens.has(r.token)) return s;
+      seenGroupTokens.add(r.token);
+    }
+    return s + r.balance;
+  }, 0);
 
   return (
     <div>

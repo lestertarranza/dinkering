@@ -68,6 +68,25 @@ export default async function PlayerDetail({
     is_primary: boolean;
     player_groups: Pick<PlayerGroup, "id" | "name" | "type">;
   }[];
+
+  // If this player belongs to a pooled wallet group (couple/family/team_fund),
+  // their active charges route there. Fetch the group balance so the admin
+  // sees the same number as the public portal & board.
+  const pooledGroup = membershipList.find((m) =>
+    (["couple", "family", "team_fund"] as string[]).includes(
+      m.player_groups.type,
+    ),
+  );
+  const groupBalanceData = pooledGroup
+    ? await supabase
+        .from("group_balances")
+        .select("balance")
+        .eq("player_group_id", pooledGroup.player_groups.id)
+        .single()
+    : null;
+  const groupBalance = groupBalanceData
+    ? Number(groupBalanceData.data?.balance ?? 0)
+    : null;
   const memberGroupIds = new Set(
     membershipList.map((m) => m.player_groups.id),
   );
@@ -97,10 +116,41 @@ export default async function PlayerDetail({
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className={`mb-5 grid gap-3 ${groupBalance !== null ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+        {groupBalance !== null ? (
+          <Card className="p-4">
+            <p className="text-xs uppercase tracking-wide text-slate-500">
+              Active wallet balance
+            </p>
+            <p
+              className={`mt-1 text-2xl font-semibold ${
+                groupBalance >= 0.5
+                  ? "text-rose-600"
+                  : groupBalance <= -0.5
+                    ? "text-emerald-600"
+                    : "text-slate-900"
+              }`}
+            >
+              {Math.abs(groupBalance) < 0.5
+                ? "Settled"
+                : formatMoney(Math.abs(groupBalance))}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              {pooledGroup ? (
+                <Link
+                  href={`/admin/groups/${pooledGroup.player_groups.id}`}
+                  className="text-emerald-600 hover:underline"
+                >
+                  {pooledGroup.player_groups.name}
+                </Link>
+              ) : null}
+              {" "}group wallet
+            </p>
+          </Card>
+        ) : null}
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">
-            Balance
+            {groupBalance !== null ? "Personal wallet" : "Balance"}
           </p>
           <p
             className={`mt-1 text-2xl font-semibold ${

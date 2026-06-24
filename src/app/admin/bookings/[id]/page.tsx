@@ -115,8 +115,18 @@ export default async function BookingDetail({
   const totalShared = round2(
     shareList.reduce((s, x) => s + Number(x.amount_owed), 0),
   );
+  // Exclude reversed payments (their ledger credit is voided; they must not
+  // count as "paid" or the outstanding figure will be under-stated).
+  const paymentList = ((payments ?? []) as (Payment & {
+    players: { name: string } | null;
+    player_groups: { name: string } | null;
+  })[]);
+  const isReversed = (p: Payment) =>
+    String(p.notes ?? "").startsWith("[REVERSED");
   const paid = round2(
-    ((payments ?? []) as Payment[]).reduce((s, p) => s + Number(p.amount), 0),
+    paymentList
+      .filter((p) => !isReversed(p))
+      .reduce((s, p) => s + Number(p.amount), 0),
   );
   const billable = b.status === "booked" || b.status === "played";
   // Outstanding is what players still owe = charged shares − payments, so it
@@ -125,12 +135,6 @@ export default async function BookingDetail({
   const rawOutstanding = billable ? round2(totalShared - paid) : 0;
   const outstanding =
     Math.abs(rawOutstanding) < SETTLE_TOLERANCE ? 0 : rawOutstanding;
-
-  // Merge shares + payments into one per-payer reconciliation table.
-  const paymentList = (payments ?? []) as (Payment & {
-    players: { name: string } | null;
-    player_groups: { name: string } | null;
-  })[];
   type ReconLine = {
     key: string;
     name: string;
@@ -159,6 +163,7 @@ export default async function BookingDetail({
     line.shareCount += 1;
   }
   for (const p of paymentList) {
+    if (isReversed(p)) continue; // reversed payments don't count as paid
     if (p.payer_player_id) {
       ensureLine(
         `p:${p.payer_player_id}`,
