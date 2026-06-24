@@ -278,24 +278,107 @@ export default async function BookingDetail({
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          {/* Roster & RSVP */}
+          {/* ── Roster & Attendance (merged) ── */}
           <Card>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <h2 className="text-sm font-semibold text-slate-700">
-                Roster & RSVP
-              </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700">
+                  Roster &amp; Attendance
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {b.status === "played"
+                    ? "Post-game — confirm who actually attended"
+                    : "Pre-game — manage RSVPs"}
+                </p>
+              </div>
               <span className="text-xs text-slate-400">
                 {roster.length} player{roster.length === 1 ? "" : "s"}
               </span>
             </div>
+
             <div className="p-4">
               {roster.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  No players added yet. Add players below or let them RSVP via
-                  their portal.
+                <p className="mb-4 text-sm text-slate-400">
+                  No players added yet. Use the form below or let them RSVP
+                  via their portal.
                 </p>
+              ) : b.status === "played" ? (
+                /* ── POST-GAME: attendance confirmation ── */
+                <div className="mb-4 space-y-1.5">
+                  {[...roster]
+                    .sort((a, b) => {
+                      const rank = (r: typeof a) => {
+                        if (r.actual_status === "attended") return 0;
+                        if (!r.actual_status && r.response_status === "going") return 1;
+                        if (r.actual_status && r.actual_status !== "absent") return 2;
+                        return 3;
+                      };
+                      const dr = rank(a) - rank(b);
+                      return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
+                    })
+                    .map((r) => {
+                      const defaultActual =
+                        r.actual_status ??
+                        (r.response_status === "going" ? "attended" : "absent");
+                      const isConfirmedAttended = r.actual_status === "attended";
+                      return (
+                        <ActionForm
+                          key={r.id}
+                          action={setPlayerActualStatus}
+                          pendingLabel="…"
+                          className={`rounded-lg px-3 py-1.5 ${
+                            isConfirmedAttended ? "bg-emerald-50" : "bg-slate-50"
+                          }`}
+                          hidden={
+                            <>
+                              <input type="hidden" name="booking_id" value={b.id} />
+                              <input type="hidden" name="player_id" value={r.player_id} />
+                            </>
+                          }
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`flex-1 text-sm ${
+                                isConfirmedAttended
+                                  ? "font-medium text-emerald-800"
+                                  : "text-slate-700"
+                              }`}
+                            >
+                              {r.players?.name}
+                            </span>
+                            {/* RSVP as a muted hint badge */}
+                            <StatusBadge status={r.response_status} />
+                            <select
+                              name="actual_status"
+                              defaultValue={defaultActual}
+                              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                            >
+                              <option value="attended">Attended</option>
+                              <option value="absent">Absent</option>
+                              <option value="late_cancel">Late cancel</option>
+                              <option value="guest">Guest</option>
+                            </select>
+                            {isConfirmedAttended ? (
+                              <span className="w-20 text-center text-xs font-medium text-emerald-600">
+                                ✓ Confirmed
+                              </span>
+                            ) : (
+                              <SubmitButton variant="secondary" pendingLabel="…">
+                                Confirm
+                              </SubmitButton>
+                            )}
+                          </div>
+                        </ActionForm>
+                      );
+                    })}
+                  <p className="pt-1 text-xs text-slate-400">
+                    RSVP badge shown as context. Going players pre-selected as
+                    Attended. Change if needed, then click Confirm.
+                  </p>
+                </div>
               ) : (
-                <ul className="space-y-2">
+                /* ── PRE-GAME: RSVP management ── */
+                <ul className="mb-4 space-y-2">
                   {roster.map((r) => (
                     <li
                       key={r.id}
@@ -316,11 +399,7 @@ export default async function BookingDetail({
                           hidden={
                             <>
                               <input type="hidden" name="booking_id" value={b.id} />
-                              <input
-                                type="hidden"
-                                name="player_id"
-                                value={r.player_id}
-                              />
+                              <input type="hidden" name="player_id" value={r.player_id} />
                             </>
                           }
                         >
@@ -344,26 +423,26 @@ export default async function BookingDetail({
                 </ul>
               )}
 
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              {/* Add player (always shown) */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                 <ActionForm
                   action={addAttendee}
                   className="flex-1"
                   pendingLabel="Adding player…"
                   hidden={<input type="hidden" name="booking_id" value={b.id} />}
                 >
-                  {/* Feedback renders above this row as a block element */}
                   <div className="flex gap-2">
-                  <select name="player_id" className={inputClass} required>
-                    <option value="">Add player to roster…</option>
-                    {availablePlayers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <SubmitButton variant="secondary" pendingLabel="Adding…">
-                    Add
-                  </SubmitButton>
+                    <select name="player_id" className={inputClass} required>
+                      <option value="">Add player to roster…</option>
+                      {availablePlayers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <SubmitButton variant="secondary" pendingLabel="Adding…">
+                      Add
+                    </SubmitButton>
                   </div>
                 </ActionForm>
                 {availablePlayers.length > 0 ? (
@@ -380,88 +459,6 @@ export default async function BookingDetail({
               </div>
             </div>
           </Card>
-
-          {/* Confirm attendance */}
-          {roster.length > 0 ? (
-            <Card>
-              <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
-                Confirm actual attendance
-              </h2>
-              {/* Each row is its own ActionForm — no nesting, dropdown value is
-                  submitted by whichever player's Confirm button is clicked. */}
-              <div className="space-y-1.5 p-4">
-                {[...roster]
-                  .sort((a, b) => {
-                    const rank = (r: typeof a) => {
-                      if (r.actual_status === "attended") return 0;
-                      if (!r.actual_status && r.response_status === "going") return 1;
-                      if (r.actual_status && r.actual_status !== "absent") return 2;
-                      return 3;
-                    };
-                    const dr = rank(a) - rank(b);
-                    return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
-                  })
-                  .map((r) => {
-                    const defaultActual =
-                      r.actual_status ??
-                      (r.response_status === "going" ? "attended" : "absent");
-                    const isConfirmedAttended = r.actual_status === "attended";
-                    return (
-                      <ActionForm
-                        key={r.id}
-                        action={setPlayerActualStatus}
-                        pendingLabel="…"
-                        className={`rounded-lg px-3 py-1.5 ${
-                          isConfirmedAttended ? "bg-emerald-50" : "bg-slate-50"
-                        }`}
-                        hidden={
-                          <>
-                            <input type="hidden" name="booking_id" value={b.id} />
-                            <input type="hidden" name="player_id" value={r.player_id} />
-                          </>
-                        }
-                      >
-                        {/* Feedback renders above this row as a block — not inside the flex row */}
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`flex-1 text-sm ${
-                              isConfirmedAttended
-                                ? "font-medium text-emerald-800"
-                                : "text-slate-700"
-                            }`}
-                          >
-                            {r.players?.name}
-                          </span>
-                          <select
-                            name="actual_status"
-                            defaultValue={defaultActual}
-                            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                          >
-                            <option value="attended">Attended</option>
-                            <option value="absent">Absent</option>
-                            <option value="late_cancel">Late cancel</option>
-                            <option value="guest">Guest</option>
-                          </select>
-                          {isConfirmedAttended ? (
-                            <span className="w-20 text-center text-xs font-medium text-emerald-600">
-                              ✓ Confirmed
-                            </span>
-                          ) : (
-                            <SubmitButton variant="secondary" pendingLabel="…">
-                              Confirm
-                            </SubmitButton>
-                          )}
-                        </div>
-                      </ActionForm>
-                    );
-                  })}
-                <p className="pt-1 text-xs text-slate-400">
-                  Going players are pre-selected as Attended. Change the
-                  dropdown if needed, then click Confirm.
-                </p>
-              </div>
-            </Card>
-          ) : null}
 
           {/* Generate shares */}
           {roster.length > 0 ? (
