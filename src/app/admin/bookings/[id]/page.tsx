@@ -206,6 +206,32 @@ export default async function BookingDetail({
         }
       />
 
+      {/* Booking confirmation screenshot */}
+      {b.confirmation_url ? (
+        <div className="mb-4 flex items-center gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <a href={b.confirmation_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={b.confirmation_url}
+              alt="Booking confirmation"
+              className="h-20 w-20 rounded-lg object-cover ring-2 ring-emerald-200 hover:ring-emerald-400"
+            />
+          </a>
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">Booking confirmation</p>
+            <p className="mt-0.5 text-xs text-emerald-600">Court reservation screenshot from the venue.</p>
+            <a
+              href={b.confirmation_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-xs text-emerald-700 hover:underline"
+            >
+              View full image ↗
+            </a>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">
