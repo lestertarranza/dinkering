@@ -239,7 +239,7 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url)",
     )
     .eq("player_id", p.id);
 
@@ -257,22 +257,6 @@ export default async function PlayerPortal({
     buildLedgerBookingContext(db, ledger),
     buildTransferItemEnrichment(db, ledger),
   ]);
-
-  // Load screenshots for payment entries in the ledger.
-  const paymentSourceIds = ledger
-    .filter((e) => e.source_type === "payment" && e.source_id)
-    .map((e) => e.source_id as string);
-  const screenshotByPaymentId = new Map<string, string>();
-  if (paymentSourceIds.length > 0) {
-    const { data: payRows } = await db
-      .from("payments")
-      .select("id, screenshot_url")
-      .in("id", paymentSourceIds)
-      .not("screenshot_url", "is", null);
-    for (const pay of (payRows ?? []) as { id: string; screenshot_url: string }[]) {
-      if (pay.screenshot_url) screenshotByPaymentId.set(pay.id, pay.screenshot_url);
-    }
-  }
 
   const { data: settings } = await db
     .from("app_settings")
@@ -471,6 +455,30 @@ export default async function PlayerPortal({
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
+                  {/* Booking confirmation screenshot from the venue */}
+                  {a.bookings.confirmation_url ? (
+                    <div className="mb-3 flex items-center gap-3 rounded-lg bg-emerald-50 px-3 py-2">
+                      <a href={a.bookings.confirmation_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={a.bookings.confirmation_url}
+                          alt="Court booking confirmation"
+                          className="h-12 w-12 rounded-lg object-cover ring-1 ring-emerald-200"
+                        />
+                      </a>
+                      <div>
+                        <p className={`text-sm font-medium text-emerald-800`}>Court booking confirmed</p>
+                        <a
+                          href={a.bookings.confirmation_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`text-xs text-emerald-600 hover:underline`}
+                        >
+                          View confirmation ↗
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
                   <RsvpForm
                     token={token}
                     bookingId={a.bookings.id}
@@ -600,27 +608,6 @@ export default async function PlayerPortal({
                         <p className={`mt-0.5 ${publicHintText}`}>
                           {expenseSubCtx}
                         </p>
-                      ) : null}
-                      {/* Payment screenshot thumbnail */}
-                      {entry.source_type === "payment" &&
-                      entry.source_id &&
-                      screenshotByPaymentId.has(entry.source_id) ? (
-                        <a
-                          href={screenshotByPaymentId.get(entry.source_id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-1.5"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={screenshotByPaymentId.get(entry.source_id)}
-                            alt="Payment receipt"
-                            className="h-10 w-10 rounded-lg object-cover ring-1 ring-slate-200"
-                          />
-                          <span className={`text-xs ${publicHintText}`}>
-                            View receipt ↗
-                          </span>
-                        </a>
                       ) : null}
                     </div>
                     <div className="shrink-0 text-right">

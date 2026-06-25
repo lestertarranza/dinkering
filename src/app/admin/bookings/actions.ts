@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
-import { uploadPaymentScreenshot } from "@/lib/payment-screenshot";
+import { uploadBookingConfirmation } from "@/lib/booking-confirmation";
 import {
   nextCode,
   round2,
@@ -28,6 +28,10 @@ export async function createBooking(formData: FormData) {
     String(formData.get("booking_code") || "").trim() ||
     (await nextCode(supabase, "bookings", "booking_code", "PB"));
 
+  // Upload confirmation screenshot if provided
+  const screenshotFile = formData.get("confirmation_screenshot") as File | null;
+  const confirmation_url = await uploadBookingConfirmation(screenshotFile, code);
+
   const { data } = await supabase
     .from("bookings")
     .insert({
@@ -48,6 +52,7 @@ export async function createBooking(formData: FormData) {
       total_booking_cost: computeTotal(formData),
       status: String(formData.get("status") || "booked"),
       notes: String(formData.get("notes") || "").trim() || null,
+      confirmation_url: confirmation_url ?? null,
     })
     .select("id")
     .single();
@@ -64,28 +69,33 @@ export async function updateBooking(
   const play_date = String(formData.get("play_date"));
   if (!play_date) return actionErr("Play date is required.");
   const { supabase } = await requireAdmin();
-  await supabase
-    .from("bookings")
-    .update({
-      booking_code: String(formData.get("booking_code") || "").trim() || null,
-      play_date,
-      start_time: String(formData.get("start_time") || "") || null,
-      end_time: String(formData.get("end_time") || "") || null,
-      venue: String(formData.get("venue") || "").trim() || null,
-      court_number: String(formData.get("court_number") || "").trim() || null,
-      booking_reference:
-        String(formData.get("booking_reference") || "").trim() || null,
-      courts_booked: parseFloat(String(formData.get("courts_booked") || "1")),
-      hours: parseFloat(String(formData.get("hours") || "1")),
-      rate_per_court_per_hour: parseFloat(
-        String(formData.get("rate_per_court_per_hour") || "0"),
-      ),
-      other_fees: parseFloat(String(formData.get("other_fees") || "0")),
-      total_booking_cost: computeTotal(formData),
-      status: String(formData.get("status") || "booked"),
-      notes: String(formData.get("notes") || "").trim() || null,
-    })
-    .eq("id", id);
+
+  // Upload new confirmation screenshot if one was provided
+  const screenshotFile = formData.get("confirmation_screenshot") as File | null;
+  const newUrl = await uploadBookingConfirmation(screenshotFile, `PB-${id.slice(0, 8)}`);
+  // Build update object; only include confirmation_url if a new file was uploaded
+  const updateData: Record<string, unknown> = {
+    booking_code: String(formData.get("booking_code") || "").trim() || null,
+    play_date,
+    start_time: String(formData.get("start_time") || "") || null,
+    end_time: String(formData.get("end_time") || "") || null,
+    venue: String(formData.get("venue") || "").trim() || null,
+    court_number: String(formData.get("court_number") || "").trim() || null,
+    booking_reference:
+      String(formData.get("booking_reference") || "").trim() || null,
+    courts_booked: parseFloat(String(formData.get("courts_booked") || "1")),
+    hours: parseFloat(String(formData.get("hours") || "1")),
+    rate_per_court_per_hour: parseFloat(
+      String(formData.get("rate_per_court_per_hour") || "0"),
+    ),
+    other_fees: parseFloat(String(formData.get("other_fees") || "0")),
+    total_booking_cost: computeTotal(formData),
+    status: String(formData.get("status") || "booked"),
+    notes: String(formData.get("notes") || "").trim() || null,
+  };
+  if (newUrl) updateData.confirmation_url = newUrl;
+
+  await supabase.from("bookings").update(updateData).eq("id", id);
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
   return actionOk("Booking saved.");
@@ -394,13 +404,6 @@ export async function markBookingSharePaid(
   if (!player_id && !group_id)
     return actionErr("Invalid payer.");
 
-  // Upload screenshot if provided
-  const screenshotFile = formData.get("screenshot") as File | null;
-  const screenshot_url = await uploadPaymentScreenshot(
-    screenshotFile,
-    `PAY-${Date.now()}`,
-  );
-
   const { supabase } = await requireAdmin();
 
   // Resolve wallet — if player is in a pooled group, credit goes there.
@@ -420,7 +423,6 @@ export async function markBookingSharePaid(
       booking_id,
       amount,
       notes: "Marked as paid from booking page",
-      screenshot_url: screenshot_url ?? null,
     })
     .select("id")
     .single();

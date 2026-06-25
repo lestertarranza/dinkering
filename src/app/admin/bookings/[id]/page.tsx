@@ -79,7 +79,7 @@ export default async function BookingDetail({
       .eq("booking_id", id),
     supabase
       .from("payments")
-      .select("*, screenshot_url, players(name), player_groups(name)")
+      .select("*, players(name), player_groups(name)")
       .eq("booking_id", id)
       .order("payment_date", { ascending: false }),
     supabase
@@ -122,7 +122,6 @@ export default async function BookingDetail({
   const paymentList = ((payments ?? []) as (Payment & {
     players: { name: string } | null;
     player_groups: { name: string } | null;
-    screenshot_url: string | null;
   })[]);
   const isReversed = (p: Payment) =>
     String(p.notes ?? "").startsWith("[REVERSED");
@@ -206,6 +205,32 @@ export default async function BookingDetail({
           </Link>
         }
       />
+
+      {/* Booking confirmation screenshot */}
+      {b.confirmation_url ? (
+        <div className="mb-4 flex items-center gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <a href={b.confirmation_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={b.confirmation_url}
+              alt="Booking confirmation"
+              className="h-20 w-20 rounded-lg object-cover ring-2 ring-emerald-200 hover:ring-emerald-400"
+            />
+          </a>
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">Booking confirmation</p>
+            <p className="mt-0.5 text-xs text-emerald-600">Court reservation screenshot from the venue.</p>
+            <a
+              href={b.confirmation_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-xs text-emerald-700 hover:underline"
+            >
+              View full image ↗
+            </a>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Card className="p-4">
@@ -703,35 +728,21 @@ export default async function BookingDetail({
                                   : `${formatMoney(Math.abs(bal))} over`}
                             </td>
                             {b.status === "played" ? (
-                              <td className="py-1 pl-3">
+                              <td className="py-1 pl-3 text-right">
                                 {due ? (
-                                  <ActionForm
+                                  <ConfirmButton
                                     action={markBookingSharePaid}
+                                    message={`Record ${formatMoney(bal)} payment from ${line.name} for this booking?`}
+                                    variant="secondary"
+                                    hidden={{
+                                      booking_id: b.id,
+                                      payer: line.key,
+                                      amount: bal.toFixed(2),
+                                    }}
                                     pendingLabel="Recording…"
-                                    multipart
-                                    hidden={
-                                      <>
-                                        <input type="hidden" name="booking_id" value={b.id} />
-                                        <input type="hidden" name="payer" value={line.key} />
-                                        <input type="hidden" name="amount" value={bal.toFixed(2)} />
-                                      </>
-                                    }
                                   >
-                                    <div className="flex items-center gap-2">
-                                      <label className="flex cursor-pointer items-center gap-1 rounded-lg border border-dashed border-slate-300 px-2 py-1 text-xs text-slate-500 hover:border-emerald-400 hover:text-emerald-600">
-                                        📎
-                                        <input
-                                          name="screenshot"
-                                          type="file"
-                                          accept="image/*"
-                                          className="sr-only"
-                                        />
-                                      </label>
-                                      <SubmitButton variant="secondary" pendingLabel="…">
-                                        Mark paid
-                                      </SubmitButton>
-                                    </div>
-                                  </ActionForm>
+                                    Mark paid
+                                  </ConfirmButton>
                                 ) : null}
                               </td>
                             ) : null}
@@ -762,74 +773,6 @@ export default async function BookingDetail({
                   record multiple shares per player — e.g. when someone covered
                   guests they invited and settled the split on their own.
                 </p>
-              ) : null}
-
-              {/* Payment receipts list */}
-              {paymentList.length > 0 ? (
-                <div className="mt-4 border-t border-slate-100 pt-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Payments recorded
-                  </p>
-                  <ul className="space-y-2">
-                    {paymentList.map((p) => {
-                      const reversed = isReversed(p);
-                      const payerName = p.players?.name ?? p.player_groups?.name ?? "—";
-                      return (
-                        <li
-                          key={p.id}
-                          className={`flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-2 ${reversed ? "opacity-50" : ""}`}
-                        >
-                          {/* Screenshot thumbnail */}
-                          {p.screenshot_url ? (
-                            <a
-                              href={p.screenshot_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="shrink-0"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={p.screenshot_url}
-                                alt="Payment receipt"
-                                className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-emerald-400"
-                              />
-                            </a>
-                          ) : (
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-300 text-lg">
-                              📄
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-slate-700">
-                              {payerName}
-                              {reversed ? (
-                                <span className="ml-2 text-xs font-normal text-slate-400 line-through">Reversed</span>
-                              ) : null}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              {p.payment_code} · {formatDate(p.payment_date)}
-                              {p.payment_method ? ` · ${p.payment_method}` : ""}
-                              {p.reference_number ? ` · ref ${p.reference_number}` : ""}
-                            </p>
-                            {p.screenshot_url ? (
-                              <a
-                                href={p.screenshot_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-emerald-600 hover:underline"
-                              >
-                                View receipt ↗
-                              </a>
-                            ) : null}
-                          </div>
-                          <span className={`shrink-0 text-sm font-semibold ${reversed ? "text-slate-400 line-through" : "text-emerald-600"}`}>
-                            {formatMoney(p.amount)}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
               ) : null}
             </div>
           </Card>
