@@ -92,14 +92,6 @@ export default async function PublicSchedule({
                 className={publicTapBlockClass}
               >
                 <div className="flex items-start justify-between gap-3">
-                  {b.confirmation_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={b.confirmation_url}
-                      alt="Booking confirmation"
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-slate-200"
-                    />
-                  ) : null}
                   <div className="min-w-0 flex-1">
                     <p className={`text-lg ${publicPrimaryText}`}>
                       {b.booking_code ?? "Booking"}
@@ -109,6 +101,16 @@ export default async function PublicSchedule({
                     </p>
                     {ctx ? (
                       <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
+                    ) : null}
+                    {b.confirmation_url ? (
+                      <a
+                        href={b.confirmation_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`mt-1 inline-block text-xs font-medium text-emerald-600 hover:underline`}
+                      >
+                        📋 Booking confirmation ↗
+                      </a>
                     ) : null}
                     {st && st.invited > 0 ? (
                       <p className="mt-2 text-sm font-medium text-emerald-800">
@@ -139,7 +141,7 @@ export default async function PublicSchedule({
                         No players invited yet
                       </p>
                     )}
-                  </div>{/* min-w-0 flex-1 */}
+                  </div>
                   <span className={publicChevronClass} aria-hidden>
                     ›
                   </span>
