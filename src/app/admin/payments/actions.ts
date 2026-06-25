@@ -64,7 +64,6 @@ async function postPaymentRecord(
     payment_method: string | null;
     reference_number: string | null;
     notes: string | null;
-    screenshot_url?: string | null;
     ledgerDescription: (code: string) => string;
   },
 ): Promise<{ ok: true; code: string } | { ok: false; message: string }> {
@@ -83,7 +82,6 @@ async function postPaymentRecord(
       payment_method: opts.payment_method,
       reference_number: opts.reference_number,
       notes: opts.notes,
-      screenshot_url: opts.screenshot_url ?? null,
     })
     .select("id")
     .single();
