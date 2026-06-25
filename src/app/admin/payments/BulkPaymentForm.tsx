@@ -49,7 +49,7 @@ export function BulkPaymentForm({
   }, [preview, amount]);
 
   return (
-    <form action={formAction} className="space-y-3">
+    <form action={formAction} className="space-y-3" encType="multipart/form-data">
       {state ? (
         <p
           className={`rounded-lg px-3 py-2 text-sm ${
@@ -190,6 +190,17 @@ export function BulkPaymentForm({
       </div>
       <Field label="Notes" hint="Optional — copied into each split payment">
         <textarea name="notes" rows={2} className={inputClass} />
+      </Field>
+      <Field
+        label="Payment screenshot"
+        hint="GCash confirmation, bank receipt, etc. (optional — applies to all allocations)"
+      >
+        <input
+          name="screenshot"
+          type="file"
+          accept="image/*"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-3 file:py-1 file:text-sm file:font-medium file:text-emerald-700 hover:file:bg-emerald-100"
+        />
       </Field>
       <SubmitButton className="w-full" pendingLabel="Recording…">
         Record bulk payment
