@@ -419,11 +419,12 @@ export default async function BookingDetail({
                 <ul className="mb-4 space-y-2">
                   {[...roster]
                     .sort((a, b) => {
+                      // Responded first (going → maybe → not going), then no response
                       const rsvpRank = (r: typeof a) => {
                         if (r.response_status === "going") return 0;
                         if (r.response_status === "maybe") return 1;
-                        if (r.response_status === "no_response") return 2;
-                        return 3; // not_going
+                        if (r.response_status === "not_going") return 2;
+                        return 3; // no_response last
                       };
                       const dr = rsvpRank(a) - rsvpRank(b);
                       return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");

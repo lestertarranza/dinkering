@@ -455,29 +455,18 @@ export default async function PlayerPortal({
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
-                  {/* Booking confirmation screenshot from the venue */}
+                  {/* Booking confirmation link */}
                   {a.bookings.confirmation_url ? (
-                    <div className="mb-3 flex items-center gap-3 rounded-lg bg-emerald-50 px-3 py-2">
-                      <a href={a.bookings.confirmation_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={a.bookings.confirmation_url}
-                          alt="Court booking confirmation"
-                          className="h-12 w-12 rounded-lg object-cover ring-1 ring-emerald-200"
-                        />
+                    <p className="mb-3">
+                      <a
+                        href={a.bookings.confirmation_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`text-sm font-medium text-emerald-700 hover:underline`}
+                      >
+                        📋 View booking confirmation ↗
                       </a>
-                      <div>
-                        <p className={`text-sm font-medium text-emerald-800`}>Court booking confirmed</p>
-                        <a
-                          href={a.bookings.confirmation_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`text-xs text-emerald-600 hover:underline`}
-                        >
-                          View confirmation ↗
-                        </a>
-                      </div>
-                    </div>
+                    </p>
                   ) : null}
                   <RsvpForm
                     token={token}

@@ -21,11 +21,12 @@ import type { Booking, BookingAttendance, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+// Responded players (going / maybe / not going) first, no-response last.
 const RSVP_ORDER: Record<string, number> = {
   going: 0,
   maybe: 1,
-  no_response: 2,
-  not_going: 3,
+  not_going: 2,
+  no_response: 3,
 };
 
 export default async function PublicBookingRoster({
@@ -93,6 +94,18 @@ export default async function PublicBookingRoster({
           </p>
           {ctx ? (
             <p className={`mt-1.5 ${publicHintText}`}>{ctx}</p>
+          ) : null}
+          {b.confirmation_url ? (
+            <p className="mt-3">
+              <a
+                href={b.confirmation_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-emerald-700 hover:underline"
+              >
+                📋 View booking confirmation ↗
+              </a>
+            </p>
           ) : null}
         </div>
       </header>
