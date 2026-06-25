@@ -62,7 +62,7 @@ export default async function PaymentsPage({
   let listQuery = supabase
     .from("payments")
     .select(
-      "*, screenshot_url, players(name), player_groups(name), bookings(booking_code), team_expenses(expense_code, description)",
+      "*, players(name), player_groups(name), bookings(booking_code), team_expenses(expense_code, description)",
       { count: "exact" },
     )
     .order("payment_date", { ascending: false })
@@ -305,7 +305,6 @@ export default async function PaymentsPage({
                     expense_code: string | null;
                     description: string;
                   } | null;
-                  screenshot_url: string | null;
                 })[]
               ).map((p) => {
                 const note = p.notes ?? "";
@@ -360,22 +359,6 @@ export default async function PaymentsPage({
                         <p className="mt-1 text-xs text-slate-500">
                           ↳ {trail}
                         </p>
-                      ) : null}
-                      {p.screenshot_url ? (
-                        <a
-                          href={p.screenshot_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-1 text-xs text-emerald-600 hover:underline"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={p.screenshot_url}
-                            alt="Payment screenshot"
-                            className="h-8 w-8 rounded object-cover ring-1 ring-slate-200"
-                          />
-                          View screenshot ↗
-                        </a>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-3">

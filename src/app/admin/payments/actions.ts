@@ -15,7 +15,6 @@ import {
   type OpenCharge,
 } from "@/lib/payment-allocation";
 import { formatMoney } from "@/lib/format";
-import { uploadPaymentScreenshot } from "@/lib/payment-screenshot";
 
 export type PaymentState = { ok: boolean; message: string } | null;
 
@@ -159,11 +158,6 @@ export async function createPayment(
   const reference_number =
     String(formData.get("reference_number") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
-  const screenshotFile = formData.get("screenshot") as File | null;
-
-  // Generate a temp code prefix for the filename (real code comes from postPaymentRecord)
-  const tempPrefix = `PAY-${Date.now()}`;
-  const screenshot_url = await uploadPaymentScreenshot(screenshotFile, tempPrefix);
 
   const { supabase } = await requireAdmin();
   const result = await postPaymentRecord(supabase, {
@@ -176,7 +170,6 @@ export async function createPayment(
     payment_method,
     reference_number,
     notes,
-    screenshot_url,
     ledgerDescription: (code) =>
       `Payment ${code}${
         booking_id
@@ -227,12 +220,6 @@ export async function createBulkPayment(
   const reference_number =
     String(formData.get("reference_number") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
-  const screenshotFile = formData.get("screenshot") as File | null;
-  // Upload once; the same receipt covers all split allocations
-  const screenshot_url = await uploadPaymentScreenshot(
-    screenshotFile,
-    `PAY-BULK-${Date.now()}`,
-  );
 
   const { supabase } = await requireAdmin();
   const wallet = await resolveWallet(supabase, player_id, group_id, payment_date);
@@ -264,7 +251,6 @@ export async function createBulkPayment(
       payment_method,
       reference_number,
       notes: lineNotes,
-      screenshot_url,
       ledgerDescription: () =>
         line.kind === "advance"
           ? "Bulk payment — advance credit"

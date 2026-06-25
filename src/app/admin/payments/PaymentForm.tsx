@@ -40,7 +40,7 @@ export function PaymentForm({
   }, [state]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3" encType="multipart/form-data">
+    <form ref={formRef} action={formAction} className="space-y-3">
       {state ? (
         <p
           className={`rounded-lg px-3 py-2 text-sm ${
@@ -146,17 +146,6 @@ export function PaymentForm({
       </div>
       <Field label="Notes">
         <textarea name="notes" rows={2} className={inputClass} />
-      </Field>
-      <Field
-        label="Payment screenshot"
-        hint="GCash confirmation, bank transfer receipt, etc. (optional)"
-      >
-        <input
-          name="screenshot"
-          type="file"
-          accept="image/*"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-3 file:py-1 file:text-sm file:font-medium file:text-emerald-700 hover:file:bg-emerald-100"
-        />
       </Field>
       <button
         type="submit"

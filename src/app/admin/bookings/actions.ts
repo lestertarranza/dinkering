@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
+import { uploadPaymentScreenshot } from "@/lib/payment-screenshot";
 import {
   nextCode,
   round2,
@@ -393,6 +394,13 @@ export async function markBookingSharePaid(
   if (!player_id && !group_id)
     return actionErr("Invalid payer.");
 
+  // Upload screenshot if provided
+  const screenshotFile = formData.get("screenshot") as File | null;
+  const screenshot_url = await uploadPaymentScreenshot(
+    screenshotFile,
+    `PAY-${Date.now()}`,
+  );
+
   const { supabase } = await requireAdmin();
 
   // Resolve wallet — if player is in a pooled group, credit goes there.
@@ -412,6 +420,7 @@ export async function markBookingSharePaid(
       booking_id,
       amount,
       notes: "Marked as paid from booking page",
+      screenshot_url: screenshot_url ?? null,
     })
     .select("id")
     .single();
