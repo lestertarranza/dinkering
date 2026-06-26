@@ -27,14 +27,16 @@ export function ActionForm({
   children,
   pendingLabel = "Saving…",
   hidden,
-  multipart = false,
 }: {
   action: FormAction;
   className?: string;
   children: ReactNode;
   pendingLabel?: string;
   hidden?: ReactNode;
-  /** Set true when the form includes a file input. */
+  /**
+   * @deprecated No longer needed. React/Next automatically use multipart
+   * encoding for function actions when a file input is present.
+   */
   multipart?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
@@ -44,7 +46,6 @@ export function ActionForm({
       action={formAction}
       className={className}
       aria-busy={pending}
-      encType={multipart ? "multipart/form-data" : undefined}
     >
       {hidden}
       <AutoDismissFeedback state={state} />

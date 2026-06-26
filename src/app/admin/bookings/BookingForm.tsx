@@ -154,7 +154,6 @@ export function BookingForm({
     <form
       action={action as (formData: FormData) => void | Promise<void>}
       className="space-y-3"
-      encType="multipart/form-data"
     >
       {hidden}
       {fields}
