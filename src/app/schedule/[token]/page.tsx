@@ -123,31 +123,18 @@ export default async function PublicSchedule({
                         <p className={`mt-1 ${publicHintText}`}>{parts.join(" · ")}</p>
                       );
                     })()}
-                    {/* Per-court timings + capacity (merged by court number) */}
+                    {/* Per-court timings (merged by court number — no max here) */}
                     {(() => {
                       const cts = courtsByBooking.get(b.id) ?? [];
                       if (cts.length === 0) return null;
                       const merged = mergeCourts(cts);
-                      const totalMax = merged.every((m) => m.maxPlayers === 0)
-                        ? 0
-                        : merged.reduce((s, m) => s + m.maxPlayers, 0);
-                      const going = stats.get(b.id)?.going ?? 0;
-                      const slotsLeft = totalMax > 0 ? Math.max(0, totalMax - going) : null;
                       return (
                         <div className={`mt-1.5 space-y-0.5`}>
                           {merged.map((m, i) => (
                             <p key={i} className={publicHintText}>
                               {m.label}: {formatCourtTime(m) || "—"}
-                              {m.maxPlayers > 0 ? ` · ${m.maxPlayers} max` : ""}
                             </p>
                           ))}
-                          {totalMax > 0 ? (
-                            <p className={`text-xs font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                              {slotsLeft === 0
-                                ? "Full — join waitlist"
-                                : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
-                            </p>
-                          ) : null}
                         </div>
                       );
                     })()}
@@ -171,6 +158,25 @@ export default async function PublicSchedule({
                         No players invited yet
                       </p>
                     )}
+                    {/* Total capacity + slots remaining (below RSVP details) */}
+                    {(() => {
+                      const cts = courtsByBooking.get(b.id) ?? [];
+                      const merged = mergeCourts(cts);
+                      const totalMax = merged.every((m) => m.maxPlayers === 0)
+                        ? 0
+                        : merged.reduce((s, m) => s + m.maxPlayers, 0);
+                      if (totalMax === 0) return null;
+                      const going = stats.get(b.id)?.going ?? 0;
+                      const slotsLeft = Math.max(0, totalMax - going);
+                      return (
+                        <p className={`mt-1.5 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                          {totalMax} max ·{" "}
+                          {slotsLeft === 0
+                            ? "Full — join waitlist"
+                            : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+                        </p>
+                      );
+                    })()}
                   </div>
                   <span className={publicChevronClass} aria-hidden>
                     ›
