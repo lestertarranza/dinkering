@@ -279,6 +279,7 @@ export default async function Dashboard({
 
   // ── Who owes / who has credit ─────────────────────────────────────────────
   const playersWhoOweAll  = playerOwners.filter((o) => o.balance >= SETTLE_TOLERANCE).sort((a, b) => b.balance - a.balance);
+  const groupsWhoOweAll   = groupOwners.filter((o) => o.balance >= SETTLE_TOLERANCE).sort((a, b) => b.balance - a.balance);
   const playersWithCreditAll = playerOwners.filter((o) => o.balance <= -SETTLE_TOLERANCE).sort((a, b) => a.balance - b.balance);
   const groupsWithCreditAll  = groupOwners.filter((o) => o.balance <= -SETTLE_TOLERANCE).sort((a, b) => a.balance - b.balance);
 
@@ -293,12 +294,14 @@ export default async function Dashboard({
   const upcomingPage       = upcomingAll.slice(upFrom, upFrom + PAGE_SIZE);
   const unpaidBookingsPage = unpaidBookingsAll.slice(unFrom, unFrom + PAGE_SIZE);
   const owePage_data       = playersWhoOweAll.slice(oweFrom, oweFrom + PAGE_SIZE);
+  const oweGroupsPage      = groupsWhoOweAll.slice(oweFrom, oweFrom + PAGE_SIZE);
   const credPlayersPage    = playersWithCreditAll.slice(credFrom, credFrom + PAGE_SIZE);
   const credGroupsPage     = groupsWithCreditAll.slice(credFrom, credFrom + PAGE_SIZE);
   const recentPaymentsPage = (recentPayments ?? []).slice(payFrom, payFrom + PAGE_SIZE);
   const recentExpensesPage = expenses.slice(expFrom, expFrom + PAGE_SIZE);
 
   const credTotal = playersWithCreditAll.length + groupsWithCreditAll.length;
+  const oweTotal  = playersWhoOweAll.length + groupsWhoOweAll.length;
 
   // ── Open-charge enrichment for "who owes" box ──────────────────────────────
   let openChargesByPlayer = new Map<string, { source_type: string; source_id: string; label: string; remaining: number }[]>();
@@ -503,12 +506,13 @@ export default async function Dashboard({
           </div>
         </Card>
 
-        {/* ── Players who owe (collapsible line items) ── */}
+        {/* ── Balances — players + groups who owe (collapsible) ── */}
         <Card>
-          <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">Players who owe</h2>
+          <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">Balances</h2>
           <div className="p-3">
-            {owePage_data.length === 0 ? <EmptyState title="Nobody owes anything" /> : (
+            {oweTotal === 0 ? <EmptyState title="Nobody owes anything" /> : (
               <ul className="space-y-1.5">
+                {/* Players with open charges (collapsible drill-down) */}
                 {owePage_data.map((o) => {
                   const charges = openChargesByPlayer.get(o.id) ?? [];
                   return (
@@ -544,10 +548,38 @@ export default async function Dashboard({
                     </li>
                   );
                 })}
+                {/* Groups who owe (collapsible, shows members) */}
+                {oweGroupsPage.map((o) => {
+                  const members = groupMembersMap.get(o.id) ?? [];
+                  return (
+                    <li key={o.id}>
+                      <details className="rounded-lg border border-slate-200 bg-rose-50/30">
+                        <summary className={summaryClass}>
+                          <span className="flex items-center gap-2">
+                            <Badge tone="neutral">Group</Badge>
+                            <Link href={`/admin/groups/${o.id}`} className="font-medium text-emerald-700 hover:underline">
+                              {o.name}
+                            </Link>
+                          </span>
+                          <span className="shrink-0 font-semibold text-rose-600">{formatMoney(o.balance)}</span>
+                        </summary>
+                        {members.length > 0 ? (
+                          <ul className="flex flex-wrap gap-1 border-t border-slate-200 px-3 py-2">
+                            {members.map((m) => (
+                              <li key={m}>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{m}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </details>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
-          <FinitePager current={owePage} totalItems={playersWhoOweAll.length} paramKey="owe" />
+          <FinitePager current={owePage} totalItems={oweTotal} paramKey="owe" />
         </Card>
 
         {/* ── Players / groups with credit (collapsible groups) ── */}

@@ -239,7 +239,7 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, notes)",
     )
     .eq("player_id", p.id);
 
@@ -455,6 +455,12 @@ export default async function PlayerPortal({
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
+                  {/* Booking notes */}
+                  {(a.bookings as { notes?: string | null }).notes ? (
+                    <p className={`mb-3 text-sm ${publicHintText}`}>
+                      {(a.bookings as { notes?: string | null }).notes}
+                    </p>
+                  ) : null}
                   {/* Booking confirmation link */}
                   {a.bookings.confirmation_url ? (
                     <p className="mb-3">
@@ -462,7 +468,7 @@ export default async function PlayerPortal({
                         href={a.bookings.confirmation_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`text-sm font-medium text-emerald-700 hover:underline`}
+                        className="text-sm font-medium text-emerald-700 hover:underline"
                       >
                         📋 View booking confirmation ↗
                       </a>
