@@ -104,6 +104,9 @@ export default async function PublicSchedule({
                     {ctx ? (
                       <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
                     ) : null}
+                    {b.notes ? (
+                      <p className={`mt-1 ${publicHintText}`}>{b.notes}</p>
+                    ) : null}
                     {st && st.invited > 0 ? (
                       <p className="mt-2 text-sm font-medium text-emerald-800">
                         <span className="text-emerald-700">{st.going} going</span>
