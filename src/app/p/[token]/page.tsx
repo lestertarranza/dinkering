@@ -471,7 +471,8 @@ export default async function PlayerPortal({
                   </div>
                   {/* Booking notes — loaded separately to avoid clash with booking_attendance.notes */}
                   {bookingNotesMap.get(a.booking_id) ? (
-                    <p className={`mb-3 text-sm ${publicHintText}`}>
+                    <p className={`mb-3 whitespace-pre-wrap text-sm ${publicHintText}`}>
+                      <span className="font-medium">Notes: </span>
                       {bookingNotesMap.get(a.booking_id)}
                     </p>
                   ) : null}
