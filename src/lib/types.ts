@@ -1,7 +1,7 @@
 export type ActiveStatus = "active" | "inactive" | "archived";
 export type GroupType = "individual" | "couple" | "family" | "team_fund";
-export type BookingStatus = "booked" | "played" | "cancelled" | "refunded";
-export type ResponseStatus = "going" | "maybe" | "not_going" | "no_response";
+export type BookingStatus = "for_booking" | "booked" | "played" | "cancelled" | "refunded";
+export type ResponseStatus = "going" | "maybe" | "waitlist" | "not_going" | "no_response";
 export type ActualStatus = "attended" | "absent" | "late_cancel" | "guest";
 export type SplitMethod =
   | "active_players"
@@ -63,7 +63,21 @@ export interface Booking {
   total_booking_cost: number;
   status: BookingStatus;
   notes: string | null;
-  confirmation_url: string | null;
+  confirmation_url: string | null; // legacy single (kept for back-compat)
+  confirmation_urls: string[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookingCourt {
+  id: string;
+  booking_id: string;
+  court_number: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  hours: number;
+  rate_per_court_per_hour: number;
+  max_players: number; // 0 = unlimited
   created_at: string;
   updated_at: string;
 }

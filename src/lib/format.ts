@@ -20,16 +20,34 @@ export function formatAmount(value: number | string | null | undefined): string 
   }).format(Number.isFinite(n as number) ? (n as number) : 0);
 }
 
-/** e.g. "Jun 21, 2026" */
+/** e.g. "Jun 21, 2026 (Sunday)" */
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
   const d = new Date(value.length <= 10 ? `${value}T00:00:00` : value);
   if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString("en-PH", {
+  const datePart = d.toLocaleDateString("en-PH", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
+  const weekday = d.toLocaleDateString("en-PH", { weekday: "long" });
+  return `${datePart} (${weekday})`;
+}
+
+/** Calendar-chip parts for a date, e.g. { weekday: "SUN", day: "21", month: "JUN" } */
+export function dateChipParts(value: string | null | undefined): {
+  weekday: string;
+  day: string;
+  month: string;
+} | null {
+  if (!value) return null;
+  const d = new Date(value.length <= 10 ? `${value}T00:00:00` : value);
+  if (Number.isNaN(d.getTime())) return null;
+  return {
+    weekday: d.toLocaleDateString("en-PH", { weekday: "short" }).toUpperCase(),
+    day: d.toLocaleDateString("en-PH", { day: "2-digit" }),
+    month: d.toLocaleDateString("en-PH", { month: "short" }).toUpperCase(),
+  };
 }
 
 /** Convert a 24h time string (HH:MM[:SS]) to "7:00 PM" */

@@ -12,6 +12,11 @@ import {
   buildLedgerBookingContext,
   formatBookingContext,
 } from "@/lib/booking-context";
+import {
+  mergeCourts,
+  overallCourtTimeRange,
+  formatCourtTime,
+} from "@/lib/court-format";
 import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
 import {
   PublicNavLink,
@@ -239,30 +244,59 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, confirmation_urls)",
     )
     .eq("player_id", p.id);
 
   type AttRow = BookingAttendance & { bookings: Booking };
   const att = (attendance ?? []) as AttRow[];
   const upcoming = att
-    .filter((a) => a.bookings && a.bookings.play_date >= today && a.bookings.status === "booked")
+    .filter((a) => a.bookings && a.bookings.play_date >= today &&
+      (a.bookings.status === "booked" || a.bookings.status === "for_booking"))
     .sort((a, b) => a.bookings.play_date.localeCompare(b.bookings.play_date));
   const history = att
-    .filter((a) => a.bookings && !(a.bookings.play_date >= today && a.bookings.status === "booked"))
+    .filter((a) => a.bookings && !(a.bookings.play_date >= today &&
+      (a.bookings.status === "booked" || a.bookings.status === "for_booking")))
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
-  // Fetch booking notes separately to avoid the field-name clash between
-  // booking_attendance.notes and bookings.notes in the PostgREST join.
+  // Fetch booking notes + capacity + court data separately (avoids field-name clash).
   const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
   const bookingNotesMap = new Map<string, string>();
+  // bookingId → { totalCap, goingCount } (0 cap = unlimited)
+  const bookingCapMap = new Map<string, { totalCap: number; goingCount: number }>();
+  // bookingId → raw court rows (for merged display)
+  type DisplayCourt = { court_number: string | null; start_time: string | null; end_time: string | null; max_players: number };
+  const bookingCourtsMap = new Map<string, DisplayCourt[]>();
+
   if (upcomingBookingIds.length > 0) {
-    const { data: notesRows } = await db
-      .from("bookings")
-      .select("id, notes")
-      .in("id", upcomingBookingIds);
+    const [{ data: notesRows }, { data: courtRows }, { data: goingRows }] = await Promise.all([
+      db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
+      db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
+      db.from("booking_attendance").select("booking_id")
+        .in("booking_id", upcomingBookingIds).eq("response_status", "going"),
+    ]);
+
+    // Build notes map
     for (const row of (notesRows ?? []) as { id: string; notes: string | null }[]) {
       if (row.notes) bookingNotesMap.set(row.id, row.notes);
+    }
+
+    // Build capacity + courts map
+    type CourtRow = DisplayCourt & { booking_id: string };
+    for (const c of (courtRows ?? []) as CourtRow[]) {
+      const list = bookingCourtsMap.get(c.booking_id) ?? [];
+      list.push({ court_number: c.court_number, start_time: c.start_time, end_time: c.end_time, max_players: c.max_players });
+      bookingCourtsMap.set(c.booking_id, list);
+    }
+    const goingByBooking = new Map<string, number>();
+    for (const r of (goingRows ?? []) as { booking_id: string }[]) {
+      goingByBooking.set(r.booking_id, (goingByBooking.get(r.booking_id) ?? 0) + 1);
+    }
+    for (const bid of upcomingBookingIds) {
+      const cts = bookingCourtsMap.get(bid) ?? [];
+      const unlimited = cts.length === 0 || cts.some((c) => c.max_players === 0);
+      const totalCap = unlimited ? 0 : cts.reduce((s, c) => s + c.max_players, 0);
+      bookingCapMap.set(bid, { totalCap, goingCount: goingByBooking.get(bid) ?? 0 });
     }
   }
 
@@ -450,7 +484,16 @@ export default async function PlayerPortal({
         ) : (
           <div className="space-y-3">
             {upcoming.map((a) => {
-              const ctx = formatBookingContext(a.bookings);
+              const cts = bookingCourtsMap.get(a.booking_id) ?? [];
+              const merged = mergeCourts(cts);
+              const overall = overallCourtTimeRange(cts);
+              const venueLine = [
+                a.bookings.venue ? `Venue: ${a.bookings.venue}` : null,
+                overall || null,
+              ].filter(Boolean).join(" · ");
+              const cap = bookingCapMap.get(a.booking_id);
+              const slotsLeft =
+                cap && cap.totalCap > 0 ? Math.max(0, cap.totalCap - cap.goingCount) : null;
               return (
                 <Card key={a.id} id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -463,12 +506,30 @@ export default async function PlayerPortal({
                           {a.bookings.booking_code}
                         </p>
                       ) : null}
-                      {ctx ? (
-                        <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
+                      {venueLine ? (
+                        <p className={`mt-1 ${publicHintText}`}>{venueLine}</p>
+                      ) : null}
+                      {merged.length > 0 ? (
+                        <div className="mt-1 space-y-0.5">
+                          {merged.map((m, i) => (
+                            <p key={i} className={publicHintText}>
+                              {m.label}: {formatCourtTime(m) || "—"}
+                            </p>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
+                  {/* Total capacity + slots remaining */}
+                  {cap && cap.totalCap > 0 ? (
+                    <p className={`mb-3 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                      {cap.totalCap} max ·{" "}
+                      {slotsLeft === 0
+                        ? "Full — join waitlist"
+                        : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+                    </p>
+                  ) : null}
                   {/* Booking notes — loaded separately to avoid clash with booking_attendance.notes */}
                   {bookingNotesMap.get(a.booking_id) ? (
                     <p className={`mb-3 whitespace-pre-wrap text-sm ${publicHintText}`}>
@@ -476,23 +537,39 @@ export default async function PlayerPortal({
                       {bookingNotesMap.get(a.booking_id)}
                     </p>
                   ) : null}
-                  {/* Booking confirmation link */}
-                  {a.bookings.confirmation_url ? (
-                    <p className="mb-3">
-                      <a
-                        href={a.bookings.confirmation_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium text-emerald-700 hover:underline"
-                      >
-                        📋 View booking confirmation ↗
-                      </a>
-                    </p>
-                  ) : null}
+                  {/* Booking confirmation links (supports multiple) */}
+                  {(() => {
+                    const urls =
+                      a.bookings.confirmation_urls && a.bookings.confirmation_urls.length > 0
+                        ? a.bookings.confirmation_urls
+                        : a.bookings.confirmation_url
+                          ? [a.bookings.confirmation_url]
+                          : [];
+                    if (urls.length === 0) return null;
+                    return (
+                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                        {urls.map((url, i) => (
+                          <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-emerald-700 hover:underline"
+                          >
+                            📋 {urls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <RsvpForm
                     token={token}
                     bookingId={a.bookings.id}
                     currentStatus={a.response_status}
+                    isFull={(() => {
+                      const cap = bookingCapMap.get(a.booking_id);
+                      return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
+                    })()}
                   />
                 </Card>
               );

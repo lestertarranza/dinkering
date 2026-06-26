@@ -3,13 +3,20 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/format";
-import { formatBookingContext } from "@/lib/booking-context";
+import {
+  mergeCourts,
+  overallCourtTimeRange,
+  formatCourtTime,
+} from "@/lib/court-format";
 import {
   publicPlayerLabel,
   validatePublicTeamToken,
 } from "@/lib/public-links";
 import {
   PublicNavLink,
+  DateChip,
+  CountPill,
+  CapacityBar,
   publicMainClass,
   publicTapRowClass,
   publicChevronClass,
@@ -21,12 +28,13 @@ import type { Booking, BookingAttendance, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Responded players (going / maybe / not going) first, no-response last.
+// Responded players (going / maybe / waitlist / not going) first, no-response last.
 const RSVP_ORDER: Record<string, number> = {
   going: 0,
   maybe: 1,
-  not_going: 2,
-  no_response: 3,
+  waitlist: 2,
+  not_going: 3,
+  no_response: 4,
 };
 
 export default async function PublicBookingRoster({
@@ -46,12 +54,10 @@ export default async function PublicBookingRoster({
   if (!booking) notFound();
   const b = booking as Booking;
 
-  const { data: attendance } = await db
-    .from("booking_attendance")
-    .select(
-      "*, players(id, name, display_name, public_token, active_status)",
-    )
-    .eq("booking_id", bookingId);
+  const [{ data: attendance }, { data: courtsData }] = await Promise.all([
+    db.from("booking_attendance").select("*, players(id, name, display_name, public_token, active_status)").eq("booking_id", bookingId),
+    db.from("booking_courts").select("court_number, start_time, end_time, hours, max_players").eq("booking_id", bookingId).order("created_at"),
+  ]);
 
   type Row = BookingAttendance & {
     players: Pick<
@@ -72,64 +78,131 @@ export default async function PublicBookingRoster({
   const going = roster.filter((r) => r.response_status === "going").length;
   const maybe = roster.filter((r) => r.response_status === "maybe").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
-  const noResponse = roster.length - going - maybe - notGoing;
+  const waitlisted = roster.filter((r) => r.response_status === "waitlist").length;
+  const noResponse = roster.length - going - maybe - notGoing - waitlisted;
 
-  const ctx = formatBookingContext(b);
+  type CourtInfo = { court_number: string | null; start_time: string | null; end_time: string | null; hours: number; max_players: number };
+  const courts = (courtsData ?? []) as CourtInfo[];
+  const mergedCourts = mergeCourts(courts);
+  const totalMax = mergedCourts.length > 0 && mergedCourts.every((m) => m.maxPlayers > 0)
+    ? mergedCourts.reduce((s, m) => s + m.maxPlayers, 0) : 0;
+  const overallTime = overallCourtTimeRange(courts);
+  const venueLine = [
+    b.venue ? `Venue: ${b.venue}` : null,
+    overallTime || null,
+  ].filter(Boolean).join(" · ");
+  const confirmationUrls =
+    b.confirmation_urls && b.confirmation_urls.length > 0
+      ? b.confirmation_urls
+      : b.confirmation_url
+        ? [b.confirmation_url]
+        : [];
 
   return (
     <main className={publicMainClass}>
-      <header className="mb-5">
-        <Link href={`/schedule/${token}`} className={publicBackLinkClass}>
-          ← All upcoming games
-        </Link>
-        <div className="mt-4 text-center">
-          <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
-            🏓
+      <Link
+        href={`/schedule/${token}`}
+        className={`mb-4 ${publicBackLinkClass}`}
+      >
+        ← All upcoming games
+      </Link>
+
+      <Card className="mb-5 overflow-hidden">
+        <div className="border-b border-slate-100 p-4">
+          <div className="flex items-start gap-4">
+            <DateChip value={b.play_date} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <h1 className={`text-xl ${publicPrimaryText}`}>
+                  {b.booking_code ?? "Booking"}
+                </h1>
+                <StatusBadge status={b.status} size="sm" />
+              </div>
+              <p className="mt-0.5 text-sm font-medium text-slate-700">
+                {formatDate(b.play_date)}
+              </p>
+              {venueLine ? (
+                <p className={`mt-1.5 ${publicHintText}`}>
+                  {b.venue ? (
+                    <span className="font-medium text-slate-700">
+                      📍 {b.venue}
+                    </span>
+                  ) : null}
+                  {b.venue && overallTime ? " · " : null}
+                  {overallTime ? <span>🕐 {overallTime}</span> : null}
+                </p>
+              ) : null}
+            </div>
           </div>
-          <h1 className={`text-2xl ${publicPrimaryText}`}>
-            {b.booking_code ?? "Booking"}
-          </h1>
-          <p className="mt-1 text-base font-medium text-slate-700">
-            {formatDate(b.play_date)}
-          </p>
-          {ctx ? (
-            <p className={`mt-1.5 ${publicHintText}`}>{ctx}</p>
+
+          {mergedCourts.length > 0 ? (
+            <div className="mt-3 space-y-0.5 rounded-lg bg-slate-50 px-3 py-2">
+              {mergedCourts.map((m, i) => (
+                <p key={i} className="text-sm text-slate-700">
+                  🏓 <span className="font-medium">{m.label}:</span>{" "}
+                  {formatCourtTime(m) || "—"}
+                </p>
+              ))}
+            </div>
           ) : null}
+
           {b.notes ? (
             <p className={`mt-2 whitespace-pre-wrap ${publicHintText}`}>
-              <span className="font-medium">Notes: </span>{b.notes}
+              <span className="font-medium">Notes: </span>
+              {b.notes}
             </p>
           ) : null}
-          {b.confirmation_url ? (
-            <p className="mt-3">
-              <a
-                href={b.confirmation_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium text-emerald-700 hover:underline"
-              >
-                📋 View booking confirmation ↗
-              </a>
-            </p>
+
+          {confirmationUrls.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+              {confirmationUrls.map((url, i) => (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-emerald-700 hover:underline"
+                >
+                  📋{" "}
+                  {confirmationUrls.length > 1
+                    ? `Confirmation ${i + 1}`
+                    : "View booking confirmation"}{" "}
+                  ↗
+                </a>
+              ))}
+            </div>
           ) : null}
         </div>
-      </header>
 
-      {roster.length > 0 ? (
-        <p className="mb-3 px-1 text-center text-sm font-semibold text-slate-700">
-          <span className="text-emerald-700">{going} going</span>
-          {" · "}
-          <span className="text-amber-700">{maybe} maybe</span>
-          {" · "}
-          <span className="text-rose-700">{notGoing} not going</span>
-          {noResponse > 0 ? (
-            <>
-              {" · "}
-              <span className="text-slate-600">{noResponse} no response</span>
-            </>
-          ) : null}
-        </p>
-      ) : null}
+        {(roster.length > 0 || totalMax > 0) ? (
+          <div className="space-y-3 bg-slate-50/60 p-4">
+            {roster.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                <CountPill count={going} label="going" tone="going" />
+                {waitlisted > 0 ? (
+                  <CountPill
+                    count={waitlisted}
+                    label="waitlisted"
+                    tone="waitlist"
+                  />
+                ) : null}
+                <CountPill count={maybe} label="maybe" tone="maybe" />
+                <CountPill count={notGoing} label="not going" tone="not_going" />
+                {noResponse > 0 ? (
+                  <CountPill
+                    count={noResponse}
+                    label="no response"
+                    tone="neutral"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {totalMax > 0 ? (
+              <CapacityBar going={going} totalMax={totalMax} />
+            ) : null}
+          </div>
+        ) : null}
+      </Card>
 
       {roster.length === 0 ? (
         <EmptyState title="No players invited yet" />

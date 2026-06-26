@@ -35,3 +35,19 @@ export async function uploadBookingConfirmation(
 
   return urlData.publicUrl ?? null;
 }
+
+/**
+ * Upload multiple booking confirmation screenshots. Returns the list of public
+ * URLs for files that uploaded successfully (empty array if none provided).
+ */
+export async function uploadBookingConfirmations(
+  files: File[],
+  bookingCode: string,
+): Promise<string[]> {
+  const valid = files.filter((f) => f && f.size > 0);
+  if (valid.length === 0) return [];
+  const urls = await Promise.all(
+    valid.map((f) => uploadBookingConfirmation(f, bookingCode)),
+  );
+  return urls.filter((u): u is string => Boolean(u));
+}

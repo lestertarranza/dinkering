@@ -6,6 +6,7 @@ import {
   PageHeader,
   StatusBadge,
   Badge,
+  Field,
   inputClass,
   buttonClass,
 } from "@/components/ui";
@@ -22,6 +23,7 @@ import {
 import type {
   Booking,
   BookingAttendance,
+  BookingCourt,
   BookingShare,
   Payment,
   Player,
@@ -40,7 +42,10 @@ import {
   chargeAttendees,
   deleteBooking,
   markBookingSharePaid,
+  removeBookingConfirmation,
 } from "../actions";
+import { CourtAddForm } from "../CourtAddForm";
+import { CourtRow } from "../CourtRow";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +69,7 @@ export default async function BookingDetail({
 
   const [
     { data: attendance },
+    { data: courts },
     { data: shares },
     { data: payments },
     { data: players },
@@ -73,6 +79,11 @@ export default async function BookingDetail({
       .from("booking_attendance")
       .select("*, players(id, name)")
       .eq("booking_id", id),
+    supabase
+      .from("booking_courts")
+      .select("*")
+      .eq("booking_id", id)
+      .order("created_at"),
     supabase
       .from("booking_shares")
       .select("*, players(id, name)")
@@ -96,6 +107,17 @@ export default async function BookingDetail({
   const availablePlayers = ((players ?? []) as Player[]).filter(
     (p) => !rosterIds.has(p.id) && p.active_status !== "archived",
   );
+  const confirmationUrls =
+    b.confirmation_urls && b.confirmation_urls.length > 0
+      ? b.confirmation_urls
+      : b.confirmation_url
+        ? [b.confirmation_url]
+        : [];
+  const courtList = (courts ?? []) as BookingCourt[];
+  const totalMaxPlayers = courtList.every((c) => c.max_players === 0)
+    ? 0
+    : courtList.reduce((s, c) => s + c.max_players, 0);
+
   const shareList = (shares ?? []) as (BookingShare & {
     players: Pick<Player, "id" | "name"> | null;
   })[];
@@ -207,27 +229,36 @@ export default async function BookingDetail({
       />
 
       {/* Booking confirmation screenshot */}
-      {b.confirmation_url ? (
-        <div className="mb-4 flex items-center gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <a href={b.confirmation_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={b.confirmation_url}
-              alt="Booking confirmation"
-              className="h-20 w-20 rounded-lg object-cover ring-2 ring-emerald-200 hover:ring-emerald-400"
-            />
-          </a>
-          <div>
-            <p className="text-sm font-semibold text-emerald-800">Booking confirmation</p>
-            <p className="mt-0.5 text-xs text-emerald-600">Court reservation screenshot from the venue.</p>
-            <a
-              href={b.confirmation_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-block text-xs text-emerald-700 hover:underline"
-            >
-              View full image ↗
-            </a>
+      {confirmationUrls.length > 0 ? (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-800">
+            Booking confirmation{confirmationUrls.length > 1 ? "s" : ""}
+          </p>
+          <p className="mt-0.5 text-xs text-emerald-600">
+            Court reservation screenshot{confirmationUrls.length > 1 ? "s" : ""} from the venue.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {confirmationUrls.map((url, i) => (
+              <div key={i} className="flex flex-col items-center gap-1">
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Booking confirmation ${i + 1}`}
+                    className="h-20 w-20 rounded-lg object-cover ring-2 ring-emerald-200 hover:ring-emerald-400"
+                  />
+                </a>
+                <ConfirmButton
+                  action={removeBookingConfirmation}
+                  message="Remove this confirmation screenshot?"
+                  variant="ghost"
+                  hidden={{ booking_id: b.id, url }}
+                  pendingLabel="Removing…"
+                >
+                  Remove
+                </ConfirmButton>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
@@ -286,30 +317,96 @@ export default async function BookingDetail({
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <StatusBadge status={b.status} />
-        {(["booked", "played", "cancelled", "refunded"] as const)
+        {(["for_booking", "booked", "played", "cancelled", "refunded"] as const)
           .filter((s) => s !== b.status)
-          .map((s) => (
-            <ActionForm
-              key={s}
-              action={setBookingStatus}
-              className="inline"
-              pendingLabel={`Marking ${s}…`}
-              hidden={
-                <>
-                  <input type="hidden" name="id" value={b.id} />
-                  <input type="hidden" name="status" value={s} />
-                </>
-              }
-            >
-              <SubmitButton variant="secondary" pendingLabel="…">
-                Mark {s}
-              </SubmitButton>
-            </ActionForm>
-          ))}
+          .map((s) => {
+            const label: Record<string, string> = {
+              for_booking: "For Booking",
+              booked: "Booked",
+              played: "Played",
+              cancelled: "Cancelled",
+              refunded: "Refunded",
+            };
+            return (
+              <ActionForm
+                key={s}
+                action={setBookingStatus}
+                className="inline"
+                pendingLabel={`Marking ${label[s]}…`}
+                hidden={
+                  <>
+                    <input type="hidden" name="id" value={b.id} />
+                    <input type="hidden" name="status" value={s} />
+                  </>
+                }
+              >
+                <SubmitButton variant="secondary" pendingLabel="…">
+                  Mark {label[s]}
+                </SubmitButton>
+              </ActionForm>
+            );
+          })}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
+
+          {/* ── Courts ── */}
+          <Card>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700">Courts</h2>
+                {totalMaxPlayers > 0 ? (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Max {totalMaxPlayers} player{totalMaxPlayers === 1 ? "" : "s"} total
+                  </p>
+                ) : courtList.length > 0 ? (
+                  <p className="mt-0.5 text-xs text-slate-400">Unlimited capacity</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="p-4 space-y-4">
+              {courtList.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No courts added yet. Add courts below — at least one is required before generating shares.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                        <th className="py-2 font-medium">Court #</th>
+                        <th className="py-2 font-medium">Start</th>
+                        <th className="py-2 font-medium">End</th>
+                        <th className="py-2 text-right font-medium">Hours</th>
+                        <th className="py-2 text-right font-medium">Rate / hr</th>
+                        <th className="py-2 text-right font-medium">Max players</th>
+                        <th className="py-2 text-right font-medium">Subtotal</th>
+                        <th className="py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {courtList.map((c) => (
+                        <CourtRow key={c.id} court={c} />
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 font-semibold">
+                        <td className="py-2 text-slate-700" colSpan={6}>Total court cost</td>
+                        <td className="py-2 text-right text-slate-700">
+                          {formatMoney(courtList.reduce((s, c) => s + c.hours * c.rate_per_court_per_hour, 0))}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              <CourtAddForm bookingId={b.id} />
+            </div>
+          </Card>
+
           {/* ── Roster & Attendance (merged) ── */}
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">

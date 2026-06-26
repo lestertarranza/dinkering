@@ -5,22 +5,13 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
-import { uploadBookingConfirmation } from "@/lib/booking-confirmation";
+import { uploadBookingConfirmations } from "@/lib/booking-confirmation";
 import {
   nextCode,
-  round2,
   resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
-
-function computeTotal(fd: FormData) {
-  const courts = parseFloat(String(fd.get("courts_booked") || "1")) || 0;
-  const hours = parseFloat(String(fd.get("hours") || "1")) || 0;
-  const rate = parseFloat(String(fd.get("rate_per_court_per_hour") || "0")) || 0;
-  const other = parseFloat(String(fd.get("other_fees") || "0")) || 0;
-  return round2(courts * hours * rate + other);
-}
 
 export async function createBooking(formData: FormData) {
   const { supabase } = await requireAdmin();
@@ -28,31 +19,24 @@ export async function createBooking(formData: FormData) {
     String(formData.get("booking_code") || "").trim() ||
     (await nextCode(supabase, "bookings", "booking_code", "PB"));
 
-  // Upload confirmation screenshot if provided
-  const screenshotFile = formData.get("confirmation_screenshot") as File | null;
-  const confirmation_url = await uploadBookingConfirmation(screenshotFile, code);
+  // Upload confirmation screenshots if provided (supports multiple)
+  const screenshotFiles = formData.getAll("confirmation_screenshot") as File[];
+  const confirmation_urls = await uploadBookingConfirmations(screenshotFiles, code);
+
+  const other_fees = parseFloat(String(formData.get("other_fees") || "0")) || 0;
 
   const { data } = await supabase
     .from("bookings")
     .insert({
       booking_code: code,
       play_date: String(formData.get("play_date")),
-      start_time: String(formData.get("start_time") || "") || null,
-      end_time: String(formData.get("end_time") || "") || null,
       venue: String(formData.get("venue") || "").trim() || null,
-      court_number: String(formData.get("court_number") || "").trim() || null,
-      booking_reference:
-        String(formData.get("booking_reference") || "").trim() || null,
-      courts_booked: parseFloat(String(formData.get("courts_booked") || "1")),
-      hours: parseFloat(String(formData.get("hours") || "1")),
-      rate_per_court_per_hour: parseFloat(
-        String(formData.get("rate_per_court_per_hour") || "0"),
-      ),
-      other_fees: parseFloat(String(formData.get("other_fees") || "0")),
-      total_booking_cost: computeTotal(formData),
-      status: String(formData.get("status") || "booked"),
+      booking_reference: String(formData.get("booking_reference") || "").trim() || null,
+      other_fees,
+      total_booking_cost: other_fees, // courts not added yet; trigger will update
+      status: String(formData.get("status") || "for_booking"),
       notes: String(formData.get("notes") || "").trim() || null,
-      confirmation_url: confirmation_url ?? null,
+      confirmation_urls,
     })
     .select("id")
     .single();
@@ -70,32 +54,38 @@ export async function updateBooking(
   if (!play_date) return actionErr("Play date is required.");
   const { supabase } = await requireAdmin();
 
-  // Upload new confirmation screenshot if one was provided
-  const screenshotFile = formData.get("confirmation_screenshot") as File | null;
-  const newUrl = await uploadBookingConfirmation(screenshotFile, `PB-${id.slice(0, 8)}`);
-  // Build update object; only include confirmation_url if a new file was uploaded
+  // Upload any new confirmation screenshots and append to the existing list.
+  const screenshotFiles = formData.getAll("confirmation_screenshot") as File[];
+  const newUrls = await uploadBookingConfirmations(
+    screenshotFiles,
+    `PB-${id.slice(0, 8)}`,
+  );
+
   const updateData: Record<string, unknown> = {
     booking_code: String(formData.get("booking_code") || "").trim() || null,
     play_date,
-    start_time: String(formData.get("start_time") || "") || null,
-    end_time: String(formData.get("end_time") || "") || null,
     venue: String(formData.get("venue") || "").trim() || null,
-    court_number: String(formData.get("court_number") || "").trim() || null,
-    booking_reference:
-      String(formData.get("booking_reference") || "").trim() || null,
-    courts_booked: parseFloat(String(formData.get("courts_booked") || "1")),
-    hours: parseFloat(String(formData.get("hours") || "1")),
-    rate_per_court_per_hour: parseFloat(
-      String(formData.get("rate_per_court_per_hour") || "0"),
-    ),
-    other_fees: parseFloat(String(formData.get("other_fees") || "0")),
-    total_booking_cost: computeTotal(formData),
-    status: String(formData.get("status") || "booked"),
+    booking_reference: String(formData.get("booking_reference") || "").trim() || null,
+    other_fees: parseFloat(String(formData.get("other_fees") || "0")) || 0,
+    status: String(formData.get("status") || "for_booking"),
     notes: String(formData.get("notes") || "").trim() || null,
   };
-  if (newUrl) updateData.confirmation_url = newUrl;
+
+  if (newUrls.length > 0) {
+    const { data: existing } = await supabase
+      .from("bookings")
+      .select("confirmation_urls")
+      .eq("id", id)
+      .single();
+    const current = (existing?.confirmation_urls as string[] | null) ?? [];
+    updateData.confirmation_urls = [...current, ...newUrls];
+  }
 
   await supabase.from("bookings").update(updateData).eq("id", id);
+
+  // Re-sync total_booking_cost after other_fees may have changed
+  await supabase.rpc("sync_booking_total", { p_booking_id: id });
+
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
   return actionOk("Booking saved.");
@@ -112,6 +102,27 @@ export async function setBookingStatus(
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
   return actionOk(`Booking marked as ${status}.`);
+}
+
+/** Remove a single confirmation screenshot URL from a booking. */
+export async function removeBookingConfirmation(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = String(formData.get("booking_id"));
+  const url = String(formData.get("url"));
+  if (!id || !url) return actionErr("Missing booking or URL.");
+  const { supabase } = await requireAdmin();
+  const { data: existing } = await supabase
+    .from("bookings")
+    .select("confirmation_urls")
+    .eq("id", id)
+    .single();
+  const current = (existing?.confirmation_urls as string[] | null) ?? [];
+  const next = current.filter((u) => u !== url);
+  await supabase.from("bookings").update({ confirmation_urls: next }).eq("id", id);
+  revalidatePath(`/admin/bookings/${id}`);
+  return actionOk("Screenshot removed.");
 }
 
 /** Add a player to a booking's roster (creates an attendance row). */
@@ -268,6 +279,15 @@ export async function generateShares(
     .single();
   if (!booking) return actionErr("Booking not found.");
 
+  // Require at least one court before generating shares.
+  const { count: courtCount } = await supabase
+    .from("booking_courts")
+    .select("id", { count: "exact", head: true })
+    .eq("booking_id", booking_id);
+  if ((courtCount ?? 0) === 0) {
+    return actionErr("Add at least one court to this booking before generating shares.");
+  }
+
   const playerIds = formData
     .getAll("share_player_ids")
     .map(String)
@@ -319,6 +339,15 @@ export async function chargeAttendees(
     .eq("id", booking_id)
     .single();
   if (!booking) return actionErr("Booking not found.");
+
+  // Require at least one court.
+  const { count: cCount } = await supabase
+    .from("booking_courts")
+    .select("id", { count: "exact", head: true })
+    .eq("booking_id", booking_id);
+  if ((cCount ?? 0) === 0) {
+    return actionErr("Add at least one court to this booking before charging attendees.");
+  }
 
   const { data: roster } = await supabase
     .from("booking_attendance")

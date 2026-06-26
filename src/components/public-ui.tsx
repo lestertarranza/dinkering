@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { dateChipParts } from "@/lib/format";
 
 /** Wrapper for player/group/board/schedule pages — larger base text on mobile. */
 export const publicMainClass =
@@ -99,6 +100,98 @@ export function PublicSection({
       </h2>
       {children}
     </section>
+  );
+}
+
+/** Calendar-style date chip — weekday / day / month stacked. */
+export function DateChip({
+  value,
+  size = "md",
+}: {
+  value: string | null | undefined;
+  size?: "sm" | "md";
+}) {
+  const parts = dateChipParts(value);
+  if (!parts) return null;
+  const box =
+    size === "md"
+      ? "h-16 w-16 rounded-2xl"
+      : "h-14 w-14 rounded-xl";
+  const dayClass = size === "md" ? "text-2xl" : "text-xl";
+  return (
+    <div
+      className={`flex shrink-0 flex-col items-center justify-center border border-emerald-100 bg-emerald-50 leading-none shadow-sm ${box}`}
+      aria-hidden
+    >
+      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+        {parts.weekday}
+      </span>
+      <span className={`font-extrabold text-slate-900 ${dayClass}`}>
+        {parts.day}
+      </span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">
+        {parts.month}
+      </span>
+    </div>
+  );
+}
+
+/** Small colored count pill for RSVP tallies. */
+export function CountPill({
+  count,
+  label,
+  tone,
+}: {
+  count: number;
+  label: string;
+  tone: "going" | "waitlist" | "maybe" | "not_going" | "neutral";
+}) {
+  const tones: Record<string, string> = {
+    going: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    waitlist: "bg-amber-50 text-amber-700 ring-amber-200",
+    maybe: "bg-amber-50 text-amber-700 ring-amber-200",
+    not_going: "bg-rose-50 text-rose-700 ring-rose-200",
+    neutral: "bg-slate-100 text-slate-600 ring-slate-200",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${tones[tone]}`}
+    >
+      <span className="font-bold">{count}</span>
+      {label}
+    </span>
+  );
+}
+
+/** Capacity progress bar with going / max. */
+export function CapacityBar({
+  going,
+  totalMax,
+}: {
+  going: number;
+  totalMax: number;
+}) {
+  if (totalMax <= 0) return null;
+  const slotsLeft = Math.max(0, totalMax - going);
+  const pct = Math.min(100, Math.round((going / totalMax) * 100));
+  const full = slotsLeft === 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs font-semibold">
+        <span className="text-slate-500">{totalMax} max</span>
+        <span className={full ? "text-rose-600" : "text-emerald-700"}>
+          {full
+            ? "Full — join waitlist"
+            : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`h-full rounded-full transition-all ${full ? "bg-rose-400" : "bg-emerald-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
   );
 }
 

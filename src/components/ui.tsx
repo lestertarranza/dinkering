@@ -51,12 +51,14 @@ export function Badge({
 }
 
 const statusToneMap: Record<string, Tone> = {
+  for_booking: "warning",
   booked: "info",
   played: "settled",
   cancelled: "neutral",
   refunded: "warning",
   going: "going",
   maybe: "maybe",
+  waitlist: "warning",
   not_going: "not_going",
   no_response: "neutral",
   attended: "going",
@@ -70,6 +72,7 @@ const statusToneMap: Record<string, Tone> = {
 };
 
 const statusLabelMap: Record<string, string> = {
+  for_booking: "For Booking",
   no_response: "No response",
   not_going: "Not going",
   late_cancel: "Late cancel",

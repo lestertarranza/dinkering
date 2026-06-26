@@ -7,18 +7,26 @@ function RsvpButton({
   value,
   label,
   current,
+  isWaitlistFull = false,
 }: {
   value: string;
   label: string;
   current: string;
+  isWaitlistFull?: boolean;
 }) {
   const { pending } = useFormStatus();
   const selected = current === value;
+
+  // Determine colour based on status type
   const tone =
-    value === "going"
+    value === "going" || value === "waitlist"
       ? selected
-        ? "bg-emerald-600 text-white ring-2 ring-emerald-300"
-        : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+        ? value === "going"
+          ? "bg-emerald-600 text-white ring-2 ring-emerald-300"
+          : "bg-amber-500 text-white ring-2 ring-amber-300"
+        : value === "going"
+          ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+          : "bg-amber-50 text-amber-900 ring-1 ring-amber-200"
       : value === "maybe"
         ? selected
           ? "bg-amber-500 text-white ring-2 ring-amber-300"
@@ -52,20 +60,41 @@ function PendingHint() {
 
 function RsvpControls({
   currentStatus,
+  isFull,
 }: {
   currentStatus: string;
+  isFull: boolean;
 }) {
+  // When booking is at capacity and player isn't already going,
+  // show Waitlist instead of Going.
+  const onWaitlist = currentStatus === "waitlist";
+  const showWaitlist = isFull && currentStatus !== "going";
+
   return (
     <>
       <div className="flex gap-2">
-        <RsvpButton value="going" label="Going" current={currentStatus} />
+        {showWaitlist ? (
+          <RsvpButton
+            value="waitlist"
+            label={onWaitlist ? "On Waitlist" : "Join Waitlist"}
+            current={currentStatus}
+          />
+        ) : (
+          <RsvpButton value="going" label="Going" current={currentStatus} />
+        )}
         <RsvpButton value="maybe" label="Maybe" current={currentStatus} />
-        <RsvpButton
-          value="not_going"
-          label="Not going"
-          current={currentStatus}
-        />
+        <RsvpButton value="not_going" label="Not going" current={currentStatus} />
       </div>
+      {isFull && !onWaitlist && currentStatus !== "going" ? (
+        <p className="text-center text-xs text-amber-700">
+          Booking is full — joining places you on the waitlist.
+        </p>
+      ) : null}
+      {onWaitlist ? (
+        <p className="text-center text-xs text-amber-700">
+          You&apos;re on the waitlist — you&apos;ll be moved to Going if a spot opens.
+        </p>
+      ) : null}
       <PendingHint />
     </>
   );
@@ -75,16 +104,18 @@ export function RsvpForm({
   token,
   bookingId,
   currentStatus,
+  isFull = false,
 }: {
   token: string;
   bookingId: string;
   currentStatus: string;
+  isFull?: boolean;
 }) {
   return (
     <form action={submitRsvp} className="flex flex-col gap-2">
       <input type="hidden" name="token" value={token} />
       <input type="hidden" name="booking_id" value={bookingId} />
-      <RsvpControls currentStatus={currentStatus} />
+      <RsvpControls currentStatus={currentStatus} isFull={isFull} />
     </form>
   );
 }
