@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
-import { uploadBookingConfirmation } from "@/lib/booking-confirmation";
+import { uploadBookingConfirmations } from "@/lib/booking-confirmation";
 import {
   nextCode,
   resolveWalletOwner,
@@ -19,9 +19,9 @@ export async function createBooking(formData: FormData) {
     String(formData.get("booking_code") || "").trim() ||
     (await nextCode(supabase, "bookings", "booking_code", "PB"));
 
-  // Upload confirmation screenshot if provided
-  const screenshotFile = formData.get("confirmation_screenshot") as File | null;
-  const confirmation_url = await uploadBookingConfirmation(screenshotFile, code);
+  // Upload confirmation screenshots if provided (supports multiple)
+  const screenshotFiles = formData.getAll("confirmation_screenshot") as File[];
+  const confirmation_urls = await uploadBookingConfirmations(screenshotFiles, code);
 
   const other_fees = parseFloat(String(formData.get("other_fees") || "0")) || 0;
 
@@ -36,7 +36,7 @@ export async function createBooking(formData: FormData) {
       total_booking_cost: other_fees, // courts not added yet; trigger will update
       status: String(formData.get("status") || "for_booking"),
       notes: String(formData.get("notes") || "").trim() || null,
-      confirmation_url: confirmation_url ?? null,
+      confirmation_urls,
     })
     .select("id")
     .single();
@@ -54,9 +54,12 @@ export async function updateBooking(
   if (!play_date) return actionErr("Play date is required.");
   const { supabase } = await requireAdmin();
 
-  // Upload new confirmation screenshot if one was provided
-  const screenshotFile = formData.get("confirmation_screenshot") as File | null;
-  const newUrl = await uploadBookingConfirmation(screenshotFile, `PB-${id.slice(0, 8)}`);
+  // Upload any new confirmation screenshots and append to the existing list.
+  const screenshotFiles = formData.getAll("confirmation_screenshot") as File[];
+  const newUrls = await uploadBookingConfirmations(
+    screenshotFiles,
+    `PB-${id.slice(0, 8)}`,
+  );
 
   const updateData: Record<string, unknown> = {
     booking_code: String(formData.get("booking_code") || "").trim() || null,
@@ -67,7 +70,16 @@ export async function updateBooking(
     status: String(formData.get("status") || "for_booking"),
     notes: String(formData.get("notes") || "").trim() || null,
   };
-  if (newUrl) updateData.confirmation_url = newUrl;
+
+  if (newUrls.length > 0) {
+    const { data: existing } = await supabase
+      .from("bookings")
+      .select("confirmation_urls")
+      .eq("id", id)
+      .single();
+    const current = (existing?.confirmation_urls as string[] | null) ?? [];
+    updateData.confirmation_urls = [...current, ...newUrls];
+  }
 
   await supabase.from("bookings").update(updateData).eq("id", id);
 
@@ -90,6 +102,27 @@ export async function setBookingStatus(
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
   return actionOk(`Booking marked as ${status}.`);
+}
+
+/** Remove a single confirmation screenshot URL from a booking. */
+export async function removeBookingConfirmation(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = String(formData.get("booking_id"));
+  const url = String(formData.get("url"));
+  if (!id || !url) return actionErr("Missing booking or URL.");
+  const { supabase } = await requireAdmin();
+  const { data: existing } = await supabase
+    .from("bookings")
+    .select("confirmation_urls")
+    .eq("id", id)
+    .single();
+  const current = (existing?.confirmation_urls as string[] | null) ?? [];
+  const next = current.filter((u) => u !== url);
+  await supabase.from("bookings").update({ confirmation_urls: next }).eq("id", id);
+  revalidatePath(`/admin/bookings/${id}`);
+  return actionOk("Screenshot removed.");
 }
 
 /** Add a player to a booking's roster (creates an attendance row). */

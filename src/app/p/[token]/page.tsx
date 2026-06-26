@@ -244,7 +244,7 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, confirmation_urls)",
     )
     .eq("player_id", p.id);
 
@@ -536,19 +536,31 @@ export default async function PlayerPortal({
                       {bookingNotesMap.get(a.booking_id)}
                     </p>
                   ) : null}
-                  {/* Booking confirmation link */}
-                  {a.bookings.confirmation_url ? (
-                    <p className="mb-3">
-                      <a
-                        href={a.bookings.confirmation_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium text-emerald-700 hover:underline"
-                      >
-                        📋 View booking confirmation ↗
-                      </a>
-                    </p>
-                  ) : null}
+                  {/* Booking confirmation links (supports multiple) */}
+                  {(() => {
+                    const urls =
+                      a.bookings.confirmation_urls && a.bookings.confirmation_urls.length > 0
+                        ? a.bookings.confirmation_urls
+                        : a.bookings.confirmation_url
+                          ? [a.bookings.confirmation_url]
+                          : [];
+                    if (urls.length === 0) return null;
+                    return (
+                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                        {urls.map((url, i) => (
+                          <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-emerald-700 hover:underline"
+                          >
+                            📋 {urls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <RsvpForm
                     token={token}
                     bookingId={a.bookings.id}

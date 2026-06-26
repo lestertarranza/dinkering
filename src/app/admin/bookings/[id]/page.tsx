@@ -42,6 +42,7 @@ import {
   chargeAttendees,
   deleteBooking,
   markBookingSharePaid,
+  removeBookingConfirmation,
 } from "../actions";
 import { CourtAddForm } from "../CourtAddForm";
 import { CourtRow } from "../CourtRow";
@@ -106,6 +107,12 @@ export default async function BookingDetail({
   const availablePlayers = ((players ?? []) as Player[]).filter(
     (p) => !rosterIds.has(p.id) && p.active_status !== "archived",
   );
+  const confirmationUrls =
+    b.confirmation_urls && b.confirmation_urls.length > 0
+      ? b.confirmation_urls
+      : b.confirmation_url
+        ? [b.confirmation_url]
+        : [];
   const courtList = (courts ?? []) as BookingCourt[];
   const totalMaxPlayers = courtList.every((c) => c.max_players === 0)
     ? 0
@@ -222,27 +229,36 @@ export default async function BookingDetail({
       />
 
       {/* Booking confirmation screenshot */}
-      {b.confirmation_url ? (
-        <div className="mb-4 flex items-center gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <a href={b.confirmation_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={b.confirmation_url}
-              alt="Booking confirmation"
-              className="h-20 w-20 rounded-lg object-cover ring-2 ring-emerald-200 hover:ring-emerald-400"
-            />
-          </a>
-          <div>
-            <p className="text-sm font-semibold text-emerald-800">Booking confirmation</p>
-            <p className="mt-0.5 text-xs text-emerald-600">Court reservation screenshot from the venue.</p>
-            <a
-              href={b.confirmation_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-block text-xs text-emerald-700 hover:underline"
-            >
-              View full image ↗
-            </a>
+      {confirmationUrls.length > 0 ? (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-sm font-semibold text-emerald-800">
+            Booking confirmation{confirmationUrls.length > 1 ? "s" : ""}
+          </p>
+          <p className="mt-0.5 text-xs text-emerald-600">
+            Court reservation screenshot{confirmationUrls.length > 1 ? "s" : ""} from the venue.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {confirmationUrls.map((url, i) => (
+              <div key={i} className="flex flex-col items-center gap-1">
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Booking confirmation ${i + 1}`}
+                    className="h-20 w-20 rounded-lg object-cover ring-2 ring-emerald-200 hover:ring-emerald-400"
+                  />
+                </a>
+                <ConfirmButton
+                  action={removeBookingConfirmation}
+                  message="Remove this confirmation screenshot?"
+                  variant="ghost"
+                  hidden={{ booking_id: b.id, url }}
+                  pendingLabel="Removing…"
+                >
+                  Remove
+                </ConfirmButton>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}

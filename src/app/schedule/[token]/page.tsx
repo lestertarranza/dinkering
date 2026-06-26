@@ -177,19 +177,31 @@ export default async function PublicSchedule({
                   </span>
                 </div>
                 </Link>
-                {/* Confirmation link rendered OUTSIDE the tappable Link */}
-                {b.confirmation_url ? (
-                  <div className="px-4 pb-3">
-                    <a
-                      href={b.confirmation_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium text-emerald-600 hover:underline"
-                    >
-                      📋 View booking confirmation ↗
-                    </a>
-                  </div>
-                ) : null}
+                {/* Confirmation links rendered OUTSIDE the tappable Link */}
+                {(() => {
+                  const urls =
+                    b.confirmation_urls && b.confirmation_urls.length > 0
+                      ? b.confirmation_urls
+                      : b.confirmation_url
+                        ? [b.confirmation_url]
+                        : [];
+                  if (urls.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pb-3">
+                      {urls.map((url, i) => (
+                        <a
+                          key={i}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-emerald-600 hover:underline"
+                        >
+                          📋 {urls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

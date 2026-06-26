@@ -8,6 +8,13 @@ import type { FormAction } from "@/lib/action-state";
 import type { Booking } from "@/lib/types";
 
 function BookingFields({ booking }: { booking?: Partial<Booking> }) {
+  // Support both the new array and legacy single field.
+  const existingUrls =
+    booking?.confirmation_urls && booking.confirmation_urls.length > 0
+      ? booking.confirmation_urls
+      : booking?.confirmation_url
+        ? [booking.confirmation_url]
+        : [];
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
@@ -77,34 +84,33 @@ function BookingFields({ booking }: { booking?: Partial<Booking> }) {
       </Field>
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700">
-          Booking confirmation screenshot
+          Booking confirmation screenshots
         </label>
-        {booking?.confirmation_url ? (
-          <div className="mb-2 flex items-center gap-3">
-            <a href={booking.confirmation_url} target="_blank" rel="noopener noreferrer">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={booking.confirmation_url}
-                alt="Booking confirmation"
-                className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-emerald-400"
-              />
-            </a>
-            <span className="text-xs text-slate-400">
-              Existing ·{" "}
-              <a href={booking.confirmation_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">
-                View ↗
+        {existingUrls.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {existingUrls.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="View full image">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={`Booking confirmation ${i + 1}`}
+                  className="h-16 w-16 rounded-lg object-cover ring-1 ring-slate-200 hover:ring-emerald-400"
+                />
               </a>
-            </span>
+            ))}
           </div>
         ) : null}
         <input
           name="confirmation_screenshot"
           type="file"
           accept="image/*"
+          multiple
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-3 file:py-1 file:text-sm file:font-medium file:text-emerald-700 hover:file:bg-emerald-100"
         />
         <p className="mt-1 text-xs text-slate-400">
-          Upload the venue&apos;s booking receipt (optional). Shown to players on their portal.
+          Upload one or more venue booking receipts (optional). New uploads are
+          added to any existing ones. Manage/remove existing screenshots from the
+          booking detail page.
         </p>
       </div>
     </>

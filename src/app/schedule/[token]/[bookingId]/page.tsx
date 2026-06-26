@@ -89,6 +89,12 @@ export default async function PublicBookingRoster({
     b.venue ? `Venue: ${b.venue}` : null,
     overallTime || null,
   ].filter(Boolean).join(" · ");
+  const confirmationUrls =
+    b.confirmation_urls && b.confirmation_urls.length > 0
+      ? b.confirmation_urls
+      : b.confirmation_url
+        ? [b.confirmation_url]
+        : [];
 
   return (
     <main className={publicMainClass}>
@@ -130,17 +136,20 @@ export default async function PublicBookingRoster({
               <span className="font-medium">Notes: </span>{b.notes}
             </p>
           ) : null}
-          {b.confirmation_url ? (
-            <p className="mt-3">
-              <a
-                href={b.confirmation_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium text-emerald-700 hover:underline"
-              >
-                📋 View booking confirmation ↗
-              </a>
-            </p>
+          {confirmationUrls.length > 0 ? (
+            <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
+              {confirmationUrls.map((url, i) => (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-emerald-700 hover:underline"
+                >
+                  📋 {confirmationUrls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
+                </a>
+              ))}
+            </div>
           ) : null}
         </div>
       </header>

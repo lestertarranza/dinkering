@@ -63,7 +63,8 @@ export interface Booking {
   total_booking_cost: number;
   status: BookingStatus;
   notes: string | null;
-  confirmation_url: string | null;
+  confirmation_url: string | null; // legacy single (kept for back-compat)
+  confirmation_urls: string[] | null;
   created_at: string;
   updated_at: string;
 }
