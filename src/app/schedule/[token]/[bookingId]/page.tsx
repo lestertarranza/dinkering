@@ -14,6 +14,9 @@ import {
 } from "@/lib/public-links";
 import {
   PublicNavLink,
+  DateChip,
+  CountPill,
+  CapacityBar,
   publicMainClass,
   publicTapRowClass,
   publicChevronClass,
@@ -83,7 +86,6 @@ export default async function PublicBookingRoster({
   const mergedCourts = mergeCourts(courts);
   const totalMax = mergedCourts.length > 0 && mergedCourts.every((m) => m.maxPlayers > 0)
     ? mergedCourts.reduce((s, m) => s + m.maxPlayers, 0) : 0;
-  const slotsLeft = totalMax > 0 ? Math.max(0, totalMax - going) : null;
   const overallTime = overallCourtTimeRange(courts);
   const venueLine = [
     b.venue ? `Venue: ${b.venue}` : null,
@@ -98,40 +100,61 @@ export default async function PublicBookingRoster({
 
   return (
     <main className={publicMainClass}>
-      <header className="mb-5">
-        <Link href={`/schedule/${token}`} className={publicBackLinkClass}>
-          ← All upcoming games
-        </Link>
-        <div className="mt-4 text-center">
-          <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
-            🏓
+      <Link
+        href={`/schedule/${token}`}
+        className={`mb-4 ${publicBackLinkClass}`}
+      >
+        ← All upcoming games
+      </Link>
+
+      <Card className="mb-5 overflow-hidden">
+        <div className="border-b border-slate-100 p-4">
+          <div className="flex items-start gap-4">
+            <DateChip value={b.play_date} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <h1 className={`text-xl ${publicPrimaryText}`}>
+                  {b.booking_code ?? "Booking"}
+                </h1>
+                <StatusBadge status={b.status} size="sm" />
+              </div>
+              <p className="mt-0.5 text-sm font-medium text-slate-700">
+                {formatDate(b.play_date)}
+              </p>
+              {venueLine ? (
+                <p className={`mt-1.5 ${publicHintText}`}>
+                  {b.venue ? (
+                    <span className="font-medium text-slate-700">
+                      📍 {b.venue}
+                    </span>
+                  ) : null}
+                  {b.venue && overallTime ? " · " : null}
+                  {overallTime ? <span>🕐 {overallTime}</span> : null}
+                </p>
+              ) : null}
+            </div>
           </div>
-          <h1 className={`text-2xl ${publicPrimaryText}`}>
-            {b.booking_code ?? "Booking"}
-          </h1>
-          <p className="mt-1 text-base font-medium text-slate-700">
-            {formatDate(b.play_date)}
-          </p>
-          {venueLine ? (
-            <p className={`mt-1.5 ${publicHintText}`}>{venueLine}</p>
-          ) : null}
-          {/* Courts (merged by court number — no max here) */}
+
           {mergedCourts.length > 0 ? (
-            <div className="mt-2 space-y-0.5">
+            <div className="mt-3 space-y-0.5 rounded-lg bg-slate-50 px-3 py-2">
               {mergedCourts.map((m, i) => (
-                <p key={i} className={publicHintText}>
-                  {m.label}: {formatCourtTime(m) || "—"}
+                <p key={i} className="text-sm text-slate-700">
+                  🏓 <span className="font-medium">{m.label}:</span>{" "}
+                  {formatCourtTime(m) || "—"}
                 </p>
               ))}
             </div>
           ) : null}
+
           {b.notes ? (
             <p className={`mt-2 whitespace-pre-wrap ${publicHintText}`}>
-              <span className="font-medium">Notes: </span>{b.notes}
+              <span className="font-medium">Notes: </span>
+              {b.notes}
             </p>
           ) : null}
+
           {confirmationUrls.length > 0 ? (
-            <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
               {confirmationUrls.map((url, i) => (
                 <a
                   key={i}
@@ -140,40 +163,46 @@ export default async function PublicBookingRoster({
                   rel="noopener noreferrer"
                   className="text-sm font-medium text-emerald-700 hover:underline"
                 >
-                  📋 {confirmationUrls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
+                  📋{" "}
+                  {confirmationUrls.length > 1
+                    ? `Confirmation ${i + 1}`
+                    : "View booking confirmation"}{" "}
+                  ↗
                 </a>
               ))}
             </div>
           ) : null}
         </div>
-      </header>
 
-      {roster.length > 0 ? (
-        <p className="mb-3 px-1 text-center text-sm font-semibold text-slate-700">
-          <span className="text-emerald-700">{going} going</span>
-          {waitlisted > 0 ? <>{" · "}<span className="text-amber-600">{waitlisted} waitlisted</span></> : null}
-          {" · "}
-          <span className="text-amber-700">{maybe} maybe</span>
-          {" · "}
-          <span className="text-rose-700">{notGoing} not going</span>
-          {noResponse > 0 ? (
-            <>
-              {" · "}
-              <span className="text-slate-600">{noResponse} no response</span>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-
-      {/* Total capacity + slots remaining (below RSVP details) */}
-      {totalMax > 0 ? (
-        <p className={`mb-3 px-1 text-center text-sm font-semibold ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
-          {totalMax} max ·{" "}
-          {slotsLeft === 0
-            ? "Full — join waitlist"
-            : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
-        </p>
-      ) : null}
+        {(roster.length > 0 || totalMax > 0) ? (
+          <div className="space-y-3 bg-slate-50/60 p-4">
+            {roster.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                <CountPill count={going} label="going" tone="going" />
+                {waitlisted > 0 ? (
+                  <CountPill
+                    count={waitlisted}
+                    label="waitlisted"
+                    tone="waitlist"
+                  />
+                ) : null}
+                <CountPill count={maybe} label="maybe" tone="maybe" />
+                <CountPill count={notGoing} label="not going" tone="not_going" />
+                {noResponse > 0 ? (
+                  <CountPill
+                    count={noResponse}
+                    label="no response"
+                    tone="neutral"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {totalMax > 0 ? (
+              <CapacityBar going={going} totalMax={totalMax} />
+            ) : null}
+          </div>
+        ) : null}
+      </Card>
 
       {roster.length === 0 ? (
         <EmptyState title="No players invited yet" />

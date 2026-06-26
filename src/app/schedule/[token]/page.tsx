@@ -12,8 +12,10 @@ import { validatePublicTeamToken } from "@/lib/public-links";
 import {
   PublicPageHeader,
   PublicNavLink,
+  DateChip,
+  CountPill,
+  CapacityBar,
   publicMainClass,
-  publicTapBlockClass,
   publicChevronClass,
   publicPrimaryText,
   publicMetaText,
@@ -91,127 +93,147 @@ export default async function PublicSchedule({
       {upcoming.length === 0 ? (
         <EmptyState title="No upcoming games scheduled" />
       ) : (
-        <Card className="overflow-hidden">
+        <div className="space-y-4">
           {upcoming.map((b) => {
             const st = stats.get(b.id);
+            const cts = courtsByBooking.get(b.id) ?? [];
+            const overall = overallCourtTimeRange(cts);
+            const merged = mergeCourts(cts);
+            const totalMax = merged.every((m) => m.maxPlayers === 0)
+              ? 0
+              : merged.reduce((s, m) => s + m.maxPlayers, 0);
+            const going = st?.going ?? 0;
+            const noResponse = st
+              ? st.invited - st.going - st.maybe - st.notGoing - st.waitlisted
+              : 0;
+            const urls =
+              b.confirmation_urls && b.confirmation_urls.length > 0
+                ? b.confirmation_urls
+                : b.confirmation_url
+                  ? [b.confirmation_url]
+                  : [];
             return (
               // Wrap in a div so the confirmation link can sit OUTSIDE the
               // tappable <Link> — nested <a> inside <a> hijacks the click.
-              <div key={b.id} className="border-b border-slate-100 last:border-0">
+              <Card
+                key={b.id}
+                className="overflow-hidden transition-all duration-150 hover:border-emerald-300 hover:shadow-md"
+              >
                 <Link
                   href={`/schedule/${token}/${b.id}`}
-                  className={publicTapBlockClass}
+                  className="block touch-manipulation p-4 transition-colors active:bg-emerald-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-500"
                 >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-lg ${publicPrimaryText}`}>
-                      {b.booking_code ?? "Booking"}
-                    </p>
-                    <p className={`mt-0.5 ${publicMetaText}`}>
-                      {formatDate(b.play_date)}
-                    </p>
-                    {/* Venue + overall time, derived from current courts */}
-                    {(() => {
-                      const cts = courtsByBooking.get(b.id) ?? [];
-                      const overall = overallCourtTimeRange(cts);
-                      const parts = [
-                        b.venue ? `Venue: ${b.venue}` : null,
-                        overall || null,
-                      ].filter(Boolean);
-                      if (parts.length === 0) return null;
-                      return (
-                        <p className={`mt-1 ${publicHintText}`}>{parts.join(" · ")}</p>
-                      );
-                    })()}
-                    {/* Per-court timings (merged by court number — no max here) */}
-                    {(() => {
-                      const cts = courtsByBooking.get(b.id) ?? [];
-                      if (cts.length === 0) return null;
-                      const merged = mergeCourts(cts);
-                      return (
-                        <div className={`mt-1.5 space-y-0.5`}>
-                          {merged.map((m, i) => (
-                            <p key={i} className={publicHintText}>
-                              {m.label}: {formatCourtTime(m) || "—"}
-                            </p>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                    {b.notes ? (
-                      <p className={`mt-1 whitespace-pre-wrap ${publicHintText}`}>
-                        <span className="font-medium">Notes: </span>{b.notes}
-                      </p>
-                    ) : null}
-                    {st && st.invited > 0 ? (
-                      <p className="mt-2 text-sm font-medium text-emerald-800">
-                        <span className="text-emerald-700">{st.going} going</span>
-                        {st.waitlisted > 0 ? <span className="text-amber-700"> · {st.waitlisted} waitlisted</span> : null}
-                        {st.maybe > 0 ? <span className="text-amber-700"> · {st.maybe} maybe</span> : null}
-                        {st.notGoing > 0 ? <span className="text-rose-700"> · {st.notGoing} not going</span> : null}
-                        {st.invited - st.going - st.maybe - st.notGoing - st.waitlisted > 0 ? (
-                          <span className="text-slate-600"> · {st.invited - st.going - st.maybe - st.notGoing - st.waitlisted} no response</span>
-                        ) : null}
-                      </p>
-                    ) : (
-                      <p className={`mt-1 ${publicHintText}`}>
-                        No players invited yet
-                      </p>
-                    )}
-                    {/* Total capacity + slots remaining (below RSVP details) */}
-                    {(() => {
-                      const cts = courtsByBooking.get(b.id) ?? [];
-                      const merged = mergeCourts(cts);
-                      const totalMax = merged.every((m) => m.maxPlayers === 0)
-                        ? 0
-                        : merged.reduce((s, m) => s + m.maxPlayers, 0);
-                      if (totalMax === 0) return null;
-                      const going = stats.get(b.id)?.going ?? 0;
-                      const slotsLeft = Math.max(0, totalMax - going);
-                      return (
-                        <p className={`mt-1.5 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                          {totalMax} max ·{" "}
-                          {slotsLeft === 0
-                            ? "Full — join waitlist"
-                            : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+                  <div className="flex items-start gap-4">
+                    <DateChip value={b.play_date} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`text-lg ${publicPrimaryText}`}>
+                          {b.booking_code ?? "Booking"}
                         </p>
-                      );
-                    })()}
+                        <span className={publicChevronClass} aria-hidden>
+                          ›
+                        </span>
+                      </div>
+                      <p className={`mt-0.5 ${publicMetaText}`}>
+                        {formatDate(b.play_date)}
+                      </p>
+                      {b.venue || overall ? (
+                        <p className={`mt-1.5 ${publicHintText}`}>
+                          {b.venue ? (
+                            <span className="font-medium text-slate-700">
+                              📍 {b.venue}
+                            </span>
+                          ) : null}
+                          {b.venue && overall ? " · " : null}
+                          {overall ? <span>🕐 {overall}</span> : null}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <span className={publicChevronClass} aria-hidden>
-                    ›
-                  </span>
-                </div>
-                </Link>
-                {/* Confirmation links rendered OUTSIDE the tappable Link */}
-                {(() => {
-                  const urls =
-                    b.confirmation_urls && b.confirmation_urls.length > 0
-                      ? b.confirmation_urls
-                      : b.confirmation_url
-                        ? [b.confirmation_url]
-                        : [];
-                  if (urls.length === 0) return null;
-                  return (
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 pb-3">
-                      {urls.map((url, i) => (
-                        <a
-                          key={i}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-emerald-600 hover:underline"
-                        >
-                          📋 {urls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
-                        </a>
+
+                  {merged.length > 0 ? (
+                    <div className="mt-3 space-y-0.5 rounded-lg bg-slate-50 px-3 py-2">
+                      {merged.map((m, i) => (
+                        <p key={i} className="text-sm text-slate-700">
+                          🏓 <span className="font-medium">{m.label}:</span>{" "}
+                          {formatCourtTime(m) || "—"}
+                        </p>
                       ))}
                     </div>
-                  );
-                })()}
-              </div>
+                  ) : null}
+
+                  {b.notes ? (
+                    <p className={`mt-2 whitespace-pre-wrap ${publicHintText}`}>
+                      <span className="font-medium">Notes: </span>
+                      {b.notes}
+                    </p>
+                  ) : null}
+
+                  {st && st.invited > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <CountPill count={st.going} label="going" tone="going" />
+                      {st.waitlisted > 0 ? (
+                        <CountPill
+                          count={st.waitlisted}
+                          label="waitlisted"
+                          tone="waitlist"
+                        />
+                      ) : null}
+                      {st.maybe > 0 ? (
+                        <CountPill count={st.maybe} label="maybe" tone="maybe" />
+                      ) : null}
+                      {st.notGoing > 0 ? (
+                        <CountPill
+                          count={st.notGoing}
+                          label="not going"
+                          tone="not_going"
+                        />
+                      ) : null}
+                      {noResponse > 0 ? (
+                        <CountPill
+                          count={noResponse}
+                          label="no response"
+                          tone="neutral"
+                        />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className={`mt-3 ${publicHintText}`}>
+                      No players invited yet
+                    </p>
+                  )}
+
+                  {totalMax > 0 ? (
+                    <div className="mt-3">
+                      <CapacityBar going={going} totalMax={totalMax} />
+                    </div>
+                  ) : null}
+                </Link>
+
+                {/* Confirmation links rendered OUTSIDE the tappable Link */}
+                {urls.length > 0 ? (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 px-4 py-2.5">
+                    {urls.map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-emerald-600 hover:underline"
+                      >
+                        📋{" "}
+                        {urls.length > 1
+                          ? `Confirmation ${i + 1}`
+                          : "View booking confirmation"}{" "}
+                        ↗
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </Card>
             );
           })}
-        </Card>
+        </div>
       )}
 
       <footer className="mt-6 text-center text-sm text-slate-400">
