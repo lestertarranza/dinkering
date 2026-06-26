@@ -239,7 +239,7 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, booking_notes:notes)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url)",
     )
     .eq("player_id", p.id);
 
@@ -251,6 +251,20 @@ export default async function PlayerPortal({
   const history = att
     .filter((a) => a.bookings && !(a.bookings.play_date >= today && a.bookings.status === "booked"))
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
+
+  // Fetch booking notes separately to avoid the field-name clash between
+  // booking_attendance.notes and bookings.notes in the PostgREST join.
+  const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
+  const bookingNotesMap = new Map<string, string>();
+  if (upcomingBookingIds.length > 0) {
+    const { data: notesRows } = await db
+      .from("bookings")
+      .select("id, notes")
+      .in("id", upcomingBookingIds);
+    for (const row of (notesRows ?? []) as { id: string; notes: string | null }[]) {
+      if (row.notes) bookingNotesMap.set(row.id, row.notes);
+    }
+  }
 
   const d = describeBalance(balance);
   const [ledgerContext, transferItemMap] = await Promise.all([
@@ -455,10 +469,10 @@ export default async function PlayerPortal({
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
-                  {/* Booking notes — aliased to avoid clash with booking_attendance.notes */}
-                  {(a.bookings as unknown as { booking_notes: string | null }).booking_notes ? (
+                  {/* Booking notes — loaded separately to avoid clash with booking_attendance.notes */}
+                  {bookingNotesMap.get(a.booking_id) ? (
                     <p className={`mb-3 text-sm ${publicHintText}`}>
-                      {(a.bookings as unknown as { booking_notes: string | null }).booking_notes}
+                      {bookingNotesMap.get(a.booking_id)}
                     </p>
                   ) : null}
                   {/* Booking confirmation link */}
