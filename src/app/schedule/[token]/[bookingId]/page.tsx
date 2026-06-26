@@ -115,20 +115,14 @@ export default async function PublicBookingRoster({
           {venueLine ? (
             <p className={`mt-1.5 ${publicHintText}`}>{venueLine}</p>
           ) : null}
-          {/* Courts (merged by court number) */}
+          {/* Courts (merged by court number — no max here) */}
           {mergedCourts.length > 0 ? (
             <div className="mt-2 space-y-0.5">
               {mergedCourts.map((m, i) => (
                 <p key={i} className={publicHintText}>
                   {m.label}: {formatCourtTime(m) || "—"}
-                  {m.maxPlayers > 0 ? ` · ${m.maxPlayers} max` : ""}
                 </p>
               ))}
-              {slotsLeft !== null ? (
-                <p className={`text-sm font-semibold ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                  {slotsLeft === 0 ? "Full — join waitlist" : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
-                </p>
-              ) : null}
             </div>
           ) : null}
           {b.notes ? (
@@ -168,6 +162,16 @@ export default async function PublicBookingRoster({
               <span className="text-slate-600">{noResponse} no response</span>
             </>
           ) : null}
+        </p>
+      ) : null}
+
+      {/* Total capacity + slots remaining (below RSVP details) */}
+      {totalMax > 0 ? (
+        <p className={`mb-3 px-1 text-center text-sm font-semibold ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
+          {totalMax} max ·{" "}
+          {slotsLeft === 0
+            ? "Full — join waitlist"
+            : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
         </p>
       ) : null}
 

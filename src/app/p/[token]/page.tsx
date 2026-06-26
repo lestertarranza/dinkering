@@ -514,21 +514,22 @@ export default async function PlayerPortal({
                           {merged.map((m, i) => (
                             <p key={i} className={publicHintText}>
                               {m.label}: {formatCourtTime(m) || "—"}
-                              {m.maxPlayers > 0 ? ` · ${m.maxPlayers} max` : ""}
                             </p>
                           ))}
-                          {slotsLeft !== null ? (
-                            <p className={`text-xs font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                              {slotsLeft === 0
-                                ? "Full — join waitlist"
-                                : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
-                            </p>
-                          ) : null}
                         </div>
                       ) : null}
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
+                  {/* Total capacity + slots remaining */}
+                  {cap && cap.totalCap > 0 ? (
+                    <p className={`mb-3 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                      {cap.totalCap} max ·{" "}
+                      {slotsLeft === 0
+                        ? "Full — join waitlist"
+                        : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+                    </p>
+                  ) : null}
                   {/* Booking notes — loaded separately to avoid clash with booking_attendance.notes */}
                   {bookingNotesMap.get(a.booking_id) ? (
                     <p className={`mb-3 whitespace-pre-wrap text-sm ${publicHintText}`}>
