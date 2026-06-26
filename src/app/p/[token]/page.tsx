@@ -246,24 +246,52 @@ export default async function PlayerPortal({
   type AttRow = BookingAttendance & { bookings: Booking };
   const att = (attendance ?? []) as AttRow[];
   const upcoming = att
-    .filter((a) => a.bookings && a.bookings.play_date >= today && a.bookings.status === "booked")
+    .filter((a) => a.bookings && a.bookings.play_date >= today &&
+      (a.bookings.status === "booked" || a.bookings.status === "for_booking"))
     .sort((a, b) => a.bookings.play_date.localeCompare(b.bookings.play_date));
   const history = att
-    .filter((a) => a.bookings && !(a.bookings.play_date >= today && a.bookings.status === "booked"))
+    .filter((a) => a.bookings && !(a.bookings.play_date >= today &&
+      (a.bookings.status === "booked" || a.bookings.status === "for_booking")))
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
-  // Fetch booking notes separately to avoid the field-name clash between
-  // booking_attendance.notes and bookings.notes in the PostgREST join.
+  // Fetch booking notes + capacity data separately (avoids field-name clash).
   const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
   const bookingNotesMap = new Map<string, string>();
+  // bookingId → { totalCap, goingCount } (0 cap = unlimited)
+  const bookingCapMap = new Map<string, { totalCap: number; goingCount: number }>();
+
   if (upcomingBookingIds.length > 0) {
-    const { data: notesRows } = await db
-      .from("bookings")
-      .select("id, notes")
-      .in("id", upcomingBookingIds);
+    const [{ data: notesRows }, { data: courtRows }, { data: goingRows }] = await Promise.all([
+      db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
+      db.from("booking_courts").select("booking_id, max_players").in("booking_id", upcomingBookingIds),
+      db.from("booking_attendance").select("booking_id")
+        .in("booking_id", upcomingBookingIds).eq("response_status", "going"),
+    ]);
+
+    // Build notes map
     for (const row of (notesRows ?? []) as { id: string; notes: string | null }[]) {
       if (row.notes) bookingNotesMap.set(row.id, row.notes);
     }
+
+    // Build capacity map
+    type CourtRow = { booking_id: string; max_players: number };
+    const courtsByBooking = new Map<string, CourtRow[]>();
+    for (const c of (courtRows ?? []) as CourtRow[]) {
+      const list = courtsByBooking.get(c.booking_id) ?? [];
+      list.push(c);
+      courtsByBooking.set(c.booking_id, list);
+    }
+    const goingByBooking = new Map<string, number>();
+    for (const r of (goingRows ?? []) as { booking_id: string }[]) {
+      goingByBooking.set(r.booking_id, (goingByBooking.get(r.booking_id) ?? 0) + 1);
+    }
+    for (const bid of upcomingBookingIds) {
+      const cts = courtsByBooking.get(bid) ?? [];
+      const unlimited = cts.length === 0 || cts.some((c) => c.max_players === 0);
+      const totalCap = unlimited ? 0 : cts.reduce((s, c) => s + c.max_players, 0);
+      bookingCapMap.set(bid, { totalCap, goingCount: goingByBooking.get(bid) ?? 0 });
+    }
+
   }
 
   const d = describeBalance(balance);
@@ -493,6 +521,10 @@ export default async function PlayerPortal({
                     token={token}
                     bookingId={a.bookings.id}
                     currentStatus={a.response_status}
+                    isFull={(() => {
+                      const cap = bookingCapMap.get(a.booking_id);
+                      return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
+                    })()}
                   />
                 </Card>
               );

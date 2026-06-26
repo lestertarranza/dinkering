@@ -6,6 +6,7 @@ import {
   PageHeader,
   StatusBadge,
   Badge,
+  Field,
   inputClass,
   buttonClass,
 } from "@/components/ui";
@@ -22,6 +23,7 @@ import {
 import type {
   Booking,
   BookingAttendance,
+  BookingCourt,
   BookingShare,
   Payment,
   Player,
@@ -41,6 +43,7 @@ import {
   deleteBooking,
   markBookingSharePaid,
 } from "../actions";
+import { addCourt, removeCourt, updateCourt } from "../court-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +67,7 @@ export default async function BookingDetail({
 
   const [
     { data: attendance },
+    { data: courts },
     { data: shares },
     { data: payments },
     { data: players },
@@ -73,6 +77,11 @@ export default async function BookingDetail({
       .from("booking_attendance")
       .select("*, players(id, name)")
       .eq("booking_id", id),
+    supabase
+      .from("booking_courts")
+      .select("*")
+      .eq("booking_id", id)
+      .order("created_at"),
     supabase
       .from("booking_shares")
       .select("*, players(id, name)")
@@ -96,6 +105,11 @@ export default async function BookingDetail({
   const availablePlayers = ((players ?? []) as Player[]).filter(
     (p) => !rosterIds.has(p.id) && p.active_status !== "archived",
   );
+  const courtList = (courts ?? []) as BookingCourt[];
+  const totalMaxPlayers = courtList.every((c) => c.max_players === 0)
+    ? 0
+    : courtList.reduce((s, c) => s + c.max_players, 0);
+
   const shareList = (shares ?? []) as (BookingShare & {
     players: Pick<Player, "id" | "name"> | null;
   })[];
@@ -286,7 +300,7 @@ export default async function BookingDetail({
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <StatusBadge status={b.status} />
-        {(["booked", "played", "cancelled", "refunded"] as const)
+        {(["for_booking", "booked", "played", "cancelled", "refunded"] as const)
           .filter((s) => s !== b.status)
           .map((s) => (
             <ActionForm
@@ -310,6 +324,113 @@ export default async function BookingDetail({
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
+
+          {/* ── Courts ── */}
+          <Card>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700">Courts</h2>
+                {totalMaxPlayers > 0 ? (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Max {totalMaxPlayers} player{totalMaxPlayers === 1 ? "" : "s"} total
+                  </p>
+                ) : courtList.length > 0 ? (
+                  <p className="mt-0.5 text-xs text-slate-400">Unlimited capacity</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="p-4 space-y-4">
+              {courtList.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No courts added yet. Add courts below — at least one is required before generating shares.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[560px] text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                        <th className="py-2 font-medium">Court #</th>
+                        <th className="py-2 font-medium">Start</th>
+                        <th className="py-2 font-medium">End</th>
+                        <th className="py-2 text-right font-medium">Hours</th>
+                        <th className="py-2 text-right font-medium">Rate / hr</th>
+                        <th className="py-2 text-right font-medium">Max players</th>
+                        <th className="py-2 text-right font-medium">Subtotal</th>
+                        <th className="py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {courtList.map((c) => (
+                        <tr key={c.id}>
+                          <td className="py-2 text-slate-700">{c.court_number ?? "—"}</td>
+                          <td className="py-2 text-slate-500">{c.start_time ?? "—"}</td>
+                          <td className="py-2 text-slate-500">{c.end_time ?? "—"}</td>
+                          <td className="py-2 text-right text-slate-600">{c.hours}</td>
+                          <td className="py-2 text-right text-slate-600">{formatMoney(c.rate_per_court_per_hour)}</td>
+                          <td className="py-2 text-right text-slate-600">{c.max_players === 0 ? "∞" : c.max_players}</td>
+                          <td className="py-2 text-right font-medium text-slate-700">{formatMoney(c.hours * c.rate_per_court_per_hour)}</td>
+                          <td className="py-2 text-right">
+                            <ConfirmButton
+                              action={removeCourt}
+                              message={`Remove court ${c.court_number ?? ""}? This will reduce the booking total.`}
+                              variant="ghost"
+                              hidden={{ id: c.id, booking_id: b.id }}
+                              pendingLabel="Removing…"
+                            >
+                              Remove
+                            </ConfirmButton>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 font-semibold">
+                        <td className="py-2 text-slate-700" colSpan={6}>Total court cost</td>
+                        <td className="py-2 text-right text-slate-700">
+                          {formatMoney(courtList.reduce((s, c) => s + c.hours * c.rate_per_court_per_hour, 0))}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* Add court form */}
+              <ActionForm
+                action={addCourt}
+                className="rounded-lg border border-dashed border-slate-300 p-3"
+                pendingLabel="Adding court…"
+                hidden={<input type="hidden" name="booking_id" value={b.id} />}
+              >
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Add court</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Field label="Court number">
+                    <input name="court_number" placeholder="e.g. Court 3" className={inputClass} />
+                  </Field>
+                  <Field label="Start time">
+                    <input name="start_time" type="time" className={inputClass} />
+                  </Field>
+                  <Field label="End time">
+                    <input name="end_time" type="time" className={inputClass} />
+                  </Field>
+                  <Field label="Hours">
+                    <input name="hours" type="number" step="0.5" min="0.5" defaultValue="1" required className={inputClass} />
+                  </Field>
+                  <Field label="Rate / court / hr">
+                    <input name="rate_per_court_per_hour" type="number" step="0.01" min="0" defaultValue="0" required className={inputClass} />
+                  </Field>
+                  <Field label="Max players" hint="0 = unlimited">
+                    <input name="max_players" type="number" step="1" min="0" defaultValue="0" className={inputClass} />
+                  </Field>
+                </div>
+                <div className="mt-2">
+                  <SubmitButton variant="secondary" pendingLabel="Adding…">+ Add court</SubmitButton>
+                </div>
+              </ActionForm>
+            </div>
+          </Card>
+
           {/* ── Roster & Attendance (merged) ── */}
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">

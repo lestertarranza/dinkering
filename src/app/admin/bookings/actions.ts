@@ -8,19 +8,10 @@ import { formatMoney } from "@/lib/format";
 import { uploadBookingConfirmation } from "@/lib/booking-confirmation";
 import {
   nextCode,
-  round2,
   resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
-
-function computeTotal(fd: FormData) {
-  const courts = parseFloat(String(fd.get("courts_booked") || "1")) || 0;
-  const hours = parseFloat(String(fd.get("hours") || "1")) || 0;
-  const rate = parseFloat(String(fd.get("rate_per_court_per_hour") || "0")) || 0;
-  const other = parseFloat(String(fd.get("other_fees") || "0")) || 0;
-  return round2(courts * hours * rate + other);
-}
 
 export async function createBooking(formData: FormData) {
   const { supabase } = await requireAdmin();
@@ -32,25 +23,18 @@ export async function createBooking(formData: FormData) {
   const screenshotFile = formData.get("confirmation_screenshot") as File | null;
   const confirmation_url = await uploadBookingConfirmation(screenshotFile, code);
 
+  const other_fees = parseFloat(String(formData.get("other_fees") || "0")) || 0;
+
   const { data } = await supabase
     .from("bookings")
     .insert({
       booking_code: code,
       play_date: String(formData.get("play_date")),
-      start_time: String(formData.get("start_time") || "") || null,
-      end_time: String(formData.get("end_time") || "") || null,
       venue: String(formData.get("venue") || "").trim() || null,
-      court_number: String(formData.get("court_number") || "").trim() || null,
-      booking_reference:
-        String(formData.get("booking_reference") || "").trim() || null,
-      courts_booked: parseFloat(String(formData.get("courts_booked") || "1")),
-      hours: parseFloat(String(formData.get("hours") || "1")),
-      rate_per_court_per_hour: parseFloat(
-        String(formData.get("rate_per_court_per_hour") || "0"),
-      ),
-      other_fees: parseFloat(String(formData.get("other_fees") || "0")),
-      total_booking_cost: computeTotal(formData),
-      status: String(formData.get("status") || "booked"),
+      booking_reference: String(formData.get("booking_reference") || "").trim() || null,
+      other_fees,
+      total_booking_cost: other_fees, // courts not added yet; trigger will update
+      status: String(formData.get("status") || "for_booking"),
       notes: String(formData.get("notes") || "").trim() || null,
       confirmation_url: confirmation_url ?? null,
     })
@@ -73,29 +57,23 @@ export async function updateBooking(
   // Upload new confirmation screenshot if one was provided
   const screenshotFile = formData.get("confirmation_screenshot") as File | null;
   const newUrl = await uploadBookingConfirmation(screenshotFile, `PB-${id.slice(0, 8)}`);
-  // Build update object; only include confirmation_url if a new file was uploaded
+
   const updateData: Record<string, unknown> = {
     booking_code: String(formData.get("booking_code") || "").trim() || null,
     play_date,
-    start_time: String(formData.get("start_time") || "") || null,
-    end_time: String(formData.get("end_time") || "") || null,
     venue: String(formData.get("venue") || "").trim() || null,
-    court_number: String(formData.get("court_number") || "").trim() || null,
-    booking_reference:
-      String(formData.get("booking_reference") || "").trim() || null,
-    courts_booked: parseFloat(String(formData.get("courts_booked") || "1")),
-    hours: parseFloat(String(formData.get("hours") || "1")),
-    rate_per_court_per_hour: parseFloat(
-      String(formData.get("rate_per_court_per_hour") || "0"),
-    ),
-    other_fees: parseFloat(String(formData.get("other_fees") || "0")),
-    total_booking_cost: computeTotal(formData),
-    status: String(formData.get("status") || "booked"),
+    booking_reference: String(formData.get("booking_reference") || "").trim() || null,
+    other_fees: parseFloat(String(formData.get("other_fees") || "0")) || 0,
+    status: String(formData.get("status") || "for_booking"),
     notes: String(formData.get("notes") || "").trim() || null,
   };
   if (newUrl) updateData.confirmation_url = newUrl;
 
   await supabase.from("bookings").update(updateData).eq("id", id);
+
+  // Re-sync total_booking_cost after other_fees may have changed
+  await supabase.rpc("sync_booking_total", { p_booking_id: id });
+
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
   return actionOk("Booking saved.");
@@ -268,6 +246,15 @@ export async function generateShares(
     .single();
   if (!booking) return actionErr("Booking not found.");
 
+  // Require at least one court before generating shares.
+  const { count: courtCount } = await supabase
+    .from("booking_courts")
+    .select("id", { count: "exact", head: true })
+    .eq("booking_id", booking_id);
+  if ((courtCount ?? 0) === 0) {
+    return actionErr("Add at least one court to this booking before generating shares.");
+  }
+
   const playerIds = formData
     .getAll("share_player_ids")
     .map(String)
@@ -319,6 +306,15 @@ export async function chargeAttendees(
     .eq("id", booking_id)
     .single();
   if (!booking) return actionErr("Booking not found.");
+
+  // Require at least one court.
+  const { count: cCount } = await supabase
+    .from("booking_courts")
+    .select("id", { count: "exact", head: true })
+    .eq("booking_id", booking_id);
+  if ((cCount ?? 0) === 0) {
+    return actionErr("Add at least one court to this booking before charging attendees.");
+  }
 
   const { data: roster } = await supabase
     .from("booking_attendance")

@@ -21,12 +21,13 @@ import type { Booking, BookingAttendance, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Responded players (going / maybe / not going) first, no-response last.
+// Responded players (going / maybe / waitlist / not going) first, no-response last.
 const RSVP_ORDER: Record<string, number> = {
   going: 0,
   maybe: 1,
-  not_going: 2,
-  no_response: 3,
+  waitlist: 2,
+  not_going: 3,
+  no_response: 4,
 };
 
 export default async function PublicBookingRoster({

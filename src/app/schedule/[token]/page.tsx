@@ -32,7 +32,7 @@ export default async function PublicSchedule({
   const { data: bookings } = await db
     .from("bookings")
     .select("*")
-    .eq("status", "booked")
+    .in("status", ["for_booking", "booked"])
     .gte("play_date", today)
     .order("play_date")
     .order("start_time", { nullsFirst: false });
