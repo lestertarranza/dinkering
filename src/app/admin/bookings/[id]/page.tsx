@@ -17,7 +17,6 @@ import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import {
   formatMoney,
   formatDate,
-  formatTime,
   formatTimeRange,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
@@ -44,8 +43,8 @@ import {
   deleteBooking,
   markBookingSharePaid,
 } from "../actions";
-import { removeCourt } from "../court-actions";
 import { CourtAddForm } from "../CourtAddForm";
+import { CourtRow } from "../CourtRow";
 
 export const dynamic = "force-dynamic";
 
@@ -372,26 +371,7 @@ export default async function BookingDetail({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {courtList.map((c) => (
-                        <tr key={c.id}>
-                          <td className="py-2 text-slate-700">{c.court_number ?? "—"}</td>
-                          <td className="py-2 text-slate-500">{c.start_time ? formatTime(c.start_time) : "—"}</td>
-                          <td className="py-2 text-slate-500">{c.end_time ? formatTime(c.end_time) : "—"}</td>
-                          <td className="py-2 text-right text-slate-600">{c.hours}</td>
-                          <td className="py-2 text-right text-slate-600">{formatMoney(c.rate_per_court_per_hour)}</td>
-                          <td className="py-2 text-right text-slate-600">{c.max_players === 0 ? "∞" : c.max_players}</td>
-                          <td className="py-2 text-right font-medium text-slate-700">{formatMoney(c.hours * c.rate_per_court_per_hour)}</td>
-                          <td className="py-2 text-right">
-                            <ConfirmButton
-                              action={removeCourt}
-                              message={`Remove court ${c.court_number ?? ""}? This will reduce the booking total.`}
-                              variant="ghost"
-                              hidden={{ id: c.id, booking_id: b.id }}
-                              pendingLabel="Removing…"
-                            >
-                              Remove
-                            </ConfirmButton>
-                          </td>
-                        </tr>
+                        <CourtRow key={c.id} court={c} />
                       ))}
                     </tbody>
                     <tfoot>

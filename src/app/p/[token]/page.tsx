@@ -12,6 +12,11 @@ import {
   buildLedgerBookingContext,
   formatBookingContext,
 } from "@/lib/booking-context";
+import {
+  mergeCourts,
+  overallCourtTimeRange,
+  formatCourtTime,
+} from "@/lib/court-format";
 import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
 import {
   PublicNavLink,
@@ -254,16 +259,19 @@ export default async function PlayerPortal({
       (a.bookings.status === "booked" || a.bookings.status === "for_booking")))
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
-  // Fetch booking notes + capacity data separately (avoids field-name clash).
+  // Fetch booking notes + capacity + court data separately (avoids field-name clash).
   const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
   const bookingNotesMap = new Map<string, string>();
   // bookingId → { totalCap, goingCount } (0 cap = unlimited)
   const bookingCapMap = new Map<string, { totalCap: number; goingCount: number }>();
+  // bookingId → raw court rows (for merged display)
+  type DisplayCourt = { court_number: string | null; start_time: string | null; end_time: string | null; max_players: number };
+  const bookingCourtsMap = new Map<string, DisplayCourt[]>();
 
   if (upcomingBookingIds.length > 0) {
     const [{ data: notesRows }, { data: courtRows }, { data: goingRows }] = await Promise.all([
       db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
-      db.from("booking_courts").select("booking_id, max_players").in("booking_id", upcomingBookingIds),
+      db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
       db.from("booking_attendance").select("booking_id")
         .in("booking_id", upcomingBookingIds).eq("response_status", "going"),
     ]);
@@ -273,25 +281,23 @@ export default async function PlayerPortal({
       if (row.notes) bookingNotesMap.set(row.id, row.notes);
     }
 
-    // Build capacity map
-    type CourtRow = { booking_id: string; max_players: number };
-    const courtsByBooking = new Map<string, CourtRow[]>();
+    // Build capacity + courts map
+    type CourtRow = DisplayCourt & { booking_id: string };
     for (const c of (courtRows ?? []) as CourtRow[]) {
-      const list = courtsByBooking.get(c.booking_id) ?? [];
-      list.push(c);
-      courtsByBooking.set(c.booking_id, list);
+      const list = bookingCourtsMap.get(c.booking_id) ?? [];
+      list.push({ court_number: c.court_number, start_time: c.start_time, end_time: c.end_time, max_players: c.max_players });
+      bookingCourtsMap.set(c.booking_id, list);
     }
     const goingByBooking = new Map<string, number>();
     for (const r of (goingRows ?? []) as { booking_id: string }[]) {
       goingByBooking.set(r.booking_id, (goingByBooking.get(r.booking_id) ?? 0) + 1);
     }
     for (const bid of upcomingBookingIds) {
-      const cts = courtsByBooking.get(bid) ?? [];
+      const cts = bookingCourtsMap.get(bid) ?? [];
       const unlimited = cts.length === 0 || cts.some((c) => c.max_players === 0);
       const totalCap = unlimited ? 0 : cts.reduce((s, c) => s + c.max_players, 0);
       bookingCapMap.set(bid, { totalCap, goingCount: goingByBooking.get(bid) ?? 0 });
     }
-
   }
 
   const d = describeBalance(balance);
@@ -478,7 +484,16 @@ export default async function PlayerPortal({
         ) : (
           <div className="space-y-3">
             {upcoming.map((a) => {
-              const ctx = formatBookingContext(a.bookings);
+              const cts = bookingCourtsMap.get(a.booking_id) ?? [];
+              const merged = mergeCourts(cts);
+              const overall = overallCourtTimeRange(cts);
+              const venueLine = [
+                a.bookings.venue ? `Venue: ${a.bookings.venue}` : null,
+                overall || null,
+              ].filter(Boolean).join(" · ");
+              const cap = bookingCapMap.get(a.booking_id);
+              const slotsLeft =
+                cap && cap.totalCap > 0 ? Math.max(0, cap.totalCap - cap.goingCount) : null;
               return (
                 <Card key={a.id} id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -491,8 +506,25 @@ export default async function PlayerPortal({
                           {a.bookings.booking_code}
                         </p>
                       ) : null}
-                      {ctx ? (
-                        <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
+                      {venueLine ? (
+                        <p className={`mt-1 ${publicHintText}`}>{venueLine}</p>
+                      ) : null}
+                      {merged.length > 0 ? (
+                        <div className="mt-1 space-y-0.5">
+                          {merged.map((m, i) => (
+                            <p key={i} className={publicHintText}>
+                              {m.label}: {formatCourtTime(m) || "—"}
+                              {m.maxPlayers > 0 ? ` · ${m.maxPlayers} max` : ""}
+                            </p>
+                          ))}
+                          {slotsLeft !== null ? (
+                            <p className={`text-xs font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                              {slotsLeft === 0
+                                ? "Full — join waitlist"
+                                : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+                            </p>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                     <StatusBadge status={a.response_status} size="md" />

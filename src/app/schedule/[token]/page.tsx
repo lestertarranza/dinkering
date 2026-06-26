@@ -2,8 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, EmptyState } from "@/components/ui";
-import { formatDate, formatTime } from "@/lib/format";
-import { formatBookingContext } from "@/lib/booking-context";
+import { formatDate } from "@/lib/format";
+import {
+  mergeCourts,
+  overallCourtTimeRange,
+  formatCourtTime,
+} from "@/lib/court-format";
 import { validatePublicTeamToken } from "@/lib/public-links";
 import {
   PublicPageHeader,
@@ -90,7 +94,6 @@ export default async function PublicSchedule({
         <Card className="overflow-hidden">
           {upcoming.map((b) => {
             const st = stats.get(b.id);
-            const ctx = formatBookingContext(b);
             return (
               // Wrap in a div so the confirmation link can sit OUTSIDE the
               // tappable <Link> — nested <a> inside <a> hijacks the click.
@@ -107,35 +110,37 @@ export default async function PublicSchedule({
                     <p className={`mt-0.5 ${publicMetaText}`}>
                       {formatDate(b.play_date)}
                     </p>
-                    {ctx ? (
-                      <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
-                    ) : null}
-                    {/* Courts: timings + capacity */}
+                    {/* Venue + overall time, derived from current courts */}
+                    {(() => {
+                      const cts = courtsByBooking.get(b.id) ?? [];
+                      const overall = overallCourtTimeRange(cts);
+                      const parts = [
+                        b.venue ? `Venue: ${b.venue}` : null,
+                        overall || null,
+                      ].filter(Boolean);
+                      if (parts.length === 0) return null;
+                      return (
+                        <p className={`mt-1 ${publicHintText}`}>{parts.join(" · ")}</p>
+                      );
+                    })()}
+                    {/* Per-court timings + capacity (merged by court number) */}
                     {(() => {
                       const cts = courtsByBooking.get(b.id) ?? [];
                       if (cts.length === 0) return null;
-                      const totalMax = cts.every((c) => c.max_players === 0)
+                      const merged = mergeCourts(cts);
+                      const totalMax = merged.every((m) => m.maxPlayers === 0)
                         ? 0
-                        : cts.reduce((s, c) => s + c.max_players, 0);
+                        : merged.reduce((s, m) => s + m.maxPlayers, 0);
                       const going = stats.get(b.id)?.going ?? 0;
                       const slotsLeft = totalMax > 0 ? Math.max(0, totalMax - going) : null;
                       return (
                         <div className={`mt-1.5 space-y-0.5`}>
-                          {cts.map((c, i) => {
-                            const timeStr =
-                              c.start_time && c.end_time
-                                ? `${formatTime(c.start_time)} – ${formatTime(c.end_time)}`
-                                : c.start_time
-                                  ? `From ${formatTime(c.start_time)}`
-                                  : `${c.hours}h`;
-                            return (
-                              <p key={i} className={publicHintText}>
-                                {c.court_number ? `${c.court_number}: ` : "Court: "}
-                                {timeStr}
-                                {c.max_players > 0 ? ` · ${c.max_players} max` : ""}
-                              </p>
-                            );
-                          })}
+                          {merged.map((m, i) => (
+                            <p key={i} className={publicHintText}>
+                              {m.label}: {formatCourtTime(m) || "—"}
+                              {m.maxPlayers > 0 ? ` · ${m.maxPlayers} max` : ""}
+                            </p>
+                          ))}
                           {totalMax > 0 ? (
                             <p className={`text-xs font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
                               {slotsLeft === 0

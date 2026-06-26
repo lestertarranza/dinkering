@@ -2,8 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
-import { formatDate, formatTime } from "@/lib/format";
-import { formatBookingContext } from "@/lib/booking-context";
+import { formatDate } from "@/lib/format";
+import {
+  mergeCourts,
+  overallCourtTimeRange,
+  formatCourtTime,
+} from "@/lib/court-format";
 import {
   publicPlayerLabel,
   validatePublicTeamToken,
@@ -76,11 +80,15 @@ export default async function PublicBookingRoster({
 
   type CourtInfo = { court_number: string | null; start_time: string | null; end_time: string | null; hours: number; max_players: number };
   const courts = (courtsData ?? []) as CourtInfo[];
-  const totalMax = courts.length > 0 && courts.every((c) => c.max_players > 0)
-    ? courts.reduce((s, c) => s + c.max_players, 0) : 0;
+  const mergedCourts = mergeCourts(courts);
+  const totalMax = mergedCourts.length > 0 && mergedCourts.every((m) => m.maxPlayers > 0)
+    ? mergedCourts.reduce((s, m) => s + m.maxPlayers, 0) : 0;
   const slotsLeft = totalMax > 0 ? Math.max(0, totalMax - going) : null;
-
-  const ctx = formatBookingContext(b);
+  const overallTime = overallCourtTimeRange(courts);
+  const venueLine = [
+    b.venue ? `Venue: ${b.venue}` : null,
+    overallTime || null,
+  ].filter(Boolean).join(" · ");
 
   return (
     <main className={publicMainClass}>
@@ -98,25 +106,18 @@ export default async function PublicBookingRoster({
           <p className="mt-1 text-base font-medium text-slate-700">
             {formatDate(b.play_date)}
           </p>
-          {ctx ? (
-            <p className={`mt-1.5 ${publicHintText}`}>{ctx}</p>
+          {venueLine ? (
+            <p className={`mt-1.5 ${publicHintText}`}>{venueLine}</p>
           ) : null}
-          {/* Courts */}
-          {courts.length > 0 ? (
+          {/* Courts (merged by court number) */}
+          {mergedCourts.length > 0 ? (
             <div className="mt-2 space-y-0.5">
-              {courts.map((c, i) => {
-                const timeStr =
-                  c.start_time && c.end_time
-                    ? `${formatTime(c.start_time)} – ${formatTime(c.end_time)}`
-                    : c.start_time ? `From ${formatTime(c.start_time)}` : `${c.hours}h`;
-                return (
-                  <p key={i} className={publicHintText}>
-                    {c.court_number ? `${c.court_number}: ` : "Court: "}
-                    {timeStr}
-                    {c.max_players > 0 ? ` · ${c.max_players} max` : ""}
-                  </p>
-                );
-              })}
+              {mergedCourts.map((m, i) => (
+                <p key={i} className={publicHintText}>
+                  {m.label}: {formatCourtTime(m) || "—"}
+                  {m.maxPlayers > 0 ? ` · ${m.maxPlayers} max` : ""}
+                </p>
+              ))}
               {slotsLeft !== null ? (
                 <p className={`text-sm font-semibold ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
                   {slotsLeft === 0 ? "Full — join waitlist" : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
