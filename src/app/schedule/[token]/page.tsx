@@ -81,16 +81,18 @@ export default async function PublicSchedule({
       {upcoming.length === 0 ? (
         <EmptyState title="No upcoming games scheduled" />
       ) : (
-        <Card className="divide-y divide-slate-100 overflow-hidden">
+        <Card className="overflow-hidden">
           {upcoming.map((b) => {
             const st = stats.get(b.id);
             const ctx = formatBookingContext(b);
             return (
-              <Link
-                key={b.id}
-                href={`/schedule/${token}/${b.id}`}
-                className={publicTapBlockClass}
-              >
+              // Wrap in a div so the confirmation link can sit OUTSIDE the
+              // tappable <Link> — nested <a> inside <a> hijacks the click.
+              <div key={b.id} className="border-b border-slate-100 last:border-0">
+                <Link
+                  href={`/schedule/${token}/${b.id}`}
+                  className={publicTapBlockClass}
+                >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className={`text-lg ${publicPrimaryText}`}>
@@ -102,15 +104,10 @@ export default async function PublicSchedule({
                     {ctx ? (
                       <p className={`mt-1 ${publicHintText}`}>{ctx}</p>
                     ) : null}
-                    {b.confirmation_url ? (
-                      <a
-                        href={b.confirmation_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`mt-1 inline-block text-xs font-medium text-emerald-600 hover:underline`}
-                      >
-                        📋 Booking confirmation ↗
-                      </a>
+                    {b.notes ? (
+                      <p className={`mt-1 whitespace-pre-wrap ${publicHintText}`}>
+                        <span className="font-medium">Notes: </span>{b.notes}
+                      </p>
                     ) : null}
                     {st && st.invited > 0 ? (
                       <p className="mt-2 text-sm font-medium text-emerald-800">
@@ -146,7 +143,21 @@ export default async function PublicSchedule({
                     ›
                   </span>
                 </div>
-              </Link>
+                </Link>
+                {/* Confirmation link rendered OUTSIDE the tappable Link */}
+                {b.confirmation_url ? (
+                  <div className="px-4 pb-3">
+                    <a
+                      href={b.confirmation_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-emerald-600 hover:underline"
+                    >
+                      📋 View booking confirmation ↗
+                    </a>
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </Card>

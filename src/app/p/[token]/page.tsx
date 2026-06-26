@@ -252,6 +252,20 @@ export default async function PlayerPortal({
     .filter((a) => a.bookings && !(a.bookings.play_date >= today && a.bookings.status === "booked"))
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
 
+  // Fetch booking notes separately to avoid the field-name clash between
+  // booking_attendance.notes and bookings.notes in the PostgREST join.
+  const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
+  const bookingNotesMap = new Map<string, string>();
+  if (upcomingBookingIds.length > 0) {
+    const { data: notesRows } = await db
+      .from("bookings")
+      .select("id, notes")
+      .in("id", upcomingBookingIds);
+    for (const row of (notesRows ?? []) as { id: string; notes: string | null }[]) {
+      if (row.notes) bookingNotesMap.set(row.id, row.notes);
+    }
+  }
+
   const d = describeBalance(balance);
   const [ledgerContext, transferItemMap] = await Promise.all([
     buildLedgerBookingContext(db, ledger),
@@ -455,6 +469,13 @@ export default async function PlayerPortal({
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
+                  {/* Booking notes — loaded separately to avoid clash with booking_attendance.notes */}
+                  {bookingNotesMap.get(a.booking_id) ? (
+                    <p className={`mb-3 whitespace-pre-wrap text-sm ${publicHintText}`}>
+                      <span className="font-medium">Notes: </span>
+                      {bookingNotesMap.get(a.booking_id)}
+                    </p>
+                  ) : null}
                   {/* Booking confirmation link */}
                   {a.bookings.confirmation_url ? (
                     <p className="mb-3">
@@ -462,7 +483,7 @@ export default async function PlayerPortal({
                         href={a.bookings.confirmation_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`text-sm font-medium text-emerald-700 hover:underline`}
+                        className="text-sm font-medium text-emerald-700 hover:underline"
                       >
                         📋 View booking confirmation ↗
                       </a>
