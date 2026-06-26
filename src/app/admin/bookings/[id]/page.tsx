@@ -17,6 +17,7 @@ import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import {
   formatMoney,
   formatDate,
+  formatTime,
   formatTimeRange,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
@@ -43,7 +44,8 @@ import {
   deleteBooking,
   markBookingSharePaid,
 } from "../actions";
-import { addCourt, removeCourt, updateCourt } from "../court-actions";
+import { removeCourt } from "../court-actions";
+import { CourtAddForm } from "../CourtAddForm";
 
 export const dynamic = "force-dynamic";
 
@@ -302,24 +304,33 @@ export default async function BookingDetail({
         <StatusBadge status={b.status} />
         {(["for_booking", "booked", "played", "cancelled", "refunded"] as const)
           .filter((s) => s !== b.status)
-          .map((s) => (
-            <ActionForm
-              key={s}
-              action={setBookingStatus}
-              className="inline"
-              pendingLabel={`Marking ${s}…`}
-              hidden={
-                <>
-                  <input type="hidden" name="id" value={b.id} />
-                  <input type="hidden" name="status" value={s} />
-                </>
-              }
-            >
-              <SubmitButton variant="secondary" pendingLabel="…">
-                Mark {s}
-              </SubmitButton>
-            </ActionForm>
-          ))}
+          .map((s) => {
+            const label: Record<string, string> = {
+              for_booking: "For Booking",
+              booked: "Booked",
+              played: "Played",
+              cancelled: "Cancelled",
+              refunded: "Refunded",
+            };
+            return (
+              <ActionForm
+                key={s}
+                action={setBookingStatus}
+                className="inline"
+                pendingLabel={`Marking ${label[s]}…`}
+                hidden={
+                  <>
+                    <input type="hidden" name="id" value={b.id} />
+                    <input type="hidden" name="status" value={s} />
+                  </>
+                }
+              >
+                <SubmitButton variant="secondary" pendingLabel="…">
+                  Mark {label[s]}
+                </SubmitButton>
+              </ActionForm>
+            );
+          })}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -363,8 +374,8 @@ export default async function BookingDetail({
                       {courtList.map((c) => (
                         <tr key={c.id}>
                           <td className="py-2 text-slate-700">{c.court_number ?? "—"}</td>
-                          <td className="py-2 text-slate-500">{c.start_time ?? "—"}</td>
-                          <td className="py-2 text-slate-500">{c.end_time ?? "—"}</td>
+                          <td className="py-2 text-slate-500">{c.start_time ? formatTime(c.start_time) : "—"}</td>
+                          <td className="py-2 text-slate-500">{c.end_time ? formatTime(c.end_time) : "—"}</td>
                           <td className="py-2 text-right text-slate-600">{c.hours}</td>
                           <td className="py-2 text-right text-slate-600">{formatMoney(c.rate_per_court_per_hour)}</td>
                           <td className="py-2 text-right text-slate-600">{c.max_players === 0 ? "∞" : c.max_players}</td>
@@ -396,38 +407,7 @@ export default async function BookingDetail({
                 </div>
               )}
 
-              {/* Add court form */}
-              <ActionForm
-                action={addCourt}
-                className="rounded-lg border border-dashed border-slate-300 p-3"
-                pendingLabel="Adding court…"
-                hidden={<input type="hidden" name="booking_id" value={b.id} />}
-              >
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Add court</p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <Field label="Court number">
-                    <input name="court_number" placeholder="e.g. Court 3" className={inputClass} />
-                  </Field>
-                  <Field label="Start time">
-                    <input name="start_time" type="time" className={inputClass} />
-                  </Field>
-                  <Field label="End time">
-                    <input name="end_time" type="time" className={inputClass} />
-                  </Field>
-                  <Field label="Hours">
-                    <input name="hours" type="number" step="0.5" min="0.5" defaultValue="1" required className={inputClass} />
-                  </Field>
-                  <Field label="Rate / court / hr">
-                    <input name="rate_per_court_per_hour" type="number" step="0.01" min="0" defaultValue="0" required className={inputClass} />
-                  </Field>
-                  <Field label="Max players" hint="0 = unlimited">
-                    <input name="max_players" type="number" step="1" min="0" defaultValue="0" className={inputClass} />
-                  </Field>
-                </div>
-                <div className="mt-2">
-                  <SubmitButton variant="secondary" pendingLabel="Adding…">+ Add court</SubmitButton>
-                </div>
-              </ActionForm>
+              <CourtAddForm bookingId={b.id} />
             </div>
           </Card>
 

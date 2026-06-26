@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 import { formatBookingContext } from "@/lib/booking-context";
 import {
   publicPlayerLabel,
@@ -47,12 +47,10 @@ export default async function PublicBookingRoster({
   if (!booking) notFound();
   const b = booking as Booking;
 
-  const { data: attendance } = await db
-    .from("booking_attendance")
-    .select(
-      "*, players(id, name, display_name, public_token, active_status)",
-    )
-    .eq("booking_id", bookingId);
+  const [{ data: attendance }, { data: courtsData }] = await Promise.all([
+    db.from("booking_attendance").select("*, players(id, name, display_name, public_token, active_status)").eq("booking_id", bookingId),
+    db.from("booking_courts").select("court_number, start_time, end_time, hours, max_players").eq("booking_id", bookingId).order("created_at"),
+  ]);
 
   type Row = BookingAttendance & {
     players: Pick<
@@ -73,7 +71,14 @@ export default async function PublicBookingRoster({
   const going = roster.filter((r) => r.response_status === "going").length;
   const maybe = roster.filter((r) => r.response_status === "maybe").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
-  const noResponse = roster.length - going - maybe - notGoing;
+  const waitlisted = roster.filter((r) => r.response_status === "waitlist").length;
+  const noResponse = roster.length - going - maybe - notGoing - waitlisted;
+
+  type CourtInfo = { court_number: string | null; start_time: string | null; end_time: string | null; hours: number; max_players: number };
+  const courts = (courtsData ?? []) as CourtInfo[];
+  const totalMax = courts.length > 0 && courts.every((c) => c.max_players > 0)
+    ? courts.reduce((s, c) => s + c.max_players, 0) : 0;
+  const slotsLeft = totalMax > 0 ? Math.max(0, totalMax - going) : null;
 
   const ctx = formatBookingContext(b);
 
@@ -95,6 +100,29 @@ export default async function PublicBookingRoster({
           </p>
           {ctx ? (
             <p className={`mt-1.5 ${publicHintText}`}>{ctx}</p>
+          ) : null}
+          {/* Courts */}
+          {courts.length > 0 ? (
+            <div className="mt-2 space-y-0.5">
+              {courts.map((c, i) => {
+                const timeStr =
+                  c.start_time && c.end_time
+                    ? `${formatTime(c.start_time)} – ${formatTime(c.end_time)}`
+                    : c.start_time ? `From ${formatTime(c.start_time)}` : `${c.hours}h`;
+                return (
+                  <p key={i} className={publicHintText}>
+                    {c.court_number ? `${c.court_number}: ` : "Court: "}
+                    {timeStr}
+                    {c.max_players > 0 ? ` · ${c.max_players} max` : ""}
+                  </p>
+                );
+              })}
+              {slotsLeft !== null ? (
+                <p className={`text-sm font-semibold ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                  {slotsLeft === 0 ? "Full — join waitlist" : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
+                </p>
+              ) : null}
+            </div>
           ) : null}
           {b.notes ? (
             <p className={`mt-2 whitespace-pre-wrap ${publicHintText}`}>
@@ -119,6 +147,7 @@ export default async function PublicBookingRoster({
       {roster.length > 0 ? (
         <p className="mb-3 px-1 text-center text-sm font-semibold text-slate-700">
           <span className="text-emerald-700">{going} going</span>
+          {waitlisted > 0 ? <>{" · "}<span className="text-amber-600">{waitlisted} waitlisted</span></> : null}
           {" · "}
           <span className="text-amber-700">{maybe} maybe</span>
           {" · "}
