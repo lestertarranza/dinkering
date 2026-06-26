@@ -95,6 +95,9 @@ export default async function PublicBookingRoster({
           {ctx ? (
             <p className={`mt-1.5 ${publicHintText}`}>{ctx}</p>
           ) : null}
+          {b.notes ? (
+            <p className={`mt-2 ${publicHintText}`}>{b.notes}</p>
+          ) : null}
           {b.confirmation_url ? (
             <p className="mt-3">
               <a

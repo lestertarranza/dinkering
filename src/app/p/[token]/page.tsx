@@ -239,7 +239,7 @@ export default async function PlayerPortal({
   const { data: attendance } = await db
     .from("booking_attendance")
     .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, notes)",
+      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, booking_notes:notes)",
     )
     .eq("player_id", p.id);
 
@@ -455,10 +455,10 @@ export default async function PlayerPortal({
                     </div>
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
-                  {/* Booking notes */}
-                  {a.bookings.notes ? (
+                  {/* Booking notes — aliased to avoid clash with booking_attendance.notes */}
+                  {(a.bookings as unknown as { booking_notes: string | null }).booking_notes ? (
                     <p className={`mb-3 text-sm ${publicHintText}`}>
-                      {a.bookings.notes}
+                      {(a.bookings as unknown as { booking_notes: string | null }).booking_notes}
                     </p>
                   ) : null}
                   {/* Booking confirmation link */}
