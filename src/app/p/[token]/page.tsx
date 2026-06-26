@@ -456,9 +456,9 @@ export default async function PlayerPortal({
                     <StatusBadge status={a.response_status} size="md" />
                   </div>
                   {/* Booking notes */}
-                  {(a.bookings as { notes?: string | null }).notes ? (
+                  {a.bookings.notes ? (
                     <p className={`mb-3 text-sm ${publicHintText}`}>
-                      {(a.bookings as { notes?: string | null }).notes}
+                      {a.bookings.notes}
                     </p>
                   ) : null}
                   {/* Booking confirmation link */}
