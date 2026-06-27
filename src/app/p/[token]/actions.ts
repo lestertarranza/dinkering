@@ -11,6 +11,9 @@ export async function submitRsvp(formData: FormData) {
   const booking_id = String(formData.get("booking_id") || "");
   const requested = String(formData.get("response_status") || "") as ResponseStatus;
   if (!token || !booking_id) return;
+  // Only accept statuses the portal can legitimately submit.
+  const VALID_REQUESTS: ResponseStatus[] = ["going", "maybe", "not_going", "waitlist"];
+  if (!VALID_REQUESTS.includes(requested)) return;
 
   const db = createAdminClient();
   const { data: player } = await db
@@ -54,9 +57,10 @@ export async function submitRsvp(formData: FormData) {
     .single();
   const prevStatus = existing?.response_status as ResponseStatus | undefined;
 
+  // Fail closed: if the booking can't be loaded we cannot verify the cutoff,
+  // so refuse to downgrade a committed (going) player.
   const locked =
-    booking &&
-    isRsvpLocked(booking.play_date, courtList, booking.start_time);
+    !booking || isRsvpLocked(booking.play_date, courtList, booking.start_time);
   if (locked && prevStatus === "going" && requested !== "going") {
     revalidatePath(`/p/${token}`);
     return;
