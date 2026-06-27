@@ -25,10 +25,10 @@ import type {
   BookingAttendance,
   BookingCourt,
   BookingShare,
-  Payment,
   Player,
 } from "@/lib/types";
 import { round2 } from "@/lib/ledger";
+import { computeBookingShareRemaining } from "@/lib/payment-allocation";
 import { BookingForm } from "../BookingForm";
 import {
   updateBooking,
@@ -71,7 +71,6 @@ export default async function BookingDetail({
     { data: attendance },
     { data: courts },
     { data: shares },
-    { data: payments },
     { data: players },
     { data: balances },
   ] = await Promise.all([
@@ -88,11 +87,6 @@ export default async function BookingDetail({
       .from("booking_shares")
       .select("*, players(id, name)")
       .eq("booking_id", id),
-    supabase
-      .from("payments")
-      .select("*, players(name), player_groups(name)")
-      .eq("booking_id", id)
-      .order("payment_date", { ascending: false }),
     supabase
       .from("players")
       .select("id, name, active_status")
@@ -139,18 +133,36 @@ export default async function BookingDetail({
   const totalShared = round2(
     shareList.reduce((s, x) => s + Number(x.amount_owed), 0),
   );
-  // Exclude reversed payments (their ledger credit is voided; they must not
-  // count as "paid" or the outstanding figure will be under-stated).
-  const paymentList = ((payments ?? []) as (Payment & {
-    players: { name: string } | null;
-    player_groups: { name: string } | null;
-  })[]);
-  const isReversed = (p: Payment) =>
-    String(p.notes ?? "").startsWith("[REVERSED");
+
+  // How much of each share has actually been settled. A share is settled by
+  // *either* an explicit payment *or* by credit auto-applied from the player's
+  // wallet (e.g. a player who carried a credit balance into this booking). We
+  // reuse the same FIFO open-charge engine as the player ledger so the booking
+  // figures reconcile exactly with what each player still owes.
+  // share_id → still-open amount (absent ⇒ fully settled). Accounts for both
+  // explicit payments AND credit auto-applied from the player's wallet.
+  const remainingByShare = await computeBookingShareRemaining(
+    supabase,
+    shareList.map((s) => ({
+      id: s.id,
+      booking_id: b.id,
+      player_id: s.player_id,
+    })),
+    new Map([[b.id, b.play_date]]),
+    new Date().toISOString().slice(0, 10),
+  );
+  const shareRemaining = (shareId: string, amount: number) => {
+    const r = remainingByShare.get(shareId);
+    return r === undefined ? 0 : Math.min(amount, Math.max(0, r));
+  };
+  const shareSettled = (shareId: string, amount: number) =>
+    round2(amount - shareRemaining(shareId, amount));
+
   const paid = round2(
-    paymentList
-      .filter((p) => !isReversed(p))
-      .reduce((s, p) => s + Number(p.amount), 0),
+    shareList.reduce(
+      (s, x) => s + shareSettled(x.id, Number(x.amount_owed)),
+      0,
+    ),
   );
   const today = new Date().toISOString().slice(0, 10);
   const billable = b.status === "booked" || b.status === "played";
@@ -159,7 +171,7 @@ export default async function BookingDetail({
   const isPostGame =
     b.status === "played" ||
     (b.status === "booked" && b.play_date < today);
-  // Outstanding is what players still owe = charged shares − payments, so it
+  // Outstanding is what players still owe = charged shares − settled, so it
   // reconciles exactly with the per-player table below (and player balances),
   // instead of the raw court cost which can differ by a few centavos.
   const rawOutstanding = billable ? round2(totalShared - paid) : 0;
@@ -189,24 +201,10 @@ export default async function BookingDetail({
       s.players?.name ?? "Unknown player",
       "player",
     );
-    line.charged += Number(s.amount_owed);
+    const amount = Number(s.amount_owed);
+    line.charged += amount;
+    line.paid += shareSettled(s.id, amount);
     line.shareCount += 1;
-  }
-  for (const p of paymentList) {
-    if (isReversed(p)) continue; // reversed payments don't count as paid
-    if (p.payer_player_id) {
-      ensureLine(
-        `p:${p.payer_player_id}`,
-        p.players?.name ?? "Player",
-        "player",
-      ).paid += Number(p.amount);
-    } else if (p.payer_group_id) {
-      ensureLine(
-        `g:${p.payer_group_id}`,
-        p.player_groups?.name ?? "Group",
-        "group",
-      ).paid += Number(p.amount);
-    }
   }
   const reconLines = [...reconMap.values()].sort((a, b) =>
     a.name.localeCompare(b.name),

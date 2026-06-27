@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { round2 } from "@/lib/ledger";
+import { round2, resolveWalletOwnersForPlayers } from "@/lib/ledger";
 import { isSettled } from "@/lib/format";
 import { formatBookingContext } from "@/lib/booking-context";
 import type { SourceType } from "@/lib/types";
@@ -256,6 +256,118 @@ export function batchComputePlayerOpenCharges(
     result.set(playerId, computeOpenCharges(rows));
   }
   return result;
+}
+
+/**
+ * Compute the still-open (unsettled) amount for each booking share, accounting
+ * for BOTH explicit payments AND credit auto-applied from the player's wallet
+ * (FIFO) — e.g. a player who carried a credit balance into the booking. Returns
+ * a map of booking_share id → remaining amount; a share absent from the map is
+ * fully settled (remaining 0).
+ *
+ * Shared by the booking detail page, the bookings list, and the dashboard so
+ * all three reconcile exactly with what each player still owes in the ledger.
+ */
+export async function computeBookingShareRemaining(
+  db: SupabaseClient,
+  shares: { id: string; booking_id: string; player_id: string | null }[],
+  bookingDateMap: Map<string, string>,
+  today: string,
+): Promise<Map<string, number>> {
+  const remainingByShare = new Map<string, number>();
+  if (shares.length === 0) return remainingByShare;
+
+  // Resolve each share's owning wallet using its booking play_date (matches how
+  // the charge was originally routed). Batch one resolve call per unique date.
+  const playersByDate = new Map<string, Set<string>>();
+  for (const s of shares) {
+    if (!s.player_id) continue;
+    const date = bookingDateMap.get(s.booking_id) ?? today;
+    const set = playersByDate.get(date) ?? new Set<string>();
+    set.add(s.player_id);
+    playersByDate.set(date, set);
+  }
+  const walletOwners = new Map<string, Wallet>();
+  await Promise.all(
+    [...playersByDate.entries()].map(async ([date, pids]) => {
+      const owners = await resolveWalletOwnersForPlayers(db, [...pids], date);
+      for (const [pid, owner] of owners)
+        walletOwners.set(`${pid}:${date}`, owner);
+    }),
+  );
+  const shareWallet = (s: {
+    booking_id: string;
+    player_id: string | null;
+  }): Wallet => {
+    if (s.player_id) {
+      const date = bookingDateMap.get(s.booking_id) ?? today;
+      return (
+        walletOwners.get(`${s.player_id}:${date}`) ?? {
+          player_id: s.player_id,
+          player_group_id: null,
+        }
+      );
+    }
+    return { player_id: null, player_group_id: null };
+  };
+
+  const walletPIds = new Set<string>();
+  const walletGIds = new Set<string>();
+  for (const s of shares) {
+    const w = shareWallet(s);
+    if (w.player_id) walletPIds.add(w.player_id);
+    if (w.player_group_id) walletGIds.add(w.player_group_id);
+  }
+
+  const [{ data: pLedger }, { data: gLedger }] = await Promise.all([
+    walletPIds.size
+      ? db
+          .from("ledger_entries")
+          .select(
+            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_id",
+          )
+          .in("player_id", [...walletPIds])
+          .eq("voided", false)
+          .order("entry_date")
+          .order("created_at")
+      : Promise.resolve({ data: [] }),
+    walletGIds.size
+      ? db
+          .from("ledger_entries")
+          .select(
+            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_group_id",
+          )
+          .in("player_group_id", [...walletGIds])
+          .eq("voided", false)
+          .order("entry_date")
+          .order("created_at")
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const walletEntries = new Map<string, LedgerRow[]>();
+  for (const row of (pLedger ?? []) as (LedgerRow & { player_id: string })[]) {
+    const key = `p:${row.player_id}`;
+    const list = walletEntries.get(key) ?? [];
+    list.push(row);
+    walletEntries.set(key, list);
+  }
+  for (const row of (gLedger ?? []) as (LedgerRow & {
+    player_group_id: string;
+  })[]) {
+    const key = `g:${row.player_group_id}`;
+    const list = walletEntries.get(key) ?? [];
+    list.push(row);
+    walletEntries.set(key, list);
+  }
+
+  const chargesByWallet = batchComputePlayerOpenCharges(walletEntries);
+  for (const charges of chargesByWallet.values()) {
+    for (const c of charges) {
+      if (c.source_type === "booking_share")
+        remainingByShare.set(c.source_id, c.remaining);
+    }
+  }
+  return remainingByShare;
 }
 
 export { planBulkAllocation, totalOpenDue } from "@/lib/payment-allocation-plan";
