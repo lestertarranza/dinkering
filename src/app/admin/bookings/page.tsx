@@ -8,6 +8,7 @@ import {
   SETTLE_TOLERANCE,
 } from "@/lib/format";
 import { round2 } from "@/lib/ledger";
+import { computeBookingShareRemaining } from "@/lib/payment-allocation";
 import type { Booking } from "@/lib/types";
 import { BookingForm } from "./BookingForm";
 import { createBooking } from "./actions";
@@ -18,24 +19,25 @@ export default async function BookingsPage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: bookings }, { data: paidTotals }, { data: bookingShares }] =
-    await Promise.all([
-      supabase
-        .from("bookings")
-        .select("*")
-        .order("play_date", { ascending: false }),
-      supabase.from("booking_payment_totals").select("*"),
-      supabase.from("booking_shares").select("booking_id, amount_owed"),
-    ]);
+  const [{ data: bookings }, { data: bookingShares }] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select("*")
+      .order("play_date", { ascending: false }),
+    supabase
+      .from("booking_shares")
+      .select("id, booking_id, player_id, amount_owed"),
+  ]);
 
-  const paidMap = new Map(
-    (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
-  );
-  const shareMap = new Map<string, number>();
-  for (const s of (bookingShares ?? []) as {
+  type BookingShareRow = {
+    id: string;
     booking_id: string;
+    player_id: string | null;
     amount_owed: number;
-  }[]) {
+  };
+  const allShareRows = (bookingShares ?? []) as BookingShareRow[];
+  const shareMap = new Map<string, number>();
+  for (const s of allShareRows) {
     shareMap.set(
       s.booking_id,
       (shareMap.get(s.booking_id) ?? 0) + Number(s.amount_owed),
@@ -43,18 +45,35 @@ export default async function BookingsPage() {
   }
 
   const all = (bookings ?? []) as Booking[];
+
+  // Outstanding per booking — settled by explicit payments OR credit
+  // auto-applied from the player's wallet (FIFO), matching the booking detail.
+  const bookingDateMap = new Map(all.map((b) => [b.id, b.play_date]));
+  const shareRemainingMap = await computeBookingShareRemaining(
+    supabase,
+    allShareRows,
+    bookingDateMap,
+    today,
+  );
+  const outstandingMap = new Map<string, number>();
+  for (const s of allShareRows) {
+    const remaining = shareRemainingMap.get(s.id) ?? 0;
+    outstandingMap.set(
+      s.booking_id,
+      round2((outstandingMap.get(s.booking_id) ?? 0) + remaining),
+    );
+  }
   const upcoming = all
     .filter((b) => b.play_date >= today && b.status === "booked")
     .sort((a, b) => a.play_date.localeCompare(b.play_date));
   const past = all.filter((b) => !(b.play_date >= today && b.status === "booked"));
 
   function Row({ b }: { b: Booking }) {
-    const paid = paidMap.get(b.id) ?? 0;
     const shareTotal = shareMap.get(b.id) ?? 0;
     const hasShares = shareTotal >= SETTLE_TOLERANCE;
-    // Collectible = charged shares − payments (ledger basis), so it matches the
+    // Collectible = still-open shares (ledger FIFO basis), so it matches the
     // booking detail and player balances rather than the raw court cost.
-    const outstanding = round2(shareTotal - paid);
+    const outstanding = round2(outstandingMap.get(b.id) ?? 0);
     // Only "booked" and "played" bookings are collectible. Cancelled and
     // refunded bookings carry no due (e.g. the slot was sold/handed off).
     const billable = b.status === "booked" || b.status === "played";

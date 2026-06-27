@@ -11,6 +11,7 @@ import {
 import { round2, resolveWalletOwnersForPlayers } from "@/lib/ledger";
 import {
   batchComputePlayerOpenCharges,
+  computeBookingShareRemaining,
   type LedgerRow,
 } from "@/lib/payment-allocation";
 import type { Payment, Player, PlayerGroup, TeamExpense } from "@/lib/types";
@@ -51,7 +52,6 @@ export default async function Dashboard({
     { data: groups },
     { data: groupMemberships },
     { data: bookings },
-    { data: paidTotals },
     { data: bookingShares },
     { data: expenseShares },
     { data: dashTotals },
@@ -69,8 +69,9 @@ export default async function Dashboard({
     supabase
       .from("bookings")
       .select("id, booking_code, play_date, start_time, end_time, venue, status, total_booking_cost"),
-    supabase.from("booking_payment_totals").select("booking_id, total_paid"),
-    supabase.from("booking_shares").select("booking_id, amount_owed"),
+    supabase
+      .from("booking_shares")
+      .select("id, booking_id, player_id, amount_owed"),
     supabase.from("team_expense_shares").select("id, team_expense_id, player_id, player_group_id, amount_owed"),
     supabase.from("dashboard_totals").select("*").single(),
     supabase
@@ -126,17 +127,37 @@ export default async function Dashboard({
   const totalPayments      = Number(dashTotals?.total_payments        ?? 0);
 
   // ── Bookings ─────────────────────────────────────────────────────────────
-  const paidMap = new Map(
-    (paidTotals ?? []).map((b) => [b.booking_id as string, Number(b.total_paid)]),
-  );
+  type BookingShareRow = { id: string; booking_id: string; player_id: string | null; amount_owed: number };
+  const allBookingShareRows = (bookingShares ?? []) as BookingShareRow[];
   const shareMap = new Map<string, number>();
-  for (const s of (bookingShares ?? []) as { booking_id: string; amount_owed: number }[]) {
+  for (const s of allBookingShareRows) {
     shareMap.set(s.booking_id, (shareMap.get(s.booking_id) ?? 0) + Number(s.amount_owed));
   }
 
   type BookingRow = { id: string; booking_code: string | null; play_date: string; start_time: string | null; end_time: string | null; venue: string | null; status: string; total_booking_cost: number };
-  const bookingDue = (b: BookingRow) => round2((shareMap.get(b.id) ?? 0) - (paidMap.get(b.id) ?? 0));
   const allBookings = (bookings ?? []) as BookingRow[];
+
+  // Outstanding per booking — FIFO wallet-based (matches booking detail page).
+  // A share is settled by an explicit payment OR by credit auto-applied from
+  // the player's wallet, so the payments-only booking_payment_totals view would
+  // understate what's been paid. We reuse the same FIFO open-charge engine.
+  const bookingDateMap = new Map(allBookings.map((b) => [b.id, b.play_date]));
+  const bookingShareRemaining = await computeBookingShareRemaining(
+    supabase,
+    allBookingShareRows,
+    bookingDateMap,
+    today,
+  );
+  const bookingOutstandingMap = new Map<string, number>(); // booking_id → outstanding
+  for (const s of allBookingShareRows) {
+    const remaining = bookingShareRemaining.get(s.id) ?? 0;
+    bookingOutstandingMap.set(
+      s.booking_id,
+      round2((bookingOutstandingMap.get(s.booking_id) ?? 0) + remaining),
+    );
+  }
+
+  const bookingDue = (b: BookingRow) => round2(bookingOutstandingMap.get(b.id) ?? 0);
   const upcomingAll = allBookings.filter((b) => b.play_date >= today && b.status === "booked").sort((a, b) => a.play_date.localeCompare(b.play_date));
   const unpaidBookingsAll = allBookings.filter((b) => (b.status === "booked" || b.status === "played") && (shareMap.get(b.id) ?? 0) >= SETTLE_TOLERANCE && bookingDue(b) >= SETTLE_TOLERANCE).sort((a, b) => b.play_date.localeCompare(a.play_date));
 
