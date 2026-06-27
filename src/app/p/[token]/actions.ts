@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ResponseStatus } from "@/lib/types";
 
@@ -10,6 +11,9 @@ export async function submitRsvp(formData: FormData) {
   const booking_id = String(formData.get("booking_id") || "");
   const requested = String(formData.get("response_status") || "") as ResponseStatus;
   if (!token || !booking_id) return;
+  // Only accept statuses the portal can legitimately submit.
+  const VALID_REQUESTS: ResponseStatus[] = ["going", "maybe", "not_going", "waitlist"];
+  if (!VALID_REQUESTS.includes(requested)) return;
 
   const db = createAdminClient();
   const { data: player } = await db
@@ -19,15 +23,16 @@ export async function submitRsvp(formData: FormData) {
     .single();
   if (!player) return;
 
+  const [{ data: booking }, { data: courts }] = await Promise.all([
+    db.from("bookings").select("play_date, start_time").eq("id", booking_id).single(),
+    db.from("booking_courts").select("max_players, start_time").eq("booking_id", booking_id),
+  ]);
+  const courtList = (courts ?? []) as { max_players: number; start_time: string | null }[];
+
   // ── Capacity / waitlist check ────────────────────────────────────────────
   let response_status = requested;
   if (requested === "going") {
     // Total capacity = sum of per-court max_players (0 = unlimited).
-    const { data: courts } = await db
-      .from("booking_courts")
-      .select("max_players")
-      .eq("booking_id", booking_id);
-    const courtList = (courts ?? []) as { max_players: number }[];
     const isUnlimited =
       courtList.length === 0 || courtList.some((c) => c.max_players === 0);
     if (!isUnlimited) {
@@ -52,6 +57,15 @@ export async function submitRsvp(formData: FormData) {
     .single();
   const prevStatus = existing?.response_status as ResponseStatus | undefined;
 
+  // Fail closed: if the booking can't be loaded we cannot verify the cutoff,
+  // so refuse to downgrade a committed (going) player.
+  const locked =
+    !booking || isRsvpLocked(booking.play_date, courtList, booking.start_time);
+  if (locked && prevStatus === "going" && requested !== "going") {
+    revalidatePath(`/p/${token}`);
+    return;
+  }
+
   await db
     .from("booking_attendance")
     .upsert(
@@ -68,11 +82,6 @@ export async function submitRsvp(formData: FormData) {
 
   if (wasCancelled) {
     // Find the oldest waitlisted player and promote them.
-    const { data: courts } = await db
-      .from("booking_courts")
-      .select("max_players")
-      .eq("booking_id", booking_id);
-    const courtList = (courts ?? []) as { max_players: number }[];
     const isUnlimited =
       courtList.length === 0 || courtList.some((c) => c.max_players === 0);
 

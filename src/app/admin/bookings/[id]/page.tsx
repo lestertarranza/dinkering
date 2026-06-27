@@ -28,6 +28,7 @@ import type {
   Player,
 } from "@/lib/types";
 import { round2 } from "@/lib/ledger";
+import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { computeBookingShareRemaining } from "@/lib/payment-allocation";
 import { BookingForm } from "../BookingForm";
 import {
@@ -108,6 +109,7 @@ export default async function BookingDetail({
         ? [b.confirmation_url]
         : [];
   const courtList = (courts ?? []) as BookingCourt[];
+  const rsvpLocked = isRsvpLocked(b.play_date, courtList, b.start_time);
   const totalMaxPlayers = courtList.every((c) => c.max_players === 0)
     ? 0
     : courtList.reduce((s, c) => s + c.max_players, 0);
@@ -416,6 +418,9 @@ export default async function BookingDetail({
                   {b.status === "played"
                     ? "Post-game — confirm who actually attended"
                     : "Pre-game — manage RSVPs"}
+                  {rsvpLocked
+                    ? " · Going players within 24h of game time are committed and charged by default"
+                    : ""}
                 </p>
               </div>
               <span className="text-xs text-slate-400">
@@ -479,6 +484,9 @@ export default async function BookingDetail({
                             >
                               {r.players?.name}
                             </span>
+                            {rsvpLocked && r.response_status === "going" ? (
+                              <Badge tone="warning">Committed</Badge>
+                            ) : null}
                             {/* RSVP as a muted hint badge */}
                             <StatusBadge status={r.response_status} />
                             <select
@@ -533,6 +541,9 @@ export default async function BookingDetail({
                         {r.players?.name}
                       </span>
                       <div className="flex items-center gap-2">
+                        {rsvpLocked && r.response_status === "going" ? (
+                          <Badge tone="warning">Committed</Badge>
+                        ) : null}
                         <StatusBadge status={r.response_status} />
                         {r.actual_status ? (
                           <StatusBadge status={r.actual_status} />

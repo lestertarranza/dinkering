@@ -8,14 +8,17 @@ function RsvpButton({
   label,
   current,
   isWaitlistFull = false,
+  disabled: forceDisabled = false,
 }: {
   value: string;
   label: string;
   current: string;
   isWaitlistFull?: boolean;
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
   const selected = current === value;
+  const disabled = forceDisabled || pending;
 
   // Determine colour based on status type
   const tone =
@@ -40,8 +43,8 @@ function RsvpButton({
       type="submit"
       name="response_status"
       value={value}
-      disabled={pending}
-      className={`min-h-11 flex-1 touch-manipulation rounded-lg px-3 py-2.5 text-sm font-semibold transition-all duration-150 active:scale-95 disabled:opacity-60 ${tone}`}
+      disabled={disabled}
+      className={`min-h-11 flex-1 touch-manipulation rounded-lg px-3 py-2.5 text-sm font-semibold transition-all duration-150 active:scale-95 disabled:opacity-60 disabled:active:scale-100 ${tone}`}
     >
       {pending && selected ? "Saving…" : label}
     </button>
@@ -61,14 +64,49 @@ function PendingHint() {
 function RsvpControls({
   currentStatus,
   isFull,
+  locked = false,
 }: {
   currentStatus: string;
   isFull: boolean;
+  locked?: boolean;
 }) {
   // When booking is at capacity and player isn't already going,
   // show Waitlist instead of Going.
   const onWaitlist = currentStatus === "waitlist";
   const showWaitlist = isFull && currentStatus !== "going";
+  const isCommitted = locked && currentStatus === "going";
+
+  if (isCommitted) {
+    return (
+      <>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled
+            className="min-h-11 flex-1 touch-manipulation rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white ring-2 ring-emerald-300 opacity-100"
+          >
+            Going · Locked 🔒
+          </button>
+          <RsvpButton
+            value="maybe"
+            label="Maybe"
+            current={currentStatus}
+            disabled
+          />
+          <RsvpButton
+            value="not_going"
+            label="Not going"
+            current={currentStatus}
+            disabled
+          />
+        </div>
+        <p className="text-center text-xs text-slate-600">
+          RSVP locked — within 24h of game time. You&apos;re committed and will
+          be charged.
+        </p>
+      </>
+    );
+  }
 
   return (
     <>
@@ -105,17 +143,19 @@ export function RsvpForm({
   bookingId,
   currentStatus,
   isFull = false,
+  locked = false,
 }: {
   token: string;
   bookingId: string;
   currentStatus: string;
   isFull?: boolean;
+  locked?: boolean;
 }) {
   return (
     <form action={submitRsvp} className="flex flex-col gap-2">
       <input type="hidden" name="token" value={token} />
       <input type="hidden" name="booking_id" value={bookingId} />
-      <RsvpControls currentStatus={currentStatus} isFull={isFull} />
+      <RsvpControls currentStatus={currentStatus} isFull={isFull} locked={locked} />
     </form>
   );
 }
