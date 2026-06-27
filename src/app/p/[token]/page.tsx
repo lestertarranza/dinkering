@@ -17,6 +17,7 @@ import {
   overallCourtTimeRange,
   formatCourtTime,
 } from "@/lib/court-format";
+import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
 import {
   PublicNavLink,
@@ -494,6 +495,11 @@ export default async function PlayerPortal({
               const cap = bookingCapMap.get(a.booking_id);
               const slotsLeft =
                 cap && cap.totalCap > 0 ? Math.max(0, cap.totalCap - cap.goingCount) : null;
+              const locked = isRsvpLocked(
+                a.bookings.play_date,
+                cts,
+                a.bookings.start_time,
+              );
               return (
                 <Card key={a.id} id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
@@ -566,6 +572,7 @@ export default async function PlayerPortal({
                     token={token}
                     bookingId={a.bookings.id}
                     currentStatus={a.response_status}
+                    locked={locked}
                     isFull={(() => {
                       const cap = bookingCapMap.get(a.booking_id);
                       return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
