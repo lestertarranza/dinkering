@@ -370,5 +370,93 @@ export async function computeBookingShareRemaining(
   return remainingByShare;
 }
 
+/**
+ * Compute the still-open (unpaid) amount for each team-expense share, keyed by
+ * team_expense_share id. Mirrors {@link computeBookingShareRemaining}: it finds
+ * the wallet each share was actually charged to (reading the ledger directly, so
+ * group-pooling is handled correctly), then FIFO-applies each wallet's credits
+ * and payments across all its charges. A share id absent from the map (or ≈0)
+ * is fully settled. Used by the Team Expenses list to flag settled vs. due.
+ */
+export async function computeExpenseShareRemaining(
+  db: SupabaseClient,
+  shareIds: string[],
+): Promise<Map<string, number>> {
+  const remainingByShare = new Map<string, number>();
+  if (shareIds.length === 0) return remainingByShare;
+
+  // Find which wallet each expense share was charged to (the debit rows).
+  const { data: chargeRows } = await db
+    .from("ledger_entries")
+    .select("player_id, player_group_id")
+    .eq("source_type", "team_expense_share")
+    .eq("voided", false)
+    .gt("debit_amount", 0)
+    .in("source_id", shareIds);
+
+  const walletPIds = new Set<string>();
+  const walletGIds = new Set<string>();
+  for (const r of (chargeRows ?? []) as {
+    player_id: string | null;
+    player_group_id: string | null;
+  }[]) {
+    if (r.player_group_id) walletGIds.add(r.player_group_id);
+    else if (r.player_id) walletPIds.add(r.player_id);
+  }
+  if (walletPIds.size === 0 && walletGIds.size === 0) return remainingByShare;
+
+  // Load full non-voided ledgers for those wallets (batched into two queries).
+  const [{ data: pLedger }, { data: gLedger }] = await Promise.all([
+    walletPIds.size
+      ? db
+          .from("ledger_entries")
+          .select(
+            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_id",
+          )
+          .in("player_id", [...walletPIds])
+          .eq("voided", false)
+          .order("entry_date")
+          .order("created_at")
+      : Promise.resolve({ data: [] }),
+    walletGIds.size
+      ? db
+          .from("ledger_entries")
+          .select(
+            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_group_id",
+          )
+          .in("player_group_id", [...walletGIds])
+          .eq("voided", false)
+          .order("entry_date")
+          .order("created_at")
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const walletEntries = new Map<string, LedgerRow[]>();
+  for (const row of (pLedger ?? []) as (LedgerRow & { player_id: string })[]) {
+    const key = `p:${row.player_id}`;
+    const list = walletEntries.get(key) ?? [];
+    list.push(row);
+    walletEntries.set(key, list);
+  }
+  for (const row of (gLedger ?? []) as (LedgerRow & {
+    player_group_id: string;
+  })[]) {
+    const key = `g:${row.player_group_id}`;
+    const list = walletEntries.get(key) ?? [];
+    list.push(row);
+    walletEntries.set(key, list);
+  }
+
+  const wanted = new Set(shareIds);
+  const chargesByWallet = batchComputePlayerOpenCharges(walletEntries);
+  for (const charges of chargesByWallet.values()) {
+    for (const c of charges) {
+      if (c.source_type === "team_expense_share" && wanted.has(c.source_id))
+        remainingByShare.set(c.source_id, c.remaining);
+    }
+  }
+  return remainingByShare;
+}
+
 export { planBulkAllocation, totalOpenDue } from "@/lib/payment-allocation-plan";
 export type { AllocationLine } from "@/lib/payment-allocation-plan";

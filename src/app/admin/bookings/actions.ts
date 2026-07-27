@@ -99,6 +99,20 @@ export async function setBookingStatus(
   const status = String(formData.get("status")) as BookingStatus;
   const { supabase } = await requireAdmin();
   await supabase.from("bookings").update({ status }).eq("id", id);
+
+  // When a game is marked Played, treat everyone who committed as "Going" as
+  // Attended by default so they're all included in the cost split without the
+  // admin having to confirm each player one by one. Only fills rows that have
+  // no actual status yet, so any prior manual override (e.g. Absent) is kept.
+  if (status === "played") {
+    await supabase
+      .from("booking_attendance")
+      .update({ actual_status: "attended", confirmed_by_admin: true })
+      .eq("booking_id", id)
+      .eq("response_status", "going")
+      .is("actual_status", null);
+  }
+
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
   return actionOk(`Booking marked as ${status}.`);

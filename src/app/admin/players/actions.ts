@@ -211,9 +211,47 @@ export async function createPlayer(formData: FormData) {
   if (!name) return;
   const display_name = String(formData.get("display_name") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
+  const active_status = (
+    ["active", "inactive", "archived"].includes(
+      String(formData.get("active_status") || ""),
+    )
+      ? String(formData.get("active_status"))
+      : "active"
+  ) as ActiveStatus;
 
   const { supabase } = await requireAdmin();
-  await supabase.from("players").insert({ name, display_name, notes });
+  const { data: created } = await supabase
+    .from("players")
+    .insert({ name, display_name, notes, active_status })
+    .select("id")
+    .single();
+
+  // Auto-enroll brand-new active players into every upcoming booking's roster
+  // (Booked and For Booking) so the admin no longer has to click
+  // "+ Add all active players" on each booking after adding someone.
+  if (created?.id && active_status === "active") {
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .select("id")
+      .in("status", ["booked", "for_booking"]);
+    const rows = (bookings ?? []).map((b) => ({
+      booking_id: b.id as string,
+      player_id: created.id as string,
+      response_status: "no_response" as const,
+    }));
+    if (rows.length > 0) {
+      await supabase
+        .from("booking_attendance")
+        .upsert(rows, {
+          onConflict: "booking_id,player_id",
+          ignoreDuplicates: true,
+        });
+      for (const b of bookings ?? [])
+        revalidatePath(`/admin/bookings/${b.id}`);
+      revalidatePath("/admin/bookings");
+    }
+  }
+
   revalidatePath("/admin/players");
 }
 

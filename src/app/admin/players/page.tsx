@@ -148,6 +148,16 @@ export default async function PlayersPage({
               <Field label="Notes">
                 <textarea name="notes" rows={2} className={inputClass} />
               </Field>
+              <Field
+                label="Status"
+                hint="Active players are auto-added to all upcoming bookings (Booked & For Booking)."
+              >
+                <select name="active_status" defaultValue="active" className={inputClass}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </Field>
               <SubmitButton className="w-full" pendingLabel="Adding player…">
                 Add player
               </SubmitButton>
