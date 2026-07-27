@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Card, Badge, EmptyState } from "@/components/ui";
+import { Badge, EmptyState } from "@/components/ui";
+import { PublicSearchList } from "@/components/PublicSearchList";
 import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
 import { round2 } from "@/lib/ledger";
 import { validatePublicTeamToken } from "@/lib/public-links";
@@ -123,12 +124,17 @@ export default async function TeamBoard({
       {rows.length === 0 ? (
         <EmptyState title="No players yet" />
       ) : (
-        <Card className="divide-y divide-slate-100 overflow-hidden">
-          {rows.map((r) => {
+        <PublicSearchList
+          placeholder="Search your name…"
+          emptyTitle="No player matches your search"
+          items={rows.map((r) => {
             const dPersonal = describeBalance(r.personalBalance);
             const dGroup = r.groupBalance !== null ? describeBalance(r.groupBalance) : null;
 
-            return (
+            return {
+              key: r.id,
+              search: `${r.label} ${r.pooled?.name ?? ""}`,
+              node: (
               <Link
                 key={r.id}
                 href={`/p/${r.token}`}
@@ -211,9 +217,10 @@ export default async function TeamBoard({
                   </span>
                 </div>
               </Link>
-            );
+              ),
+            };
           })}
-        </Card>
+        />
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>

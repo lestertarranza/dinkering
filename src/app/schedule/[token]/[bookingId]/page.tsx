@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
+import { PublicSearchList } from "@/components/PublicSearchList";
 import { formatDate } from "@/lib/format";
 import {
   mergeCourts,
@@ -207,26 +208,32 @@ export default async function PublicBookingRoster({
       {roster.length === 0 ? (
         <EmptyState title="No players invited yet" />
       ) : (
-        <Card className="divide-y divide-slate-100 overflow-hidden">
-          {roster.map((r) => (
-            <Link
-              key={r.id}
-              href={`/p/${r.players.public_token}#booking-${bookingId}`}
-              className={publicTapRowClass}
-            >
-              <div className="min-w-0 flex-1">
-                <p className={`text-base ${publicPrimaryText}`}>
-                  {publicPlayerLabel(r.players)}
-                </p>
-                <p className={publicHintText}>Tap to RSVP on your page</p>
-              </div>
-              <StatusBadge status={r.response_status} size="md" />
-              <span className={publicChevronClass} aria-hidden>
-                ›
-              </span>
-            </Link>
-          ))}
-        </Card>
+        <PublicSearchList
+          placeholder="Search a player…"
+          emptyTitle="No player matches your search"
+          items={roster.map((r) => ({
+            key: r.id,
+            search: publicPlayerLabel(r.players),
+            node: (
+              <Link
+                key={r.id}
+                href={`/p/${r.players.public_token}#booking-${bookingId}`}
+                className={publicTapRowClass}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className={`text-base ${publicPrimaryText}`}>
+                    {publicPlayerLabel(r.players)}
+                  </p>
+                  <p className={publicHintText}>Tap to RSVP on your page</p>
+                </div>
+                <StatusBadge status={r.response_status} size="md" />
+                <span className={publicChevronClass} aria-hidden>
+                  ›
+                </span>
+              </Link>
+            ),
+          }))}
+        />
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
