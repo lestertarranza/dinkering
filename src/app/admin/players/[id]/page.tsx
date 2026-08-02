@@ -29,6 +29,7 @@ import {
   updatePlayer,
   setPlayerStatus,
   regenerateToken,
+  setPlayerBoardVisibility,
   assignToGroup,
   removeFromGroup,
   addManualAdjustment,
@@ -243,6 +244,39 @@ export default async function PlayerDetail({
               </div>
               <QrCode url={shareUrl} label="Scan to open player page" />
             </div>
+          </Card>
+
+          {/* Team board visibility */}
+          <Card className="p-4">
+            <h2 className="mb-1 text-sm font-semibold text-slate-700">
+              Team board visibility
+            </h2>
+            <p className="mb-3 text-xs text-slate-400">
+              {p.hidden_on_board
+                ? "Hidden — this player is not shown on the public Team Balances board."
+                : "Visible — this player is shown on the public Team Balances board."}
+            </p>
+            <ActionForm
+              action={setPlayerBoardVisibility}
+              pendingLabel="Updating…"
+              hidden={
+                <>
+                  <input type="hidden" name="id" value={p.id} />
+                  <input
+                    type="hidden"
+                    name="hidden"
+                    value={p.hidden_on_board ? "false" : "true"}
+                  />
+                </>
+              }
+            >
+              <SubmitButton
+                variant={p.hidden_on_board ? "secondary" : "ghost"}
+                pendingLabel="Updating…"
+              >
+                {p.hidden_on_board ? "Show on team board" : "Hide from team board"}
+              </SubmitButton>
+            </ActionForm>
           </Card>
 
           {/* Balance summary (copy & send to player) */}

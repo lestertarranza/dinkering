@@ -5,6 +5,62 @@ import { formatMoney, formatDate, isSettled } from "@/lib/format";
 
 const POOLED_TYPES = ["couple", "family", "team_fund"];
 
+/**
+ * Map each open charge (by source_id) to the name of the member it belongs to.
+ * Pooled charges land on one shared wallet, but every booking/expense share
+ * still records the individual player it was for — that's what we surface here.
+ * Group-level charges (no owning player) are simply left unmapped.
+ */
+async function chargeOwnerNames(
+  db: SupabaseClient,
+  charges: OpenCharge[],
+): Promise<Map<string, string>> {
+  const bShareIds = charges
+    .filter((c) => c.source_type === "booking_share")
+    .map((c) => c.source_id);
+  const eShareIds = charges
+    .filter((c) => c.source_type === "team_expense_share")
+    .map((c) => c.source_id);
+
+  const [bRes, eRes] = await Promise.all([
+    bShareIds.length
+      ? db.from("booking_shares").select("id, player_id").in("id", bShareIds)
+      : Promise.resolve({ data: [] as { id: string; player_id: string | null }[] }),
+    eShareIds.length
+      ? db.from("team_expense_shares").select("id, player_id").in("id", eShareIds)
+      : Promise.resolve({ data: [] as { id: string; player_id: string | null }[] }),
+  ]);
+
+  const ownerByShare = new Map<string, string>();
+  const playerIds = new Set<string>();
+  for (const r of [
+    ...((bRes.data ?? []) as { id: string; player_id: string | null }[]),
+    ...((eRes.data ?? []) as { id: string; player_id: string | null }[]),
+  ]) {
+    if (r.player_id) {
+      ownerByShare.set(r.id, r.player_id);
+      playerIds.add(r.player_id);
+    }
+  }
+
+  const nameByPlayer = new Map<string, string>();
+  if (playerIds.size) {
+    const { data } = await db
+      .from("players")
+      .select("id, name")
+      .in("id", [...playerIds]);
+    for (const p of (data ?? []) as { id: string; name: string }[])
+      nameByPlayer.set(p.id, p.name);
+  }
+
+  const result = new Map<string, string>();
+  for (const [shareId, pid] of ownerByShare) {
+    const name = nameByPlayer.get(pid);
+    if (name) result.set(shareId, name);
+  }
+  return result;
+}
+
 export type PlayerBalanceSummary = {
   /** Plain-text, copy-and-paste ready message for the player. */
   text: string;
@@ -72,8 +128,14 @@ export async function buildPlayerBalanceSummary(
   const groupBalance = Number(groupBalRes.data?.balance ?? 0);
   const combinedBalance = round2(personalBalance + groupBalance);
 
+  // Attribute each shared charge to the member it belongs to.
+  const groupOwners = groupId && groupOpen.length > 0
+    ? await chargeOwnerNames(db, groupOpen)
+    : new Map<string, string>();
+
   const name = player.display_name?.trim() || player.name;
-  const item = (c: OpenCharge) => `• ${c.label}: ${formatMoney(c.remaining)}`;
+  const item = (c: OpenCharge, owner?: string) =>
+    `• ${c.label}${owner ? ` (${owner})` : ""}: ${formatMoney(c.remaining)}`;
 
   const lines: string[] = [];
   lines.push(`Hi ${name}! Here's your Dinkering balance summary as of ${formatDate(asOf)}.`);
@@ -91,7 +153,7 @@ export async function buildPlayerBalanceSummary(
   } else {
     if (groupId && groupOpen.length > 0) {
       lines.push(`Shared (${groupName}) charges:`);
-      for (const c of groupOpen) lines.push(item(c));
+      for (const c of groupOpen) lines.push(item(c, groupOwners.get(c.source_id)));
       lines.push(`Shared subtotal: ${formatMoney(groupDue)}`);
       lines.push("");
     }
@@ -180,7 +242,11 @@ export async function buildGroupBalanceSummary(
     .map((m) => ({ name: m.name, balance: memberBalanceMap.get(m.id) ?? 0 }))
     .filter((m) => !isSettled(Math.abs(m.balance)));
 
-  const item = (c: OpenCharge) => `• ${c.label}: ${formatMoney(c.remaining)}`;
+  const groupOwners = groupOpen.length > 0
+    ? await chargeOwnerNames(db, groupOpen)
+    : new Map<string, string>();
+  const item = (c: OpenCharge, owner?: string) =>
+    `• ${c.label}${owner ? ` (${owner})` : ""}: ${formatMoney(c.remaining)}`;
 
   const lines: string[] = [];
   lines.push(`Hi ${group.name}! Here's your Dinkering balance summary as of ${formatDate(asOf)}.`);
@@ -196,7 +262,7 @@ export async function buildGroupBalanceSummary(
     }
   } else {
     lines.push("Shared charges:");
-    for (const c of groupOpen) lines.push(item(c));
+    for (const c of groupOpen) lines.push(item(c, groupOwners.get(c.source_id)));
     lines.push(`TOTAL DUE: ${formatMoney(totalDue)}`);
   }
 

@@ -28,6 +28,7 @@ import {
   setPrimaryMember,
   pullMemberBalances,
   regenerateGroupToken,
+  setGroupBoardVisibility,
   deleteGroup,
 } from "../actions";
 
@@ -202,6 +203,38 @@ export default async function GroupDetail({
                 </SubmitButton>
               </ActionForm>
             </div>
+          </Card>
+
+          <Card className="p-4">
+            <h2 className="mb-1 text-sm font-semibold text-slate-700">
+              Team board visibility
+            </h2>
+            <p className="mb-3 text-xs text-slate-400">
+              {g.hidden_on_board
+                ? "Hidden — this group and its members are not shown on the public Team Balances board."
+                : "Visible — this group is shown as one entry (with its members) on the public Team Balances board."}
+            </p>
+            <ActionForm
+              action={setGroupBoardVisibility}
+              pendingLabel="Updating…"
+              hidden={
+                <>
+                  <input type="hidden" name="id" value={g.id} />
+                  <input
+                    type="hidden"
+                    name="hidden"
+                    value={g.hidden_on_board ? "false" : "true"}
+                  />
+                </>
+              }
+            >
+              <SubmitButton
+                variant={g.hidden_on_board ? "secondary" : "ghost"}
+                pendingLabel="Updating…"
+              >
+                {g.hidden_on_board ? "Show on team board" : "Hide from team board"}
+              </SubmitButton>
+            </ActionForm>
           </Card>
 
           {balanceSummary ? (

@@ -291,6 +291,24 @@ export async function setPlayerStatus(
   return actionOk(`Player marked ${active_status}.`);
 }
 
+/** Show/hide a player on the public Team Balances board. */
+export async function setPlayerBoardVisibility(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = String(formData.get("id"));
+  const hidden = formData.get("hidden") === "true";
+  const { supabase } = await requireAdmin();
+  await supabase.from("players").update({ hidden_on_board: hidden }).eq("id", id);
+  revalidatePath("/admin/players");
+  revalidatePath(`/admin/players/${id}`);
+  return actionOk(
+    hidden
+      ? "Hidden from the public team board."
+      : "Now visible on the public team board.",
+  );
+}
+
 export async function regenerateToken(
   _prev: ActionState,
   formData: FormData,

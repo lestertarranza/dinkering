@@ -251,6 +251,27 @@ export async function pullMemberBalances(
   );
 }
 
+/** Show/hide an entire group on the public Team Balances board. */
+export async function setGroupBoardVisibility(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = String(formData.get("id"));
+  const hidden = formData.get("hidden") === "true";
+  const { supabase } = await requireAdmin();
+  await supabase
+    .from("player_groups")
+    .update({ hidden_on_board: hidden })
+    .eq("id", id);
+  revalidatePath("/admin/groups");
+  revalidatePath(`/admin/groups/${id}`);
+  return actionOk(
+    hidden
+      ? "Group hidden from the public team board."
+      : "Group now visible on the public team board.",
+  );
+}
+
 export async function regenerateGroupToken(
   _prev: ActionState,
   formData: FormData,

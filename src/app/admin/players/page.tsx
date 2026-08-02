@@ -208,8 +208,13 @@ export default async function PlayersPage({
                           </span>
                         ) : null}
                       </p>
-                      <div className="mt-1">
+                      <div className="mt-1 flex items-center gap-2">
                         <StatusBadge status={p.active_status} />
+                        {p.hidden_on_board ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                            Off board
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="text-right">

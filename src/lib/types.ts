@@ -23,6 +23,7 @@ export interface Player {
   active_status: ActiveStatus;
   notes: string | null;
   public_token: string;
+  hidden_on_board: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +34,7 @@ export interface PlayerGroup {
   type: GroupType;
   notes: string | null;
   public_token: string;
+  hidden_on_board: boolean;
   created_at: string;
   updated_at: string;
 }
