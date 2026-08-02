@@ -61,6 +61,45 @@ async function chargeOwnerNames(
   return result;
 }
 
+/**
+ * Format the "how to pay" footer from the Collections settings (GCash number
+ * and bank transfer details). Bank details stored as "Bank · Name · Account #"
+ * are split into a preferred-bank block; anything else is shown verbatim.
+ * Returns an empty array when no payment methods are configured.
+ */
+function paymentSectionLines(
+  gcash?: string | null,
+  bank?: string | null,
+): string[] {
+  const g = gcash?.trim();
+  const b = bank?.trim();
+  const lines: string[] = [];
+
+  if (g) lines.push(`GCash: ${g}`);
+
+  if (b) {
+    if (lines.length) lines.push("");
+    lines.push("Bank Transfer (preferred):");
+    const parts = b
+      .split("·")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length >= 3) {
+      const account = parts[parts.length - 1];
+      lines.push(parts.slice(0, -1).join(" · "));
+      lines.push(`Account #: ${account}`);
+    } else {
+      lines.push(b);
+    }
+  }
+
+  if (lines.length) {
+    lines.push("");
+    lines.push("Please send payment and share your reference.");
+  }
+  return lines;
+}
+
 export type PlayerBalanceSummary = {
   /** Plain-text, copy-and-paste ready message for the player. */
   text: string;
@@ -80,7 +119,12 @@ export type PlayerBalanceSummary = {
 export async function buildPlayerBalanceSummary(
   db: SupabaseClient,
   playerId: string,
-  opts: { appUrl?: string; asOf?: string } = {},
+  opts: {
+    appUrl?: string;
+    asOf?: string;
+    gcash?: string | null;
+    bank?: string | null;
+  } = {},
 ): Promise<PlayerBalanceSummary | null> {
   const asOf = opts.asOf ?? new Date().toISOString().slice(0, 10);
 
@@ -168,6 +212,14 @@ export async function buildPlayerBalanceSummary(
     lines.push(`TOTAL DUE: ${formatMoney(totalDue)}`);
   }
 
+  if (!isSettled(totalDue)) {
+    const pay = paymentSectionLines(opts.gcash, opts.bank);
+    if (pay.length) {
+      lines.push("");
+      lines.push(...pay);
+    }
+  }
+
   if (opts.appUrl && player.public_token) {
     lines.push("");
     lines.push(`View details anytime: ${opts.appUrl}/p/${player.public_token}`);
@@ -198,7 +250,12 @@ export type GroupBalanceSummary = {
 export async function buildGroupBalanceSummary(
   db: SupabaseClient,
   groupId: string,
-  opts: { appUrl?: string; asOf?: string } = {},
+  opts: {
+    appUrl?: string;
+    asOf?: string;
+    gcash?: string | null;
+    bank?: string | null;
+  } = {},
 ): Promise<GroupBalanceSummary | null> {
   const asOf = opts.asOf ?? new Date().toISOString().slice(0, 10);
 
@@ -275,6 +332,14 @@ export async function buildGroupBalanceSummary(
           ? `• ${m.name}: owes ${formatMoney(m.balance)}`
           : `• ${m.name}: credit ${formatMoney(Math.abs(m.balance))}`,
       );
+    }
+  }
+
+  if (!isSettled(totalDue)) {
+    const pay = paymentSectionLines(opts.gcash, opts.bank);
+    if (pay.length) {
+      lines.push("");
+      lines.push(...pay);
     }
   }
 

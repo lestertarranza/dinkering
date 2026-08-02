@@ -111,7 +111,15 @@ export default async function PlayerDetail({
   ]);
   const appUrl = await getAppBaseUrl();
   const shareUrl = `${appUrl}/p/${p.public_token}`;
-  const balanceSummary = await buildPlayerBalanceSummary(supabase, id, { appUrl });
+  const { data: paySettings } = await supabase
+    .from("app_settings")
+    .select("gcash_number, bank_transfer_details")
+    .single();
+  const balanceSummary = await buildPlayerBalanceSummary(supabase, id, {
+    appUrl,
+    gcash: paySettings?.gcash_number ?? null,
+    bank: paySettings?.bank_transfer_details ?? null,
+  });
 
   return (
     <div>
