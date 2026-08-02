@@ -41,6 +41,28 @@ export async function createBooking(formData: FormData) {
     .select("id")
     .single();
 
+  // Auto-add every active player to the new booking's roster so the admin no
+  // longer has to click "+ Add all active players" after each booking.
+  if (data?.id) {
+    const { data: players } = await supabase
+      .from("players")
+      .select("id")
+      .eq("active_status", "active");
+    const rows = (players ?? []).map((p) => ({
+      booking_id: data.id as string,
+      player_id: p.id as string,
+      response_status: "no_response" as ResponseStatus,
+    }));
+    if (rows.length > 0) {
+      await supabase
+        .from("booking_attendance")
+        .upsert(rows, {
+          onConflict: "booking_id,player_id",
+          ignoreDuplicates: true,
+        });
+    }
+  }
+
   revalidatePath("/admin/bookings");
   if (data?.id) redirect(`/admin/bookings/${data.id}`);
 }
