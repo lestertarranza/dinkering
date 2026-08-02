@@ -75,10 +75,7 @@ function paymentSectionLines(
   const b = bank?.trim();
   const lines: string[] = [];
 
-  if (g) lines.push(`GCash: ${g}`);
-
   if (b) {
-    if (lines.length) lines.push("");
     lines.push("Bank Transfer (preferred):");
     const parts = b
       .split("·")
@@ -91,6 +88,11 @@ function paymentSectionLines(
     } else {
       lines.push(b);
     }
+  }
+
+  if (g) {
+    if (lines.length) lines.push("");
+    lines.push(`GCash: ${g}`);
   }
 
   if (lines.length) {
