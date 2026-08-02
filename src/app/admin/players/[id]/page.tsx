@@ -13,9 +13,10 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { CopyLink, ShareLink } from "@/components/CopyLink";
+import { CopyLink, ShareLink, CopyReminder } from "@/components/CopyLink";
 import { QrCode } from "@/components/QrCode";
 import { LedgerTable } from "@/components/LedgerTable";
+import { buildPlayerBalanceSummary } from "@/lib/balance-summary";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
 import {
   buildLedgerExpenseContext,
@@ -108,6 +109,7 @@ export default async function PlayerDetail({
   ]);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const shareUrl = `${appUrl}/p/${p.public_token}`;
+  const balanceSummary = await buildPlayerBalanceSummary(supabase, id, { appUrl });
 
   return (
     <div>
@@ -241,6 +243,26 @@ export default async function PlayerDetail({
               <QrCode url={shareUrl} label="Scan to open player page" />
             </div>
           </Card>
+
+          {/* Balance summary (copy & send to player) */}
+          {balanceSummary ? (
+            <Card className="p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-700">
+                    Balance summary
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Copy and send this to {p.display_name || p.name}.
+                  </p>
+                </div>
+                <CopyReminder message={balanceSummary.text} label="Copy summary" />
+              </div>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+                {balanceSummary.text}
+              </pre>
+            </Card>
+          ) : null}
 
           {/* Ledger */}
           <Card>
