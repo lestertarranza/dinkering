@@ -48,6 +48,33 @@ export const dynamic = "force-dynamic";
 
 const LEDGER_PAGE_SIZE = 10;
 
+/**
+ * Count "going" RSVPs per booking, paging past PostgREST's per-request row cap
+ * (default 1000) so capacity counts stay correct once total going rows across
+ * upcoming bookings exceed the cap.
+ */
+async function fetchAllGoingAttendance(
+  db: ReturnType<typeof createAdminClient>,
+  bookingIds: string[],
+): Promise<{ booking_id: string }[]> {
+  if (bookingIds.length === 0) return [];
+  const pageSize = 1000;
+  const all: { booking_id: string }[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await db
+      .from("booking_attendance")
+      .select("booking_id")
+      .in("booking_id", bookingIds)
+      .eq("response_status", "going")
+      .order("booking_id")
+      .range(from, from + pageSize - 1);
+    const rows = (data ?? []) as { booking_id: string }[];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
 export default async function PlayerPortal({
   params,
   searchParams,
@@ -270,11 +297,10 @@ export default async function PlayerPortal({
   const bookingCourtsMap = new Map<string, DisplayCourt[]>();
 
   if (upcomingBookingIds.length > 0) {
-    const [{ data: notesRows }, { data: courtRows }, { data: goingRows }] = await Promise.all([
+    const [{ data: notesRows }, { data: courtRows }, goingRows] = await Promise.all([
       db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
       db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
-      db.from("booking_attendance").select("booking_id")
-        .in("booking_id", upcomingBookingIds).eq("response_status", "going"),
+      fetchAllGoingAttendance(db, upcomingBookingIds),
     ]);
 
     // Build notes map
@@ -290,7 +316,7 @@ export default async function PlayerPortal({
       bookingCourtsMap.set(c.booking_id, list);
     }
     const goingByBooking = new Map<string, number>();
-    for (const r of (goingRows ?? []) as { booking_id: string }[]) {
+    for (const r of goingRows) {
       goingByBooking.set(r.booking_id, (goingByBooking.get(r.booking_id) ?? 0) + 1);
     }
     for (const bid of upcomingBookingIds) {

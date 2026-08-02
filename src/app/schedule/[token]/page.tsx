@@ -25,6 +25,35 @@ import type { Booking } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+type AttendanceStatusRow = { booking_id: string; response_status: string };
+
+/**
+ * Fetch attendance rows for many bookings, paging past PostgREST's per-request
+ * row cap (default 1000). Without this, once total attendance rows across all
+ * upcoming bookings exceed the cap, whole bookings silently drop out of the
+ * tallies and render as "No players invited yet".
+ */
+async function fetchAllAttendanceStatuses(
+  db: ReturnType<typeof createAdminClient>,
+  bookingIds: string[],
+): Promise<AttendanceStatusRow[]> {
+  if (bookingIds.length === 0) return [];
+  const pageSize = 1000;
+  const all: AttendanceStatusRow[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await db
+      .from("booking_attendance")
+      .select("booking_id, response_status")
+      .in("booking_id", bookingIds)
+      .order("booking_id")
+      .range(from, from + pageSize - 1);
+    const rows = (data ?? []) as AttendanceStatusRow[];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
 export default async function PublicSchedule({
   params,
 }: {
@@ -46,10 +75,8 @@ export default async function PublicSchedule({
   const upcoming = (bookings ?? []) as Booking[];
 
   const bookingIds = upcoming.map((b) => b.id);
-  const [{ data: attendance }, { data: allCourts }] = await Promise.all([
-    bookingIds.length
-      ? db.from("booking_attendance").select("booking_id, response_status").in("booking_id", bookingIds)
-      : Promise.resolve({ data: [] }),
+  const [attendance, { data: allCourts }] = await Promise.all([
+    fetchAllAttendanceStatuses(db, bookingIds),
     bookingIds.length
       ? db.from("booking_courts").select("booking_id, court_number, start_time, end_time, hours, max_players").in("booking_id", bookingIds).order("created_at")
       : Promise.resolve({ data: [] }),
@@ -67,7 +94,7 @@ export default async function PublicSchedule({
     string,
     { invited: number; going: number; maybe: number; notGoing: number; waitlisted: number }
   >();
-  for (const a of attendance ?? []) {
+  for (const a of attendance) {
     const bid = a.booking_id as string;
     const s = stats.get(bid) ?? { invited: 0, going: 0, maybe: 0, notGoing: 0, waitlisted: 0 };
     s.invited += 1;
