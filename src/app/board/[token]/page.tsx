@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Badge, EmptyState } from "@/components/ui";
-import { PublicSearchList } from "@/components/PublicSearchList";
-import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
-import { round2 } from "@/lib/ledger";
+import { EmptyState } from "@/components/ui";
+import {
+  TeamBalanceBoard,
+  type BalanceItem,
+  type BalanceBucket,
+} from "@/components/TeamBalanceBoard";
+import { formatMoney, describeBalance } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
 import {
   PublicPageHeader,
   PublicNavLink,
-  publicMainClass,
   publicTapRowClass,
   publicChevronClass,
   publicPrimaryText,
@@ -19,33 +21,44 @@ import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type MemberRow = {
-  id: string;
-  label: string;
-  token: string;
-  personalBalance: number;
-};
-
-type Entry =
-  | {
-      kind: "group";
-      key: string;
-      search: string;
-      sortBalance: number;
-      name: string;
-      token: string;
-      groupBalance: number;
-      members: MemberRow[];
-    }
-  | {
-      kind: "player";
-      key: string;
-      search: string;
-      sortBalance: number;
-      label: string;
-      token: string;
-      personalBalance: number;
-    };
+function BalanceRow({
+  href,
+  name,
+  subtitle,
+  tone,
+  amount,
+}: {
+  href: string;
+  name: string;
+  subtitle?: string;
+  tone: "collect" | "credit" | "settled";
+  amount: number;
+}) {
+  const color =
+    tone === "collect"
+      ? "text-rose-700"
+      : tone === "credit"
+        ? "text-emerald-700"
+        : "text-slate-400";
+  return (
+    <Link href={href} className={publicTapRowClass}>
+      <div className="min-w-0 flex-1">
+        <p className={`truncate text-[15px] ${publicPrimaryText}`}>{name}</p>
+        {subtitle ? (
+          <p className={`truncate text-xs ${publicHintText}`}>{subtitle}</p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5 text-right">
+        <p className={`text-base font-bold ${color}`}>
+          {tone === "settled" ? "—" : formatMoney(amount)}
+        </p>
+        <span className={publicChevronClass} aria-hidden>
+          ›
+        </span>
+      </div>
+    </Link>
+  );
+}
 
 export default async function TeamBoard({
   params,
@@ -101,8 +114,6 @@ export default async function TeamBoard({
   const playerById = new Map(activePlayers.map((p) => [p.id, p]));
   const label = (p: ActivePlayer) => p.display_name?.trim() || p.name;
 
-  // Group members by their pooled group; track everyone in a pooled group so we
-  // never also list them as a standalone entry.
   const membersByGroup = new Map<string, string[]>();
   const pooledPlayerIds = new Set<string>();
   for (const m of (memberships ?? []) as {
@@ -115,9 +126,20 @@ export default async function TeamBoard({
     membersByGroup.set(m.player_group_id, list);
   }
 
+  type Entry = {
+    key: string;
+    search: string;
+    bucket: BalanceBucket;
+    amount: number;
+    name: string;
+    node: React.ReactNode;
+  };
   const entries: Entry[] = [];
 
-  // ── Group entries: one row per pooled group, members listed beneath ──
+  const bucketOf = (tone: "collect" | "credit" | "settled"): BalanceBucket =>
+    tone === "collect" ? "owe" : tone === "credit" ? "credit" : "settled";
+
+  // ── Group entries: one row per pooled group, members shown inline ──
   for (const g of (pooledGroups ?? []) as {
     id: string;
     name: string;
@@ -126,70 +148,78 @@ export default async function TeamBoard({
   }[]) {
     if (g.hidden_on_board) continue;
     const memberIds = membersByGroup.get(g.id) ?? [];
-    // playerById only holds active players, so inactive members drop out here.
     const activeMembers = memberIds
       .map((pid) => playerById.get(pid))
-      .filter((p): p is ActivePlayer => Boolean(p));
+      .filter((p): p is ActivePlayer => p !== undefined);
+    // Skip groups with no active members at all (nothing meaningful to show).
     if (activeMembers.length === 0) continue;
-
-    const members: MemberRow[] = activeMembers
+    const memberNames = activeMembers
       .filter((p) => !p.hidden_on_board)
-      .map((p) => ({
-        id: p.id,
-        label: label(p),
-        token: p.public_token,
-        personalBalance: playerBalMap.get(p.id) ?? 0,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .map((p) => label(p))
+      .sort((a, b) => a.localeCompare(b));
 
     const groupBalance = groupBalMap.get(g.id) ?? 0;
-    const personalSum = members.reduce((s, m) => s + m.personalBalance, 0);
+    const d = describeBalance(groupBalance);
+    const subtitle =
+      memberNames.length > 0 ? memberNames.join(" · ") : "shared wallet";
     entries.push({
-      kind: "group",
       key: `g:${g.id}`,
-      search: `${g.name} ${members.map((m) => m.label).join(" ")}`,
-      sortBalance: round2(groupBalance + personalSum),
+      search: `${g.name} ${memberNames.join(" ")}`,
+      bucket: bucketOf(d.tone),
+      amount: d.amount,
       name: g.name,
-      token: g.public_token,
-      groupBalance,
-      members,
+      node: (
+        <BalanceRow
+          href={`/g/${g.public_token}`}
+          name={g.name}
+          subtitle={subtitle}
+          tone={d.tone}
+          amount={d.amount}
+        />
+      ),
     });
   }
 
   // ── Individual entries: active, visible players not in any pooled group ──
   for (const p of activePlayers) {
     if (pooledPlayerIds.has(p.id) || p.hidden_on_board) continue;
-    const personalBalance = playerBalMap.get(p.id) ?? 0;
+    const balance = playerBalMap.get(p.id) ?? 0;
+    const d = describeBalance(balance);
     entries.push({
-      kind: "player",
       key: `p:${p.id}`,
       search: label(p),
-      sortBalance: personalBalance,
-      label: label(p),
-      token: p.public_token,
-      personalBalance,
+      bucket: bucketOf(d.tone),
+      amount: d.amount,
+      name: label(p),
+      node: (
+        <BalanceRow
+          href={`/p/${p.public_token}`}
+          name={label(p)}
+          tone={d.tone}
+          amount={d.amount}
+        />
+      ),
     });
   }
 
-  // Sort: owed-to-team first (most owed), then credit, then settled; by name.
+  // Within each column, biggest balances first; settled alphabetical.
+  const bucketRank = (e: Entry) =>
+    e.bucket === "owe" ? 0 : e.bucket === "credit" ? 1 : 2;
   entries.sort((a, b) => {
-    const rank = (bal: number) =>
-      Math.abs(bal) < SETTLE_TOLERANCE ? 2 : bal < 0 ? 0 : 1;
-    const ra = rank(a.sortBalance);
-    const rb = rank(b.sortBalance);
-    if (ra !== rb) return ra - rb;
-    if (ra === 0) return a.sortBalance - b.sortBalance;
-    if (ra === 1) return b.sortBalance - a.sortBalance;
-    const an = a.kind === "group" ? a.name : a.label;
-    const bn = b.kind === "group" ? b.name : b.label;
-    return an.localeCompare(bn);
+    if (a.bucket !== b.bucket) return bucketRank(a) - bucketRank(b);
+    if (a.bucket === "settled") return a.name.localeCompare(b.name);
+    return b.amount - a.amount;
   });
 
-  const balanceValue = (d: ReturnType<typeof describeBalance>) =>
-    d.tone === "settled" ? "—" : formatMoney(d.amount);
+  const items: BalanceItem[] = entries.map((e) => ({
+    key: e.key,
+    search: e.search,
+    bucket: e.bucket,
+    node: e.node,
+  }));
 
   return (
-    <main className={publicMainClass}>
+    <main className="mx-auto max-w-3xl px-4 py-6 text-[17px] leading-relaxed sm:text-base">
       <PublicPageHeader
         icon="🏓"
         title="Dinkering Pickleball"
@@ -200,144 +230,15 @@ export default async function TeamBoard({
         <PublicNavLink href={`/schedule/${token}`}>Upcoming games</PublicNavLink>
       </nav>
 
-      {entries.length === 0 ? (
+      {items.length === 0 ? (
         <EmptyState title="No players yet" />
       ) : (
-        <PublicSearchList
-          placeholder="Search your name…"
-          emptyTitle="No player matches your search"
-          items={entries.map((e) => {
-            if (e.kind === "group") {
-              const dGroup = describeBalance(e.groupBalance);
-              return {
-                key: e.key,
-                search: e.search,
-                node: (
-                  <div>
-                    <Link href={`/g/${e.token}`} className={publicTapRowClass}>
-                      <div className="min-w-0 flex-1">
-                        <p className={`truncate text-base ${publicPrimaryText}`}>
-                          {e.name}
-                        </p>
-                        <p className={`truncate ${publicHintText}`}>
-                          {e.members.length > 0
-                            ? `${e.members.length} member${e.members.length === 1 ? "" : "s"} · shared wallet`
-                            : "shared wallet"}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2 text-right">
-                        <div>
-                          <Badge tone={dGroup.tone} size="md">
-                            {dGroup.label}
-                          </Badge>
-                          <p
-                            className={`mt-1 text-base font-bold ${
-                              dGroup.tone === "collect"
-                                ? "text-rose-700"
-                                : dGroup.tone === "credit"
-                                  ? "text-emerald-700"
-                                  : "text-slate-500"
-                            }`}
-                          >
-                            {balanceValue(dGroup)}
-                          </p>
-                        </div>
-                        <span className={publicChevronClass} aria-hidden>
-                          ›
-                        </span>
-                      </div>
-                    </Link>
-
-                    {e.members.length > 0 ? (
-                      <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/60">
-                        {e.members.map((m) => {
-                          const dp = describeBalance(m.personalBalance);
-                          return (
-                            <Link
-                              key={m.id}
-                              href={`/p/${m.token}`}
-                              className="flex touch-manipulation items-center gap-3 py-2.5 pl-9 pr-4 transition-all duration-150 hover:bg-white active:scale-[0.98] active:bg-emerald-100"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
-                                {m.label}
-                              </span>
-                              {dp.tone === "settled" ? (
-                                <span className="text-xs text-slate-400">
-                                  settled
-                                </span>
-                              ) : (
-                                <span
-                                  className={`text-xs font-medium ${
-                                    dp.tone === "collect"
-                                      ? "text-rose-600"
-                                      : "text-emerald-600"
-                                  }`}
-                                >
-                                  {dp.tone === "collect"
-                                    ? "personal "
-                                    : "personal credit "}
-                                  {formatMoney(dp.amount)}
-                                </span>
-                              )}
-                              <span
-                                className="shrink-0 text-sm font-semibold text-emerald-600"
-                                aria-hidden
-                              >
-                                ›
-                              </span>
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                ),
-              };
-            }
-
-            const dPersonal = describeBalance(e.personalBalance);
-            return {
-              key: e.key,
-              search: e.search,
-              node: (
-                <Link href={`/p/${e.token}`} className={publicTapRowClass}>
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate text-base ${publicPrimaryText}`}>
-                      {e.label}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 text-right">
-                    <div>
-                      <Badge tone={dPersonal.tone} size="md">
-                        {dPersonal.label}
-                      </Badge>
-                      <p
-                        className={`mt-1 text-base font-bold ${
-                          dPersonal.tone === "collect"
-                            ? "text-rose-700"
-                            : dPersonal.tone === "credit"
-                              ? "text-emerald-700"
-                              : "text-slate-500"
-                        }`}
-                      >
-                        {balanceValue(dPersonal)}
-                      </p>
-                    </div>
-                    <span className={publicChevronClass} aria-hidden>
-                      ›
-                    </span>
-                  </div>
-                </Link>
-              ),
-            };
-          })}
-        />
+        <TeamBalanceBoard items={items} />
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Grouped players (couples, families, team funds) show one shared balance —
-        tap the group to see the shared ledger, or tap a member for their own
-        page.
+        Grouped players (couples, families, team funds) share one balance — tap a
+        group to see its shared ledger and members.
       </p>
       <footer className="mt-6 text-center text-sm text-slate-400">
         Shared team board · please don&apos;t post publicly
