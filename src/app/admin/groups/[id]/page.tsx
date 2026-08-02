@@ -12,8 +12,10 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
-import { CopyLink } from "@/components/CopyLink";
+import { CopyLink, CopyReminder } from "@/components/CopyLink";
 import { LedgerTable } from "@/components/LedgerTable";
+import { buildGroupBalanceSummary } from "@/lib/balance-summary";
+import { getAppBaseUrl } from "@/lib/app-url";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
 import { buildLedgerOwnerNames } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
@@ -107,8 +109,9 @@ export default async function GroupDetail({
     buildLedgerBookingContext(supabase, ledgerEntries),
     buildLedgerOwnerNames(supabase, ledgerEntries),
   ]);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = await getAppBaseUrl();
   const shareUrl = `${appUrl}/g/${g.public_token}`;
+  const balanceSummary = await buildGroupBalanceSummary(supabase, id, { appUrl });
 
   return (
     <div>
@@ -200,6 +203,25 @@ export default async function GroupDetail({
               </ActionForm>
             </div>
           </Card>
+
+          {balanceSummary ? (
+            <Card className="p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-700">
+                    Balance summary
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Copy and send this to the members of {g.name}.
+                  </p>
+                </div>
+                <CopyReminder message={balanceSummary.text} label="Copy summary" />
+              </div>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+                {balanceSummary.text}
+              </pre>
+            </Card>
+          ) : null}
 
           <Card>
             <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">

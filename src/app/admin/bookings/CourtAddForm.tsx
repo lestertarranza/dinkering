@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useEffect } from "react";
+import { useActionState, useState } from "react";
 import { Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatMoney } from "@/lib/format";
@@ -13,18 +13,19 @@ export function CourtAddForm({ bookingId }: { bookingId: string }) {
   const [endTime, setEndTime] = useState("");
   const [hours, setHours] = useState("1");
   const [rate, setRate] = useState("0");
+  const [prevTimes, setPrevTimes] = useState({ startTime, endTime });
 
-  // Auto-calculate hours from start and end time
-  useEffect(() => {
-    if (!startTime || !endTime) return;
-    const [sh, sm] = startTime.split(":").map(Number);
-    const [eh, em] = endTime.split(":").map(Number);
-    const diff = (eh * 60 + em) - (sh * 60 + sm);
-    if (diff > 0) {
-      // Round to nearest 0.5
-      setHours(String(Math.round(diff / 30) / 2));
+  // Auto-calculate hours whenever the times change (render-phase update instead
+  // of calling setState inside an effect). Rounds to the nearest 0.5 hours.
+  if (startTime !== prevTimes.startTime || endTime !== prevTimes.endTime) {
+    setPrevTimes({ startTime, endTime });
+    if (startTime && endTime) {
+      const [sh, sm] = startTime.split(":").map(Number);
+      const [eh, em] = endTime.split(":").map(Number);
+      const diff = (eh * 60 + em) - (sh * 60 + sm);
+      if (diff > 0) setHours(String(Math.round(diff / 30) / 2));
     }
-  }, [startTime, endTime]);
+  }
 
   const subtotal = (parseFloat(hours) || 0) * (parseFloat(rate) || 0);
 

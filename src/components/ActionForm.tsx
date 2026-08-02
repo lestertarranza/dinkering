@@ -8,11 +8,18 @@ const DISMISS_MS = 5000;
 
 /** Wraps ActionFeedback to auto-dismiss after DISMISS_MS. */
 function AutoDismissFeedback({ state }: { state: ActionState }) {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const [lastState, setLastState] = useState(state);
+
+  // A new action result arrived — re-show the feedback (render-phase update,
+  // the pattern React recommends over calling setState inside an effect).
+  if (state !== lastState) {
+    setLastState(state);
+    setVisible(true);
+  }
 
   useEffect(() => {
     if (!state) return;
-    setVisible(true);
     const t = setTimeout(() => setVisible(false), DISMISS_MS);
     return () => clearTimeout(t);
   }, [state]);

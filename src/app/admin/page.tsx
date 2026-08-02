@@ -14,11 +14,37 @@ import {
   computeBookingShareRemaining,
   type LedgerRow,
 } from "@/lib/payment-allocation";
-import type { Payment, Player, PlayerGroup, TeamExpense } from "@/lib/types";
+import type { Payment, Player, PlayerGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 10;
+
+function FinitePager({
+  current,
+  totalItems,
+  paramKey,
+  pagerHref,
+}: {
+  current: number;
+  totalItems: number;
+  paramKey: string;
+  pagerHref: (params: Record<string, string | number>) => string;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+  if (totalPages <= 1) return null;
+  const from = (current - 1) * PAGE_SIZE + 1;
+  const to   = Math.min(current * PAGE_SIZE, totalItems);
+  return (
+    <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-400">
+      <span>{from}–{to} of {totalItems}</span>
+      <div className="flex gap-2">
+        {current > 1 ? <Link href={pagerHref({ [paramKey]: current - 1 })} className="text-emerald-600 hover:underline">← Prev</Link> : null}
+        {current < totalPages ? <Link href={pagerHref({ [paramKey]: current + 1 })} className="text-emerald-600 hover:underline">Next →</Link> : null}
+      </div>
+    </div>
+  );
+}
 
 const SPLIT_LABELS: Record<string, string> = {
   active_players: "All active players",
@@ -325,7 +351,7 @@ export default async function Dashboard({
   const oweTotal  = playersWhoOweAll.length + groupsWhoOweAll.length;
 
   // ── Open-charge enrichment for "who owes" box ──────────────────────────────
-  let openChargesByPlayer = new Map<string, { source_type: string; source_id: string; label: string; remaining: number }[]>();
+  const openChargesByPlayer = new Map<string, { source_type: string; source_id: string; label: string; remaining: number }[]>();
   if (owePage_data.length > 0) {
     const owePlayerIds = owePage_data.map((o) => o.id);
     const { data: rawLedger } = await supabase
@@ -393,22 +419,6 @@ export default async function Dashboard({
     return qs ? `/admin?${qs}` : "/admin";
   }
 
-  function FinitePager({ current, totalItems, paramKey }: { current: number; totalItems: number; paramKey: string }) {
-    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
-    if (totalPages <= 1) return null;
-    const from = (current - 1) * PAGE_SIZE + 1;
-    const to   = Math.min(current * PAGE_SIZE, totalItems);
-    return (
-      <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-xs text-slate-400">
-        <span>{from}–{to} of {totalItems}</span>
-        <div className="flex gap-2">
-          {current > 1 ? <Link href={pagerHref({ [paramKey]: current - 1 })} className="text-emerald-600 hover:underline">← Prev</Link> : null}
-          {current < totalPages ? <Link href={pagerHref({ [paramKey]: current + 1 })} className="text-emerald-600 hover:underline">Next →</Link> : null}
-        </div>
-      </div>
-    );
-  }
-
   const summaryClass = "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm hover:bg-slate-50 [&::-webkit-details-marker]:hidden";
 
   return (
@@ -456,7 +466,7 @@ export default async function Dashboard({
               </ul>
             )}
           </div>
-          <FinitePager current={upPage} totalItems={upcomingAll.length} paramKey="up" />
+          <FinitePager current={upPage} totalItems={upcomingAll.length} paramKey="up" pagerHref={pagerHref} />
         </Card>
 
         {/* ── Unpaid bookings & expense dues ── */}
@@ -492,7 +502,7 @@ export default async function Dashboard({
                         );
                       })}
                     </ul>
-                    <FinitePager current={unPage} totalItems={unpaidBookingsAll.length} paramKey="un" />
+                    <FinitePager current={unPage} totalItems={unpaidBookingsAll.length} paramKey="un" pagerHref={pagerHref} />
                   </div>
                 ) : null}
 
@@ -600,7 +610,7 @@ export default async function Dashboard({
               </ul>
             )}
           </div>
-          <FinitePager current={owePage} totalItems={oweTotal} paramKey="owe" />
+          <FinitePager current={owePage} totalItems={oweTotal} paramKey="owe" pagerHref={pagerHref} />
         </Card>
 
         {/* ── Players / groups with credit (collapsible groups) ── */}
@@ -653,7 +663,7 @@ export default async function Dashboard({
               </ul>
             )}
           </div>
-          <FinitePager current={credPage} totalItems={credTotal} paramKey="cred" />
+          <FinitePager current={credPage} totalItems={credTotal} paramKey="cred" pagerHref={pagerHref} />
         </Card>
 
         {/* ── Recent payments ── */}
@@ -710,7 +720,7 @@ export default async function Dashboard({
               </ul>
             )}
           </div>
-          <FinitePager current={payPage} totalItems={(recentPayments ?? []).length} paramKey="pay" />
+          <FinitePager current={payPage} totalItems={(recentPayments ?? []).length} paramKey="pay" pagerHref={pagerHref} />
         </Card>
 
         {/* ── Recent team expenses ── */}
@@ -762,7 +772,7 @@ export default async function Dashboard({
               </ul>
             )}
           </div>
-          <FinitePager current={expPage} totalItems={expenses.length} paramKey="exp" />
+          <FinitePager current={expPage} totalItems={expenses.length} paramKey="exp" pagerHref={pagerHref} />
         </Card>
 
       </div>

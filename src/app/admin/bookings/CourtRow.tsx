@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatMoney, formatTime } from "@/lib/format";
@@ -12,11 +12,14 @@ export function CourtRow({ court }: { court: BookingCourt }) {
   const [editing, setEditing] = useState(false);
   const [updateState, updateAction] = useActionState(updateCourt, null);
   const [, removeAction] = useActionState(removeCourt, null);
+  const [seenState, setSeenState] = useState(updateState);
 
-  // Close the editor after a successful save
-  useEffect(() => {
+  // Close the editor after a successful save (render-phase update instead of
+  // calling setState inside an effect).
+  if (updateState !== seenState) {
+    setSeenState(updateState);
     if (updateState?.ok) setEditing(false);
-  }, [updateState]);
+  }
 
   if (!editing) {
     return (

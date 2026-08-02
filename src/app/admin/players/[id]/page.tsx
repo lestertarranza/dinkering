@@ -17,6 +17,7 @@ import { CopyLink, ShareLink, CopyReminder } from "@/components/CopyLink";
 import { QrCode } from "@/components/QrCode";
 import { LedgerTable } from "@/components/LedgerTable";
 import { buildPlayerBalanceSummary } from "@/lib/balance-summary";
+import { getAppBaseUrl } from "@/lib/app-url";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
 import {
   buildLedgerExpenseContext,
@@ -107,7 +108,7 @@ export default async function PlayerDetail({
     buildLedgerExpenseContext(supabase, ledgerEntries),
     buildTransferItemEnrichment(supabase, ledgerEntries),
   ]);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = await getAppBaseUrl();
   const shareUrl = `${appUrl}/p/${p.public_token}`;
   const balanceSummary = await buildPlayerBalanceSummary(supabase, id, { appUrl });
 
