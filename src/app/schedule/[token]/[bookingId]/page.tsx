@@ -237,8 +237,7 @@ export default async function PublicBookingRoster({
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Tap your name to open your private page and confirm Going / Maybe / Not
-        going.
+        Tap your name to open your private page and confirm Going / Not going.
       </p>
 
       <nav className="mt-5 flex flex-wrap justify-center gap-2">
