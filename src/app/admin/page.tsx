@@ -14,6 +14,7 @@ import {
   computeBookingShareRemaining,
   type LedgerRow,
 } from "@/lib/payment-allocation";
+import { fetchAllRows } from "@/lib/paginate";
 import type { Payment, Player, PlayerGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -78,8 +79,8 @@ export default async function Dashboard({
     { data: groups },
     { data: groupMemberships },
     { data: bookings },
-    { data: bookingShares },
-    { data: expenseShares },
+    bookingShares,
+    expenseShares,
     { data: dashTotals },
     { data: recentPayments },
     { data: allExpenses },
@@ -95,10 +96,20 @@ export default async function Dashboard({
     supabase
       .from("bookings")
       .select("id, booking_code, play_date, start_time, end_time, venue, status, total_booking_cost"),
-    supabase
-      .from("booking_shares")
-      .select("id, booking_id, player_id, amount_owed"),
-    supabase.from("team_expense_shares").select("id, team_expense_id, player_id, player_group_id, amount_owed"),
+    fetchAllRows<{ id: string; booking_id: string; player_id: string | null; amount_owed: number }>((from, to) =>
+      supabase
+        .from("booking_shares")
+        .select("id, booking_id, player_id, amount_owed")
+        .order("id")
+        .range(from, to),
+    ),
+    fetchAllRows<{ id: string; team_expense_id: string; player_id: string | null; player_group_id: string | null; amount_owed: number }>((from, to) =>
+      supabase
+        .from("team_expense_shares")
+        .select("id, team_expense_id, player_id, player_group_id, amount_owed")
+        .order("id")
+        .range(from, to),
+    ),
     supabase.from("dashboard_totals").select("*").single(),
     supabase
       .from("payments")
@@ -350,6 +361,52 @@ export default async function Dashboard({
   const credTotal = playersWithCreditAll.length + groupsWithCreditAll.length;
   const oweTotal  = playersWhoOweAll.length + groupsWhoOweAll.length;
 
+  const courtRows = await fetchAllRows<{ booking_id: string }>((from, to) =>
+    supabase
+      .from("booking_courts")
+      .select("booking_id")
+      .order("booking_id")
+      .range(from, to),
+  );
+  const courtSet = new Set(courtRows.map((c) => c.booking_id));
+  const missingCourts = allBookings.filter(
+    (b) =>
+      (b.status === "booked" || b.status === "for_booking") &&
+      b.play_date >= today &&
+      !courtSet.has(b.id),
+  );
+  const pastUnplayed = allBookings.filter(
+    (b) => b.status === "booked" && b.play_date < today,
+  );
+  const tomorrow = new Date(`${today}T12:00:00+08:00`);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+  const soonBookings = allBookings.filter(
+    (b) => b.status === "booked" && b.play_date >= today && b.play_date <= tomorrowIso,
+  );
+  const soonIds = soonBookings.map((b) => b.id);
+  const soonAtt =
+    soonIds.length === 0
+      ? []
+      : await fetchAllRows<{ booking_id: string; response_status: string }>(
+          (from, to) =>
+            supabase
+              .from("booking_attendance")
+              .select("booking_id, response_status")
+              .in("booking_id", soonIds)
+              .order("id")
+              .range(from, to),
+        );
+  const noRsvpSoon = new Map<string, number>();
+  for (const a of soonAtt) {
+    if (a.response_status === "no_response") {
+      noRsvpSoon.set(a.booking_id, (noRsvpSoon.get(a.booking_id) ?? 0) + 1);
+    }
+  }
+  const rsvpAttention = soonBookings
+    .map((b) => ({ b, n: noRsvpSoon.get(b.id) ?? 0 }))
+    .filter((x) => x.n > 0);
+
   // ── Open-charge enrichment for "who owes" box ──────────────────────────────
   const openChargesByPlayer = new Map<string, { source_type: string; source_id: string; label: string; remaining: number }[]>();
   if (owePage_data.length > 0) {
@@ -436,6 +493,72 @@ export default async function Dashboard({
         <StatCard label="Court cost (played)"      value={formatMoney(playedBookingCost)} tone="neutral" hint="Cost of games played & billed" />
         <StatCard label="Upcoming commitments"     value={formatMoney(upcomingCommitments)} tone="neutral" hint="Future booked games not yet billed" />
       </div>
+
+      {missingCourts.length + pastUnplayed.length + rsvpAttention.length + unpaidExpensesAll.length >
+      0 ? (
+        <Card className="mt-5 border-amber-200">
+          <div className="border-b border-amber-100 px-4 py-3">
+            <h2 className="text-sm font-semibold text-amber-800">Needs attention</h2>
+          </div>
+          <ul className="divide-y divide-amber-50 text-sm">
+            {missingCourts.map((b) => (
+              <li key={`mc-${b.id}`}>
+                <Link
+                  href={`/admin/bookings/${b.id}#add-court`}
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                >
+                  <span>
+                    <span className="font-medium">{b.booking_code}</span> is missing court details
+                  </span>
+                  <span className="text-xs text-slate-400">{formatDate(b.play_date)}</span>
+                </Link>
+              </li>
+            ))}
+            {pastUnplayed.map((b) => (
+              <li key={`pu-${b.id}`}>
+                <Link
+                  href={`/admin/bookings/${b.id}`}
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                >
+                  <span>
+                    <span className="font-medium">{b.booking_code}</span> is past date and still Booked
+                  </span>
+                  <span className="text-xs text-slate-400">{formatDate(b.play_date)}</span>
+                </Link>
+              </li>
+            ))}
+            {rsvpAttention.map(({ b, n }) => (
+              <li key={`rs-${b.id}`}>
+                <Link
+                  href={`/admin/bookings/${b.id}`}
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                >
+                  <span>
+                    <span className="font-medium">{b.booking_code}</span> has {n} player
+                    {n === 1 ? "" : "s"} with no RSVP (within 24h)
+                  </span>
+                  <span className="text-xs text-slate-400">{formatDate(b.play_date)}</span>
+                </Link>
+              </li>
+            ))}
+            {unpaidExpensesAll.slice(0, 5).map((e) => (
+              <li key={`ex-${e.id}`}>
+                <Link
+                  href={`/admin/expenses/${e.id}`}
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                >
+                  <span>
+                    Unsettled expense: {e.expense_code ?? e.description}
+                  </span>
+                  <span className="text-xs font-medium text-rose-700">
+                    {formatMoney(expDue(e.id))} due
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
 

@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
 import { resolveWalletOwner } from "@/lib/ledger";
+import { logAdminAction } from "@/lib/activity-log";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -60,6 +61,12 @@ export async function addManualAdjustment(
   if (player_id) revalidatePath(`/admin/players/${player_id}`);
   if (player_group_id) revalidatePath(`/admin/groups/${player_group_id}`);
   revalidatePath("/admin");
+  await logAdminAction(supabase, user, {
+    entityType: player_id ? "player" : "group",
+    entityId: player_id ?? player_group_id,
+    action: `Manual ${type} ${formatMoney(amount)}`,
+    details: reason,
+  });
   return actionOk(
     `Recorded ${type} of ${formatMoney(amount)}: ${reason}`,
   );
@@ -200,6 +207,18 @@ export async function transferBalance(
   revalidatePath(`/admin/players/${sourcePlayerId}`);
   revalidatePath(`/admin/players/${targetPlayerId}`);
   revalidatePath("/admin");
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: sourcePlayerId,
+    action: `Transferred ${formatMoney(amount)} to another player`,
+    details: targetPlayerId,
+  });
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: targetPlayerId,
+    action: `Received ${formatMoney(amount)} transfer`,
+    details: sourcePlayerId,
+  });
 
   return actionOk(
     `Transferred ${formatMoney(amount)} from ${sourceName} to ${targetName}.`,
@@ -284,8 +303,13 @@ export async function setPlayerStatus(
 ): Promise<ActionState> {
   const id = String(formData.get("id"));
   const active_status = String(formData.get("active_status")) as ActiveStatus;
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
   await supabase.from("players").update({ active_status }).eq("id", id);
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: id,
+    action: `Status → ${active_status}`,
+  });
   revalidatePath("/admin/players");
   revalidatePath(`/admin/players/${id}`);
   return actionOk(`Player marked ${active_status}.`);

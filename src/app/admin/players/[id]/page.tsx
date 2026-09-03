@@ -19,6 +19,8 @@ import { LedgerTable } from "@/components/LedgerTable";
 import { buildPlayerBalanceSummary } from "@/lib/balance-summary";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
+import { fetchActivity } from "@/lib/activity-log";
+import { ActivityLog } from "@/components/ActivityLog";
 import {
   buildLedgerExpenseContext,
   buildTransferItemEnrichment,
@@ -69,6 +71,7 @@ export default async function PlayerDetail({
         .is("end_date", null),
       supabase.from("player_groups").select("id, name, type").order("name"),
     ]);
+  const activityRows = await fetchActivity(supabase, "player", id);
 
   const membershipList = (memberships ?? []) as {
     id: string;
@@ -319,6 +322,12 @@ export default async function PlayerDetail({
               transferItems={ledgerTransferItems}
             />
           </Card>
+          <Card>
+            <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+              Activity
+            </h2>
+            <ActivityLog rows={activityRows} />
+          </Card>
         </div>
 
         <div className="space-y-5">
@@ -528,7 +537,7 @@ export default async function PlayerDetail({
             </p>
             <ConfirmButton
               action={deletePlayer}
-              message={`Delete or archive ${p.name}? Financial history is preserved.`}
+              message={`Delete or archive ${p.name}? Players with ledger history are archived so financial records stay intact. This is not a silent undo.`}
               hidden={{ id: p.id }}
               pendingLabel="Deleting…"
             >

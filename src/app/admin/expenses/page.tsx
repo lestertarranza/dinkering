@@ -7,6 +7,7 @@ import { computeExpenseShareRemaining } from "@/lib/payment-allocation";
 import type { TeamExpense } from "@/lib/types";
 import { ExpenseForm } from "./ExpenseForm";
 import { createExpense } from "./actions";
+import { AdminSearchList } from "@/components/AdminSearchList";
 
 export const dynamic = "force-dynamic";
 
@@ -98,57 +99,61 @@ export default async function ExpensesPage() {
               description="Log a purchase to split it across the team."
             />
           ) : (
-            <div className="space-y-2">
-              {expenseList.map((e) => {
+            <AdminSearchList
+              placeholder="Search expenses…"
+              items={expenseList.map((e) => {
                 const settle = settlementByExpense.get(e.id);
                 const reversed = e.status === "reversed";
                 const settled =
                   !reversed && !!settle?.hasShares && isSettled(settle.outstanding);
                 const outstanding = settle?.outstanding ?? 0;
-                return (
-                  <Link
-                    key={e.id}
-                    href={`/admin/expenses/${e.id}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-300"
-                  >
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-2 font-medium text-slate-900">
-                        {e.description}
-                        {reversed ? (
-                          <Badge tone="neutral">Reversed</Badge>
-                        ) : !settle?.hasShares ? (
-                          <Badge tone="warning">Not split</Badge>
-                        ) : settled ? (
-                          <Badge tone="going">Settled</Badge>
-                        ) : (
-                          <Badge tone="collect">
-                            {formatMoney(outstanding)} due
-                          </Badge>
-                        )}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {e.expense_code} · {formatDate(e.purchase_date)} · paid by{" "}
-                        {e.players?.name ?? e.player_groups?.name ?? "—"}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="font-semibold text-slate-900">
-                        {formatMoney(e.total_cost)}
-                      </p>
-                      {!reversed && settle?.hasShares ? (
-                        <p
-                          className={`mt-0.5 text-xs font-medium ${
-                            settled ? "text-emerald-600" : "text-rose-600"
-                          }`}
-                        >
-                          {settled ? "Fully collected" : `${formatMoney(outstanding)} outstanding`}
+                return {
+                  key: e.id,
+                  search: `${e.description} ${e.expense_code ?? ""} ${e.players?.name ?? ""} ${e.player_groups?.name ?? ""}`,
+                  node: (
+                    <Link
+                      href={`/admin/expenses/${e.id}`}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-300"
+                    >
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-2 font-medium text-slate-900">
+                          {e.description}
+                          {reversed ? (
+                            <Badge tone="neutral">Reversed</Badge>
+                          ) : !settle?.hasShares ? (
+                            <Badge tone="warning">Not split</Badge>
+                          ) : settled ? (
+                            <Badge tone="going">Settled</Badge>
+                          ) : (
+                            <Badge tone="collect">
+                              {formatMoney(outstanding)} due
+                            </Badge>
+                          )}
                         </p>
-                      ) : null}
-                    </div>
-                  </Link>
-                );
+                        <p className="mt-1 text-xs text-slate-400">
+                          {e.expense_code} · {formatDate(e.purchase_date)} · paid by{" "}
+                          {e.players?.name ?? e.player_groups?.name ?? "—"}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-semibold text-slate-900">
+                          {formatMoney(e.total_cost)}
+                        </p>
+                        {!reversed && settle?.hasShares ? (
+                          <p
+                            className={`mt-0.5 text-xs font-medium ${
+                              settled ? "text-emerald-600" : "text-rose-600"
+                            }`}
+                          >
+                            {settled ? "Fully collected" : `${formatMoney(outstanding)} outstanding`}
+                          </p>
+                        ) : null}
+                      </div>
+                    </Link>
+                  ),
+                };
               })}
-            </div>
+            />
           )}
         </div>
       </div>

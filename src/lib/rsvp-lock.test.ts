@@ -3,8 +3,22 @@ import {
   getBookingStart,
   getRsvpLockAt,
   isRsvpLocked,
+  formatLockCountdown,
   RSVP_LOCK_HOURS,
 } from "./rsvp-lock";
+describe("formatLockCountdown", () => {
+  it("formats hours and minutes before cutoff", () => {
+    const lockAt = new Date("2026-06-30T10:00:00.000Z");
+    const now = lockAt.getTime() - (5 * 60 + 20) * 60 * 1000;
+    expect(formatLockCountdown(lockAt, now)).toBe("Locks in 5h 20m");
+  });
+
+  it("returns null at or after cutoff", () => {
+    const lockAt = new Date("2026-06-30T10:00:00.000Z");
+    expect(formatLockCountdown(lockAt, lockAt.getTime())).toBeNull();
+  });
+});
+
 
 describe("getBookingStart", () => {
   it("uses earliest court start across multiple courts", () => {

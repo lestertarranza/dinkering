@@ -34,12 +34,14 @@ export function ActionForm({
   children,
   pendingLabel = "Saving…",
   hidden,
+  id,
 }: {
   action: FormAction;
   className?: string;
   children: ReactNode;
   pendingLabel?: string;
   hidden?: ReactNode;
+  id?: string;
   /**
    * @deprecated No longer needed. React/Next automatically use multipart
    * encoding for function actions when a file input is present.
@@ -50,6 +52,7 @@ export function ActionForm({
 
   return (
     <form
+      id={id}
       action={formAction}
       className={className}
       aria-busy={pending}

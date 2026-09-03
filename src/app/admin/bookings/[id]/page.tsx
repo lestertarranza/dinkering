@@ -14,6 +14,9 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
+import { DownloadCsvButton } from "@/components/DownloadCsvButton";
+import { ActivityLog } from "@/components/ActivityLog";
+import { fetchActivity } from "@/lib/activity-log";
 import {
   formatMoney,
   formatDate,
@@ -37,8 +40,9 @@ import {
   addAttendee,
   addAllActivePlayers,
   setResponse,
-  confirmAttendance,
   setPlayerActualStatus,
+  bulkSetResponse,
+  markRemainingAbsent,
   generateShares,
   chargeAttendees,
   deleteBooking,
@@ -74,6 +78,7 @@ export default async function BookingDetail({
     { data: shares },
     { data: players },
     { data: balances },
+    activityRows,
   ] = await Promise.all([
     supabase
       .from("booking_attendance")
@@ -93,6 +98,7 @@ export default async function BookingDetail({
       .select("id, name, active_status")
       .order("name"),
     supabase.from("player_balances").select("*"),
+    fetchActivity(supabase, "booking", id),
   ]);
 
   const roster = (attendance ?? []) as (BookingAttendance & {
@@ -348,11 +354,35 @@ export default async function BookingDetail({
           })}
       </div>
 
+      <div className="sticky bottom-3 z-20 mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur md:bottom-auto md:top-3">
+        {b.status === "booked" ? (
+          <ActionForm
+            action={setBookingStatus}
+            className="inline"
+            pendingLabel="Marking Played…"
+            hidden={
+              <>
+                <input type="hidden" name="id" value={b.id} />
+                <input type="hidden" name="status" value="played" />
+              </>
+            }
+          >
+            <SubmitButton pendingLabel="…">Mark Played</SubmitButton>
+          </ActionForm>
+        ) : null}
+        <a href="#edit-booking" className={buttonClass("secondary")}>
+          Save / edit
+        </a>
+        <a href="#add-court" className={buttonClass("secondary")}>
+          Add court
+        </a>
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
 
           {/* ── Courts ── */}
-          <Card>
+          <Card id="add-court">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold text-slate-700">Courts</h2>
@@ -427,6 +457,60 @@ export default async function BookingDetail({
                 {roster.length} player{roster.length === 1 ? "" : "s"}
               </span>
             </div>
+
+            {roster.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2">
+                <DownloadCsvButton
+                  filename={`${b.booking_code ?? "roster"}-rsvp.csv`}
+                  label="Export roster CSV"
+                  rows={[
+                    ["Name", "RSVP", "Attendance"],
+                    ...roster.map((r) => [
+                      r.players?.name ?? "",
+                      r.response_status,
+                      r.actual_status ?? "",
+                    ]),
+                  ]}
+                />
+                {isPostGame ? (
+                  <ActionForm
+                    action={markRemainingAbsent}
+                    pendingLabel="Marking remaining absent…"
+                    hidden={
+                      <input type="hidden" name="booking_id" value={b.id} />
+                    }
+                  >
+                    <SubmitButton variant="secondary" pendingLabel="…">
+                      Mark remaining Absent
+                    </SubmitButton>
+                  </ActionForm>
+                ) : (
+                  <ActionForm
+                    id="bulk-rsvp"
+                    action={bulkSetResponse}
+                    className="flex flex-wrap items-center gap-2"
+                    pendingLabel="Updating selected…"
+                    hidden={
+                      <input type="hidden" name="booking_id" value={b.id} />
+                    }
+                  >
+                    <select
+                      name="response_status"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      defaultValue="going"
+                    >
+                      <option value="going">Going</option>
+                      <option value="not_going">Not going</option>
+                      <option value="no_response">No response</option>
+                      <option value="waitlist">Waitlist</option>
+                    </select>
+                    <SubmitButton variant="secondary" pendingLabel="…">
+                      Apply to selected
+                    </SubmitButton>
+                  </ActionForm>
+                )}
+              </div>
+            ) : null}
 
             <div className="p-4">
               {roster.length === 0 ? (
@@ -536,9 +620,16 @@ export default async function BookingDetail({
                       key={r.id}
                       className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
                     >
-                      <span className="font-medium text-slate-700">
+                      <label className="flex min-w-0 flex-1 items-center gap-2 font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          form="bulk-rsvp"
+                          name="player_ids"
+                          value={r.player_id}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
                         {r.players?.name}
-                      </span>
+                      </label>
                       <div className="flex items-center gap-2">
                         {rsvpLocked && r.response_status === "going" ? (
                           <Badge tone="warning">Committed</Badge>
@@ -885,11 +976,17 @@ export default async function BookingDetail({
 
         {/* Edit booking */}
         <div className="space-y-5">
-          <Card className="p-4">
+          <Card className="p-4" id="edit-booking">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Edit booking
             </h2>
             <BookingForm action={updateBooking} booking={b} feedback />
+          </Card>
+          <Card>
+            <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+              Activity
+            </h2>
+            <ActivityLog rows={activityRows} />
           </Card>
           <Card className="border-rose-200 p-4">
             <h2 className="mb-2 text-sm font-semibold text-rose-700">
@@ -897,7 +994,7 @@ export default async function BookingDetail({
             </h2>
             <ConfirmButton
               action={deleteBooking}
-              message="Delete this booking? If it has shares it will be cancelled instead."
+              message="Delete this booking? If it already has shares the booking will be cancelled instead of permanently deleted. This cannot be undone from the UI."
               hidden={{ id: b.id }}
               pendingLabel="Deleting…"
             >

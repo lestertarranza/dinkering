@@ -156,6 +156,7 @@ export function CountPill({
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${tones[tone]}`}
+      aria-label={`${count} ${label}`}
     >
       <span className="font-bold">{count}</span>
       {label}

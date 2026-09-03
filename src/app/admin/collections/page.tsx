@@ -12,6 +12,7 @@ import {
 import { CopyReminder } from "@/components/ShareActions";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
+import { DownloadCsvButton } from "@/components/DownloadCsvButton";
 import {
   formatMoney,
   describeBalance,
@@ -43,8 +44,9 @@ function buildReminder(
       ? `${appUrl}/p/${row.token}`
       : `${appUrl}/g/${row.token}`;
   const parts: string[] = [];
+  if (bank) parts.push(`Bank Transfer (preferred): ${bank}`);
+  parts.push("Prefer GCash? Message me and I'll send the details.");
   if (gcash) parts.push(`GCash: ${gcash}`);
-  if (bank) parts.push(`Bank Transfer: ${bank}`);
   const paymentLine =
     parts.length > 0 ? parts.join(" | ") + ". " : "";
   return `Hi ${row.label}, your Dinkering balance is ${formatMoney(d.amount)} owed. ${paymentLine}Please send payment and share your reference. View details: ${link}`;
@@ -63,6 +65,7 @@ export default async function CollectionsPage() {
     { data: groupBalances },
     { data: groups },
     { data: memberships },
+    { data: recentPayRows },
   ] = await Promise.all([
     supabase.from("app_settings").select("gcash_number, bank_transfer_details").single(),
     supabase
@@ -78,6 +81,11 @@ export default async function CollectionsPage() {
       .select("player_id, player_group_id, player_groups!inner(name, type)")
       .in("player_groups.type", ["couple", "family", "team_fund"])
       .is("end_date", null),
+    supabase
+      .from("payments")
+      .select("payment_code, payment_date, amount, payment_method, reference_number, notes, players(name), player_groups(name)")
+      .order("payment_date", { ascending: false })
+      .limit(500),
   ]);
 
   const gcash = (settings?.gcash_number as string | null) ?? null;
@@ -175,7 +183,7 @@ export default async function CollectionsPage() {
           >
             <Field
               label="GCash number"
-              hint="Shown in payment reminder messages"
+                hint="Optional. Players are asked to message you for GCash."
             >
               <input
                 name="gcash_number"
@@ -213,13 +221,38 @@ export default async function CollectionsPage() {
         </Card>
       </div>
 
-      <p className="mb-3">
+      <p className="mb-3 flex flex-wrap gap-2">
         <a
           href="/api/export/balances"
           className={buttonClass("secondary", "inline-flex")}
         >
           Export balances (CSV)
         </a>
+        <DownloadCsvButton
+          filename={`collections-${new Date().toISOString().slice(0, 7)}.csv`}
+          label="Export payments (CSV)"
+          rows={[
+            ["Code", "Date", "Payer", "Amount", "Method", "Reference", "Notes"],
+            ...((recentPayRows ?? []) as unknown as {
+              payment_code: string | null;
+              payment_date: string;
+              amount: number;
+              payment_method: string | null;
+              reference_number: string | null;
+              notes: string | null;
+              players: { name: string } | null;
+              player_groups: { name: string } | null;
+            }[]).map((p) => [
+              p.payment_code ?? "",
+              p.payment_date,
+              p.players?.name ?? p.player_groups?.name ?? "",
+              String(p.amount),
+              p.payment_method ?? "",
+              p.reference_number ?? "",
+              p.notes ?? "",
+            ]),
+          ]}
+        />
       </p>
 
       {rows.length === 0 ? (

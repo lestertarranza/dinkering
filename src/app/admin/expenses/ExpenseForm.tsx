@@ -40,7 +40,7 @@ export function ExpenseForm({
             name="total_cost"
             type="number"
             step="0.01"
-            min="0"
+            min="0.01"
             required
             className={inputClass}
           />

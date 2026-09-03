@@ -144,7 +144,7 @@ export default async function BookingsPage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card className="p-4 lg:order-2">
+        <Card className="p-4 lg:order-2" id="new-booking">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">
             Add booking
           </h2>

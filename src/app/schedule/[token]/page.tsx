@@ -117,7 +117,10 @@ export default async function PublicSchedule({
       </nav>
 
       {upcoming.length === 0 ? (
-        <EmptyState title="No upcoming games scheduled" />
+        <EmptyState
+          title="No upcoming games scheduled"
+          description="Check back soon — new open plays will appear here."
+        />
       ) : (
         <div className="space-y-4">
           {upcoming.map((b) => {

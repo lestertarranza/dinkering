@@ -90,10 +90,9 @@ function paymentSectionLines(
     }
   }
 
-  if (g) {
-    if (lines.length) lines.push("");
-    lines.push(`GCash: ${g}`);
-  }
+  if (lines.length) lines.push("");
+  lines.push("Prefer GCash? Message me and I'll send the details.");
+  if (g) lines.push(`GCash: ${g}`);
 
   if (lines.length) {
     lines.push("");

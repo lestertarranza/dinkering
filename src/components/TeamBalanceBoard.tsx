@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Card, EmptyState } from "@/components/ui";
+import { formatMoney } from "@/lib/format";
 
 export type BalanceBucket = "owe" | "credit" | "settled";
 
@@ -24,9 +25,11 @@ export type BalanceItem = {
 export function TeamBalanceBoard({
   items,
   minToShowSearch = 8,
+  totals,
 }: {
   items: BalanceItem[];
   minToShowSearch?: number;
+  totals?: { owed: number; credit: number };
 }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
@@ -44,7 +47,7 @@ export function TeamBalanceBoard({
 
   return (
     <>
-      {items.length >= minToShowSearch ? (
+        {items.length >= minToShowSearch ? (
         <div className="mb-3">
           <input
             type="search"
@@ -55,6 +58,17 @@ export function TeamBalanceBoard({
             aria-label="Search your name"
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-base shadow-sm outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400"
           />
+        </div>
+      ) : null}
+
+      {totals ? (
+        <div className="mb-3 flex flex-wrap justify-center gap-1.5">
+          <span className="inline-flex items-center rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-800 ring-1 ring-rose-200">
+            Total owed {formatMoney(totals.owed)}
+          </span>
+          <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+            {formatMoney(totals.credit)} in credit
+          </span>
         </div>
       ) : null}
 
