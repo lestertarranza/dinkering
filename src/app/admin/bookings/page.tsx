@@ -19,23 +19,39 @@ export default async function BookingsPage() {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: bookings }, { data: bookingShares }] = await Promise.all([
-    supabase
-      .from("bookings")
-      .select("*")
-      .order("play_date", { ascending: false }),
-    supabase
-      .from("booking_shares")
-      .select("id, booking_id, player_id, amount_owed"),
-  ]);
-
   type BookingShareRow = {
     id: string;
     booking_id: string;
     player_id: string | null;
     amount_owed: number;
   };
-  const allShareRows = (bookingShares ?? []) as BookingShareRow[];
+
+  // booking_shares grows one row per player per booking, so it can exceed
+  // PostgREST's 1000-row cap. Page through it, otherwise the aggregate "due"
+  // on this list silently understates bookings whose shares got truncated.
+  async function fetchAllBookingShares(): Promise<BookingShareRow[]> {
+    const pageSize = 1000;
+    const rows: BookingShareRow[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data } = await supabase
+        .from("booking_shares")
+        .select("id, booking_id, player_id, amount_owed")
+        .order("id")
+        .range(from, from + pageSize - 1);
+      const page = (data ?? []) as BookingShareRow[];
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
+  }
+
+  const [{ data: bookings }, allShareRows] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select("*")
+      .order("play_date", { ascending: false }),
+    fetchAllBookingShares(),
+  ]);
   const shareMap = new Map<string, number>();
   for (const s of allShareRows) {
     shareMap.set(

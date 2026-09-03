@@ -57,7 +57,7 @@ const statusToneMap: Record<string, Tone> = {
   cancelled: "neutral",
   refunded: "warning",
   going: "going",
-  maybe: "maybe",
+  maybe: "neutral",
   waitlist: "warning",
   not_going: "not_going",
   no_response: "neutral",
@@ -74,6 +74,7 @@ const statusToneMap: Record<string, Tone> = {
 const statusLabelMap: Record<string, string> = {
   for_booking: "For Booking",
   no_response: "No response",
+  maybe: "No response",
   not_going: "Not going",
   late_cancel: "Late cancel",
 };

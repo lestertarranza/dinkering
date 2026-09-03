@@ -29,13 +29,13 @@ import type { Booking, BookingAttendance, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Responded players (going / maybe / waitlist / not going) first, no-response last.
+// Responded players (going / waitlist / not going) first, no-response last.
 const RSVP_ORDER: Record<string, number> = {
   going: 0,
-  maybe: 1,
-  waitlist: 2,
-  not_going: 3,
-  no_response: 4,
+  waitlist: 1,
+  not_going: 2,
+  no_response: 3,
+  maybe: 3,
 };
 
 export default async function PublicBookingRoster({
@@ -77,10 +77,9 @@ export default async function PublicBookingRoster({
   });
 
   const going = roster.filter((r) => r.response_status === "going").length;
-  const maybe = roster.filter((r) => r.response_status === "maybe").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
   const waitlisted = roster.filter((r) => r.response_status === "waitlist").length;
-  const noResponse = roster.length - going - maybe - notGoing - waitlisted;
+  const noResponse = roster.length - going - notGoing - waitlisted;
 
   type CourtInfo = { court_number: string | null; start_time: string | null; end_time: string | null; hours: number; max_players: number };
   const courts = (courtsData ?? []) as CourtInfo[];
@@ -187,7 +186,6 @@ export default async function PublicBookingRoster({
                     tone="waitlist"
                   />
                 ) : null}
-                <CountPill count={maybe} label="maybe" tone="maybe" />
                 <CountPill count={notGoing} label="not going" tone="not_going" />
                 {noResponse > 0 ? (
                   <CountPill

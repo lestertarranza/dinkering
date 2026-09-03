@@ -441,11 +441,10 @@ export default async function BookingDetail({
                     .sort((a, b) => {
                       const rank = (r: typeof a) => {
                         if (r.actual_status === "attended") {
-                          // Sub-sort by RSVP: Going first, then Maybe, No response, Not going
+                          // Sub-sort by RSVP: Going first, then no response, not going
                           if (r.response_status === "going")        return 0;
-                          if (r.response_status === "maybe")        return 1;
-                          if (r.response_status === "no_response")  return 2;
-                          return 3; // not_going but attended
+                          if (r.response_status === "no_response" || r.response_status === "maybe") return 1;
+                          return 2; // not_going but attended
                         }
                         if (!r.actual_status && r.response_status === "going") return 4;
                         if (r.actual_status && r.actual_status !== "absent")   return 5;
@@ -522,12 +521,12 @@ export default async function BookingDetail({
                 <ul className="mb-4 space-y-2">
                   {[...roster]
                     .sort((a, b) => {
-                      // Responded first (going → maybe → not going), then no response
+                      // Responded first (going → waitlist → not going), then no response
                       const rsvpRank = (r: typeof a) => {
                         if (r.response_status === "going") return 0;
-                        if (r.response_status === "maybe") return 1;
+                        if (r.response_status === "waitlist") return 1;
                         if (r.response_status === "not_going") return 2;
-                        return 3; // no_response last
+                        return 3; // no_response / leftover maybe last
                       };
                       const dr = rsvpRank(a) - rsvpRank(b);
                       return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
