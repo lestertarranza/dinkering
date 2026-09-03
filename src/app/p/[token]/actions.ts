@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ResponseStatus } from "@/lib/types";
+import { logRsvpChange } from "@/lib/activity-log";
 
 export type RsvpState = {
   ok: boolean;
@@ -39,7 +40,7 @@ export async function submitRsvp(
   const db = createAdminClient();
   const { data: player } = await db
     .from("players")
-    .select("id")
+    .select("id, name")
     .eq("public_token", token)
     .single();
   if (!player) {
@@ -47,7 +48,7 @@ export async function submitRsvp(
   }
 
   const [{ data: booking }, { data: courts }] = await Promise.all([
-    db.from("bookings").select("play_date, start_time").eq("id", booking_id).single(),
+    db.from("bookings").select("play_date, start_time, booking_code").eq("id", booking_id).single(),
     db.from("booking_courts").select("max_players, start_time").eq("booking_id", booking_id),
   ]);
   const courtList = (courts ?? []) as { max_players: number; start_time: string | null }[];
@@ -124,6 +125,19 @@ export async function submitRsvp(
   }
 
   revalidatePath(`/p/${token}`);
+  revalidatePath(`/admin/players/${player.id}`);
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  if (prevStatus !== response_status) {
+    await logRsvpChange({
+      playerId: player.id,
+      bookingId: booking_id,
+      playerName: player.name as string,
+      bookingCode: (booking as { booking_code?: string | null } | null)?.booking_code,
+      from: prevStatus,
+      to: response_status,
+      via: "player",
+    });
+  }
   const waitlisted = response_status === "waitlist" && requested === "going";
   return {
     ok: true,

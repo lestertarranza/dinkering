@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
-import { logAdminAction } from "@/lib/activity-log";
+import { logAdminAction, logRsvpChange } from "@/lib/activity-log";
 import { uploadBookingConfirmations } from "@/lib/booking-confirmation";
 import {
   nextCode,
@@ -232,19 +232,34 @@ export async function setResponse(
     formData.get("response_status"),
   ) as ResponseStatus;
   const { supabase, user } = await requireAdmin();
+  const [{ data: player }, { data: booking }] = await Promise.all([
+    supabase.from("players").select("name").eq("id", player_id).single(),
+    supabase.from("bookings").select("booking_code").eq("id", booking_id).single(),
+  ]);
+  const { data: existing } = await supabase
+    .from("booking_attendance")
+    .select("response_status")
+    .eq("booking_id", booking_id)
+    .eq("player_id", player_id)
+    .single();
   await supabase
     .from("booking_attendance")
     .upsert(
       { booking_id, player_id, response_status },
       { onConflict: "booking_id,player_id" },
     );
-  await logAdminAction(supabase, user, {
-    entityType: "booking",
-    entityId: booking_id,
-    action: `Set RSVP to ${response_status}`,
-    details: player_id,
+  await logRsvpChange({
+    playerId: player_id,
+    bookingId: booking_id,
+    playerName: player?.name ?? null,
+    bookingCode: booking?.booking_code ?? null,
+    from: (existing?.response_status as string) ?? "no_response",
+    to: response_status,
+    actorEmail: user.email ?? null,
+    via: "admin",
   });
   revalidatePath(`/admin/bookings/${booking_id}`);
+  revalidatePath(`/admin/players/${player_id}`);
   return actionOk("RSVP updated.");
 }
 
