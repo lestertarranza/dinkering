@@ -218,6 +218,15 @@ export default async function TeamBoard({
     node: e.node,
   }));
 
+  const totals = {
+    owed: entries
+      .filter((e) => e.bucket === "owe")
+      .reduce((s, e) => s + e.amount, 0),
+    credit: entries
+      .filter((e) => e.bucket === "credit")
+      .reduce((s, e) => s + e.amount, 0),
+  };
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-6 text-[17px] leading-relaxed sm:text-base">
       <PublicPageHeader
@@ -231,9 +240,9 @@ export default async function TeamBoard({
       </nav>
 
       {items.length === 0 ? (
-        <EmptyState title="No players yet" />
+        <EmptyState title="No players on the board yet" description="Active players will show up here once they're added." />
       ) : (
-        <TeamBalanceBoard items={items} />
+        <TeamBalanceBoard items={items} totals={totals} />
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>

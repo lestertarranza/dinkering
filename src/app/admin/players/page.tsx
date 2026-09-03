@@ -11,7 +11,7 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { ActionForm } from "@/components/ActionForm";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
@@ -117,14 +117,14 @@ export default async function PlayersPage({
                     </Link>
                   </div>
                 </div>
-                <ActionForm
+                <ConfirmButton
                   action={regenerateRosterToken}
-                  pendingLabel="Regenerating team links…"
+                  message="Regenerate the public team token? Existing board and schedule links will stop working for anyone who already has them."
+                  variant="ghost"
+                  pendingLabel="Regenerating…"
                 >
-                  <SubmitButton variant="ghost" pendingLabel="Regenerating…">
-                    Regenerate token (invalidates both links)
-                  </SubmitButton>
-                </ActionForm>
+                  Regenerate token (invalidates both links)
+                </ConfirmButton>
               </div>
             ) : (
               <p className="text-xs text-rose-500">
@@ -172,6 +172,7 @@ export default async function PlayersPage({
               name="q"
               defaultValue={q}
               placeholder="Search players…"
+              data-admin-search
               className={`${inputClass} max-w-xs`}
             />
             <select name="status" defaultValue={status} className={`${inputClass} max-w-[10rem]`}>

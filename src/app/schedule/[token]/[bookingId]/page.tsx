@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
 import { PublicSearchList } from "@/components/PublicSearchList";
+import { AddToCalendar } from "@/components/AddToCalendar";
+import { getAppBaseUrl } from "@/lib/app-url";
 import { formatDate } from "@/lib/format";
 import {
   mergeCourts,
@@ -91,6 +93,7 @@ export default async function PublicBookingRoster({
     b.venue ? `Venue: ${b.venue}` : null,
     overallTime || null,
   ].filter(Boolean).join(" · ");
+  const appUrl = await getAppBaseUrl();
   const confirmationUrls =
     b.confirmation_urls && b.confirmation_urls.length > 0
       ? b.confirmation_urls
@@ -203,8 +206,26 @@ export default async function PublicBookingRoster({
         ) : null}
       </Card>
 
+      <div className="mb-4">
+        <AddToCalendar
+          filename={`${b.booking_code ?? "open-play"}.ics`}
+          event={{
+            uid: b.id,
+            title: `${b.booking_code ?? "Open play"} · Dinkering`,
+            playDate: b.play_date,
+            startTime: courts[0]?.start_time ?? b.start_time,
+            endTime: courts[0]?.end_time ?? b.end_time,
+            venue: b.venue,
+            url: `${appUrl}/schedule/${token}/${bookingId}`,
+          }}
+        />
+      </div>
+
       {roster.length === 0 ? (
-        <EmptyState title="No players invited yet" />
+        <EmptyState
+          title="No players invited yet"
+          description="Once the roster is added, you'll see who's going here."
+        />
       ) : (
         <PublicSearchList
           placeholder="Search a player…"

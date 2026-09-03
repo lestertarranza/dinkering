@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, type ActionState } from "@/lib/action-state";
+import { logAdminAction } from "@/lib/activity-log";
 import {
   nextCode,
   resolveWalletOwner,
@@ -157,7 +158,7 @@ export async function createPayment(
     String(formData.get("reference_number") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
 
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
   const result = await postPaymentRecord(supabase, {
     player_id,
     group_id,
@@ -185,6 +186,11 @@ export async function createPayment(
   revalidatePath("/admin");
   if (booking_id) revalidatePath(`/admin/bookings/${booking_id}`);
   if (team_expense_id) revalidatePath(`/admin/expenses/${team_expense_id}`);
+  await logAdminAction(supabase, user, {
+    entityType: "payment",
+    entityId: null,
+    action: `Recorded ${formatMoney(amount)} (${result.code})`,
+  });
 
   return {
     ok: true,

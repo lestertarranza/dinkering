@@ -17,8 +17,13 @@ import {
   overallCourtTimeRange,
   formatCourtTime,
 } from "@/lib/court-format";
-import { isRsvpLocked } from "@/lib/rsvp-lock";
+import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
 import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
+import { getOpenCharges } from "@/lib/payment-allocation";
+import { getAppBaseUrl } from "@/lib/app-url";
+import { HowToPay, BalancePlainSummary } from "@/components/HowToPay";
+import { AddToCalendar } from "@/components/AddToCalendar";
+import { UpcomingGamesFilter } from "@/components/UpcomingGamesFilter";
 import {
   PublicNavLink,
   PublicSection,
@@ -335,12 +340,31 @@ export default async function PlayerPortal({
 
   const { data: settings } = await db
     .from("app_settings")
-    .select("roster_token, roster_public")
+    .select("roster_token, roster_public, gcash_number, bank_transfer_details")
     .single();
   const teamToken =
     settings?.roster_public && settings.roster_token
       ? settings.roster_token
       : null;
+  const appUrl = await getAppBaseUrl();
+  const payBank = (settings?.bank_transfer_details as string | null) ?? null;
+  const payGcash = (settings?.gcash_number as string | null) ?? null;
+
+  const openCharges = pooled
+    ? [
+        ...(await getOpenCharges(db, {
+          player_id: null,
+          player_group_id: pooled.player_group_id,
+        })),
+        ...(await getOpenCharges(db, {
+          player_id: p.id,
+          player_group_id: null,
+        })),
+      ]
+    : await getOpenCharges(db, { player_id: p.id, player_group_id: null });
+  const openGameCount = openCharges.filter(
+    (c) => c.source_type === "booking_share",
+  ).length;
 
   const orderedLedger = [...ledger].sort((a, b) => {
     const byDate = a.entry_date.localeCompare(b.entry_date);
@@ -374,6 +398,50 @@ export default async function PlayerPortal({
         </h1>
         <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
       </header>
+
+      {upcoming[0] ? (() => {
+        const next = upcoming[0];
+        const cts = bookingCourtsMap.get(next.booking_id) ?? [];
+        const overall = overallCourtTimeRange(cts);
+        const cap = bookingCapMap.get(next.booking_id);
+        const rsvp =
+          next.response_status === "going"
+            ? "You're Going"
+            : next.response_status === "waitlist"
+              ? "You're waitlisted"
+              : next.response_status === "not_going"
+                ? "You're not going"
+                : "RSVP still open";
+        return (
+          <Card className="mb-5 border-emerald-200 bg-emerald-50/70 p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+              My next game
+            </p>
+            <p className={`mt-1 text-lg ${publicPrimaryText}`}>
+              {formatDate(next.bookings.play_date)}
+              {next.bookings.booking_code
+                ? ` · ${next.bookings.booking_code}`
+                : ""}
+            </p>
+            <p className={`mt-0.5 ${publicHintText}`}>
+              {[next.bookings.venue, overall].filter(Boolean).join(" · ") ||
+                "Time TBA"}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-emerald-800">
+              {rsvp}
+              {cap && cap.totalCap > 0
+                ? ` · ${cap.goingCount}/${cap.totalCap} going`
+                : ""}
+            </p>
+            <a
+              href={`#booking-${next.bookings.id}`}
+              className="mt-2 inline-flex min-h-10 items-center text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2"
+            >
+              Jump to RSVP
+            </a>
+          </Card>
+        );
+      })() : null}
 
       {pooled ? (
         /* ── Pooled player: two clearly labelled wallet panels ── */
@@ -492,11 +560,33 @@ export default async function PlayerPortal({
           ) : (
             <>
               <p className={`text-base ${publicMetaText}`}>Your balance</p>
-              <p className="mt-1 text-4xl font-bold text-slate-800">Settled 🎉</p>
+              <p className="mt-1 text-4xl font-bold text-slate-800">You&apos;re all settled 🎉</p>
+              <p className="mt-1.5 text-sm text-slate-600">
+                Nothing outstanding. See you on court.
+              </p>
             </>
           )}
+          {d.tone === "collect" ? (
+            <BalancePlainSummary
+              amountOwed={d.amount}
+              openGames={openGameCount}
+            />
+          ) : null}
         </Card>
       )}
+
+      {pooled && d.tone === "collect" ? (
+        <p className="mb-3 px-1">
+          <BalancePlainSummary
+            amountOwed={d.amount}
+            openGames={openGameCount}
+          />
+        </p>
+      ) : null}
+
+      <div className="mb-5">
+        <HowToPay bank={payBank} gcash={payGcash} />
+      </div>
 
       {teamToken ? (
         <nav className="mb-5 flex flex-wrap justify-center gap-2">
@@ -507,10 +597,13 @@ export default async function PlayerPortal({
 
       <PublicSection title="Upcoming games">
         {upcoming.length === 0 ? (
-          <EmptyState title="No upcoming games" />
+          <EmptyState
+            title="No upcoming games yet"
+            description="Nothing on the calendar right now. The next session will show up here as soon as it's booked."
+          />
         ) : (
-          <div className="space-y-3">
-            {upcoming.map((a) => {
+          <UpcomingGamesFilter
+            items={upcoming.map((a) => {
               const cts = bookingCourtsMap.get(a.booking_id) ?? [];
               const merged = mergeCourts(cts);
               const overall = overallCourtTimeRange(cts);
@@ -521,13 +614,18 @@ export default async function PlayerPortal({
               const cap = bookingCapMap.get(a.booking_id);
               const slotsLeft =
                 cap && cap.totalCap > 0 ? Math.max(0, cap.totalCap - cap.goingCount) : null;
+              const lockAt = getRsvpLockAt(
+                a.bookings.play_date,
+                cts,
+                a.bookings.start_time,
+              );
               const locked = isRsvpLocked(
                 a.bookings.play_date,
                 cts,
                 a.bookings.start_time,
               );
-              return (
-                <Card key={a.id} id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
+              const node = (
+                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <p className={`text-lg ${publicPrimaryText}`}>
@@ -594,11 +692,26 @@ export default async function PlayerPortal({
                       </div>
                     );
                   })()}
+                  <div className="mb-3">
+                    <AddToCalendar
+                      filename={`${a.bookings.booking_code ?? "open-play"}.ics`}
+                      event={{
+                        uid: a.bookings.id,
+                        title: `${a.bookings.booking_code ?? "Open play"} · Dinkering`,
+                        playDate: a.bookings.play_date,
+                        startTime: cts[0]?.start_time ?? a.bookings.start_time,
+                        endTime: cts[0]?.end_time ?? a.bookings.end_time,
+                        venue: a.bookings.venue,
+                        url: `${appUrl}/p/${token}#booking-${a.bookings.id}`,
+                      }}
+                    />
+                  </div>
                   <RsvpForm
                     token={token}
                     bookingId={a.bookings.id}
                     currentStatus={a.response_status}
                     locked={locked}
+                    lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
                     isFull={(() => {
                       const cap = bookingCapMap.get(a.booking_id);
                       return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
@@ -606,14 +719,18 @@ export default async function PlayerPortal({
                   />
                 </Card>
               );
+              return { key: a.id, status: a.response_status, node };
             })}
-          </div>
+          />
         )}
       </PublicSection>
 
       <PublicSection title="Charges & payments">
         {fullStatement.length === 0 ? (
-          <EmptyState title="No activity yet" />
+          <EmptyState
+            title="No charges or payments yet"
+            description="When games are split and payments come in, they'll show up here."
+          />
         ) : (
           <>
             <Card className="divide-y divide-slate-100 overflow-hidden">
@@ -797,7 +914,10 @@ export default async function PlayerPortal({
 
       <PublicSection title="Appearance history">
         {history.length === 0 ? (
-          <EmptyState title="No past games yet" />
+          <EmptyState
+            title="No past games yet"
+            description="Games you've been invited to will collect here after they wrap."
+          />
         ) : (
           <Card className="divide-y divide-slate-100 overflow-hidden">
             {history.map((a) => (

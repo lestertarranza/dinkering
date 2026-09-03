@@ -54,3 +54,16 @@ export function isRsvpLocked(
   const at = getRsvpLockAt(playDate, courts, fallbackStart);
   return at != null && now >= at.getTime();
 }
+
+/** Human countdown until lock, e.g. "Locks in 5h 20m". Null if already locked. */
+export function formatLockCountdown(lockAt: Date, now = Date.now()): string | null {
+  const ms = lockAt.getTime() - now;
+  if (ms <= 0) return null;
+  const totalMins = Math.max(1, Math.round(ms / 60000));
+  const days = Math.floor(totalMins / (60 * 24));
+  const hours = Math.floor((totalMins % (60 * 24)) / 60);
+  const mins = totalMins % 60;
+  if (days > 0) return `Locks in ${days}d ${hours}h`;
+  if (hours > 0) return `Locks in ${hours}h ${mins}m`;
+  return `Locks in ${mins}m`;
+}

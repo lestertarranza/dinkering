@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
+import { logAdminAction } from "@/lib/activity-log";
 import { uploadBookingConfirmations } from "@/lib/booking-confirmation";
 import {
   nextCode,
@@ -119,7 +120,7 @@ export async function setBookingStatus(
 ): Promise<ActionState> {
   const id = String(formData.get("id"));
   const status = String(formData.get("status")) as BookingStatus;
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
   await supabase.from("bookings").update({ status }).eq("id", id);
 
   // When a game is marked Played, treat everyone who committed as "Going" as
@@ -134,6 +135,12 @@ export async function setBookingStatus(
       .eq("response_status", "going")
       .is("actual_status", null);
   }
+
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: id,
+    action: `Marked ${status}`,
+  });
 
   revalidatePath(`/admin/bookings/${id}`);
   revalidatePath("/admin/bookings");
@@ -224,15 +231,84 @@ export async function setResponse(
   const response_status = String(
     formData.get("response_status"),
   ) as ResponseStatus;
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
   await supabase
     .from("booking_attendance")
     .upsert(
       { booking_id, player_id, response_status },
       { onConflict: "booking_id,player_id" },
     );
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: booking_id,
+    action: `Set RSVP to ${response_status}`,
+    details: player_id,
+  });
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk("RSVP updated.");
+}
+
+/** Set RSVP for every checked player on the roster. */
+export async function bulkSetResponse(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const booking_id = String(formData.get("booking_id"));
+  const response_status = String(
+    formData.get("response_status"),
+  ) as ResponseStatus;
+  const ids = formData.getAll("player_ids").map(String).filter(Boolean);
+  if (!booking_id) return actionErr("Missing booking.");
+  if (ids.length === 0) return actionErr("Select at least one player.");
+  const allowed: ResponseStatus[] = ["going", "not_going", "no_response", "waitlist"];
+  if (!allowed.includes(response_status)) return actionErr("Invalid RSVP.");
+  const { supabase, user } = await requireAdmin();
+  const rows = ids.map((player_id) => ({
+    booking_id,
+    player_id,
+    response_status,
+  }));
+  await supabase.from("booking_attendance").upsert(rows, {
+    onConflict: "booking_id,player_id",
+  });
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: booking_id,
+    action: `Bulk RSVP → ${response_status}`,
+    details: `${ids.length} player(s)`,
+  });
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(`Set ${ids.length} player${ids.length === 1 ? "" : "s"} to ${response_status}.`);
+}
+
+/** Mark every still-unconfirmed roster row as Absent. */
+export async function markRemainingAbsent(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const booking_id = String(formData.get("booking_id"));
+  if (!booking_id) return actionErr("Missing booking.");
+  const { supabase, user } = await requireAdmin();
+  const { data, error } = await supabase
+    .from("booking_attendance")
+    .update({ actual_status: "absent", confirmed_by_admin: true })
+    .eq("booking_id", booking_id)
+    .is("actual_status", null)
+    .select("id");
+  if (error) return actionErr(error.message);
+  const n = (data ?? []).length;
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: booking_id,
+    action: "Marked remaining Absent",
+    details: `${n} player(s)`,
+  });
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(
+    n === 0
+      ? "Everyone already has an attendance status."
+      : `Marked ${n} remaining player${n === 1 ? "" : "s"} Absent.`,
+  );
 }
 
 /** Confirm actual attendance after the game. */
@@ -425,13 +501,18 @@ export async function deleteBooking(
   formData: FormData,
 ): Promise<ActionState> {
   const id = String(formData.get("id"));
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
   const { data: shares } = await supabase
     .from("booking_shares")
     .select("id")
     .eq("booking_id", id);
   if ((shares ?? []).length > 0) {
     await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
+    await logAdminAction(supabase, user, {
+      entityType: "booking",
+      entityId: id,
+      action: "Cancelled (had shares)",
+    });
     revalidatePath(`/admin/bookings/${id}`);
     revalidatePath("/admin/bookings");
     return actionOk(

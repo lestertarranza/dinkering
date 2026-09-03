@@ -91,8 +91,19 @@ export function StatusBadge({
   const label =
     statusLabelMap[status] ??
     status.charAt(0).toUpperCase() + status.slice(1);
+  const icon =
+    status === "going" || status === "attended"
+      ? "✓ "
+      : status === "not_going" || status === "absent"
+        ? "✕ "
+        : status === "waitlist"
+          ? "⏳ "
+          : status === "no_response"
+            ? "○ "
+            : "";
   return (
     <Badge tone={tone} size={size}>
+      <span aria-hidden>{icon}</span>
       {label}
     </Badge>
   );
