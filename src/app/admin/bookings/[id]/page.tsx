@@ -219,7 +219,7 @@ export default async function BookingDetail({
   );
 
   return (
-    <div>
+    <div className="pb-24">
       <PageHeader
         title={`${b.booking_code ?? "Booking"}`}
         description={`${formatDate(b.play_date)}${
@@ -352,30 +352,6 @@ export default async function BookingDetail({
               </ActionForm>
             );
           })}
-      </div>
-
-      <div className="sticky bottom-3 z-20 mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur md:bottom-auto md:top-3">
-        {b.status === "booked" ? (
-          <ActionForm
-            action={setBookingStatus}
-            className="inline"
-            pendingLabel="Marking Played…"
-            hidden={
-              <>
-                <input type="hidden" name="id" value={b.id} />
-                <input type="hidden" name="status" value="played" />
-              </>
-            }
-          >
-            <SubmitButton pendingLabel="…">Mark Played</SubmitButton>
-          </ActionForm>
-        ) : null}
-        <a href="#edit-booking" className={buttonClass("secondary")}>
-          Save / edit
-        </a>
-        <a href="#add-court" className={buttonClass("secondary")}>
-          Add court
-        </a>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -984,8 +960,12 @@ export default async function BookingDetail({
           </Card>
           <Card>
             <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
-              Activity
+              Activity log
             </h2>
+            <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+              RSVP changes for this booking (from a player&apos;s private page or from
+              this roster).
+            </p>
             <ActivityLog rows={activityRows} />
           </Card>
           <Card className="border-rose-200 p-4">
@@ -1001,6 +981,36 @@ export default async function BookingDetail({
               Delete / cancel booking
             </ConfirmButton>
           </Card>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-6px_16px_rgba(15,23,42,0.12)] backdrop-blur md:left-60">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
+          <p className="mr-auto text-sm font-medium text-slate-600">
+            {b.booking_code ?? "Booking"} ·{" "}
+            <span className="capitalize">{b.status.replaceAll("_", " ")}</span>
+          </p>
+          {b.status === "booked" || b.status === "for_booking" ? (
+            <ActionForm
+              action={setBookingStatus}
+              className="inline"
+              pendingLabel="Marking Played…"
+              hidden={
+                <>
+                  <input type="hidden" name="id" value={b.id} />
+                  <input type="hidden" name="status" value="played" />
+                </>
+              }
+            >
+              <SubmitButton pendingLabel="…">Mark Played</SubmitButton>
+            </ActionForm>
+          ) : null}
+          <a href="#edit-booking" className={buttonClass("secondary")}>
+            Save / edit
+          </a>
+          <a href="#add-court" className={buttonClass("secondary")}>
+            Add court
+          </a>
         </div>
       </div>
     </div>

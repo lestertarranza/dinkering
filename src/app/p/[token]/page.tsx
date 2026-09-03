@@ -626,30 +626,27 @@ export default async function PlayerPortal({
               );
               const node = (
                 <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      <p className={`text-lg ${publicPrimaryText}`}>
-                        {formatDate(a.bookings.play_date)}
+                  <div className="mb-3">
+                    <p className={`text-lg ${publicPrimaryText}`}>
+                      {formatDate(a.bookings.play_date)}
+                    </p>
+                    {a.bookings.booking_code ? (
+                      <p className={`mt-0.5 text-sm font-medium text-emerald-800`}>
+                        {a.bookings.booking_code}
                       </p>
-                      {a.bookings.booking_code ? (
-                        <p className={`mt-0.5 text-sm font-medium text-emerald-800`}>
-                          {a.bookings.booking_code}
-                        </p>
-                      ) : null}
-                      {venueLine ? (
-                        <p className={`mt-1 ${publicHintText}`}>{venueLine}</p>
-                      ) : null}
-                      {merged.length > 0 ? (
-                        <div className="mt-1 space-y-0.5">
-                          {merged.map((m, i) => (
-                            <p key={i} className={publicHintText}>
-                              {m.label}: {formatCourtTime(m) || "—"}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                    <StatusBadge status={a.response_status} size="md" />
+                    ) : null}
+                    {venueLine ? (
+                      <p className={`mt-1 ${publicHintText}`}>{venueLine}</p>
+                    ) : null}
+                    {merged.length > 0 ? (
+                      <div className="mt-1 space-y-0.5">
+                        {merged.map((m, i) => (
+                          <p key={i} className={publicHintText}>
+                            {m.label}: {formatCourtTime(m) || "—"}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   {/* Total capacity + slots remaining */}
                   {cap && cap.totalCap > 0 ? (
@@ -705,6 +702,10 @@ export default async function PlayerPortal({
                         url: `${appUrl}/p/${token}#booking-${a.bookings.id}`,
                       }}
                     />
+                  </div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className={`text-sm ${publicHintText}`}>Your RSVP</span>
+                    <StatusBadge status={a.response_status} size="md" />
                   </div>
                   <RsvpForm
                     token={token}

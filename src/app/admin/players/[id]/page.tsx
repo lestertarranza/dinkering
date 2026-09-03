@@ -322,15 +322,19 @@ export default async function PlayerDetail({
               transferItems={ledgerTransferItems}
             />
           </Card>
-          <Card>
-            <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
-              Activity
-            </h2>
-            <ActivityLog rows={activityRows} />
-          </Card>
         </div>
 
         <div className="space-y-5">
+          <Card>
+            <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+              Activity log
+            </h2>
+            <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+              RSVP changes for this player (from their private page or when you
+              change RSVP on a booking).
+            </p>
+            <ActivityLog rows={activityRows} />
+          </Card>
           {/* Edit */}
           <Card className="p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
