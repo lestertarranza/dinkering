@@ -92,14 +92,13 @@ export default async function PublicSchedule({
 
   const stats = new Map<
     string,
-    { invited: number; going: number; maybe: number; notGoing: number; waitlisted: number }
+    { invited: number; going: number; notGoing: number; waitlisted: number }
   >();
   for (const a of attendance) {
     const bid = a.booking_id as string;
-    const s = stats.get(bid) ?? { invited: 0, going: 0, maybe: 0, notGoing: 0, waitlisted: 0 };
+    const s = stats.get(bid) ?? { invited: 0, going: 0, notGoing: 0, waitlisted: 0 };
     s.invited += 1;
     if (a.response_status === "going") s.going += 1;
-    else if (a.response_status === "maybe") s.maybe += 1;
     else if (a.response_status === "not_going") s.notGoing += 1;
     else if (a.response_status === "waitlist") s.waitlisted += 1;
     stats.set(bid, s);
@@ -131,7 +130,7 @@ export default async function PublicSchedule({
               : merged.reduce((s, m) => s + m.maxPlayers, 0);
             const going = st?.going ?? 0;
             const noResponse = st
-              ? st.invited - st.going - st.maybe - st.notGoing - st.waitlisted
+              ? st.invited - st.going - st.notGoing - st.waitlisted
               : 0;
             const urls =
               b.confirmation_urls && b.confirmation_urls.length > 0
@@ -205,9 +204,6 @@ export default async function PublicSchedule({
                           label="waitlisted"
                           tone="waitlist"
                         />
-                      ) : null}
-                      {st.maybe > 0 ? (
-                        <CountPill count={st.maybe} label="maybe" tone="maybe" />
                       ) : null}
                       {st.notGoing > 0 ? (
                         <CountPill

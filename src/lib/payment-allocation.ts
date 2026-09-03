@@ -35,30 +35,63 @@ const CHARGE_TYPES = new Set<SourceType>([
   "manual_adjustment",
 ]);
 
-/** Fetch a wallet's non-voided ledger rows, oldest first. */
+const PAGE_SIZE = 1000;
+
+/**
+ * Fetch every row for a query, transparently paging past PostgREST's default
+ * 1000-row cap. The caller supplies a factory that applies `.range(from, to)`
+ * to an already-ordered query; the query MUST include a deterministic order
+ * (e.g. an `id` tiebreaker) so pages don't skip or duplicate rows.
+ */
+async function fetchAllRows<T>(
+  makeQuery: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await makeQuery(from, from + PAGE_SIZE - 1);
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
+/** Split an array into chunks of at most `size`. */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Fetch a wallet's non-voided ledger rows, oldest first (fully paginated). */
 async function fetchWalletLedger(
   db: SupabaseClient,
   wallet: Wallet,
 ): Promise<LedgerRow[]> {
-  let query = db
-    .from("ledger_entries")
-    .select(
-      "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount",
-    )
-    .eq("voided", false)
-    .order("entry_date")
-    .order("created_at");
+  const column = wallet.player_group_id
+    ? "player_group_id"
+    : wallet.player_id
+      ? "player_id"
+      : null;
+  const value = wallet.player_group_id ?? wallet.player_id;
+  if (!column || !value) return [];
 
-  if (wallet.player_group_id) {
-    query = query.eq("player_group_id", wallet.player_group_id);
-  } else if (wallet.player_id) {
-    query = query.eq("player_id", wallet.player_id);
-  } else {
-    return [];
-  }
-
-  const { data } = await query;
-  return (data ?? []) as LedgerRow[];
+  return fetchAllRows<LedgerRow>((from, to) =>
+    db
+      .from("ledger_entries")
+      .select(
+        "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount",
+      )
+      .eq("voided", false)
+      .eq(column, value)
+      .order("entry_date")
+      .order("created_at")
+      .order("id")
+      .range(from, to),
+  );
 }
 
 /**
@@ -319,39 +352,19 @@ export async function computeBookingShareRemaining(
     if (w.player_group_id) walletGIds.add(w.player_group_id);
   }
 
-  const [{ data: pLedger }, { data: gLedger }] = await Promise.all([
-    walletPIds.size
-      ? db
-          .from("ledger_entries")
-          .select(
-            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_id",
-          )
-          .in("player_id", [...walletPIds])
-          .eq("voided", false)
-          .order("entry_date")
-          .order("created_at")
-      : Promise.resolve({ data: [] }),
-    walletGIds.size
-      ? db
-          .from("ledger_entries")
-          .select(
-            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_group_id",
-          )
-          .in("player_group_id", [...walletGIds])
-          .eq("voided", false)
-          .order("entry_date")
-          .order("created_at")
-      : Promise.resolve({ data: [] }),
+  const [pLedger, gLedger] = await Promise.all([
+    fetchLedgerByOwners(db, "player_id", [...walletPIds]),
+    fetchLedgerByOwners(db, "player_group_id", [...walletGIds]),
   ]);
 
   const walletEntries = new Map<string, LedgerRow[]>();
-  for (const row of (pLedger ?? []) as (LedgerRow & { player_id: string })[]) {
+  for (const row of pLedger as (LedgerRow & { player_id: string })[]) {
     const key = `p:${row.player_id}`;
     const list = walletEntries.get(key) ?? [];
     list.push(row);
     walletEntries.set(key, list);
   }
-  for (const row of (gLedger ?? []) as (LedgerRow & {
+  for (const row of gLedger as (LedgerRow & {
     player_group_id: string;
   })[]) {
     const key = `g:${row.player_group_id}`;
@@ -371,6 +384,38 @@ export async function computeBookingShareRemaining(
 }
 
 /**
+ * Load every non-voided ledger row for a set of wallet owners (players or
+ * groups), fully paginated and chunked so neither the PostgREST 1000-row cap
+ * nor a huge `IN (...)` list truncates the result. Each row carries its owner
+ * column so callers can bucket by wallet.
+ */
+async function fetchLedgerByOwners(
+  db: SupabaseClient,
+  column: "player_id" | "player_group_id",
+  ids: string[],
+): Promise<LedgerRow[]> {
+  if (ids.length === 0) return [];
+  const all: LedgerRow[] = [];
+  for (const ids2 of chunk(ids, 200)) {
+    const rows = await fetchAllRows<LedgerRow>((from, to) =>
+      db
+        .from("ledger_entries")
+        .select(
+          `entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, ${column}`,
+        )
+        .in(column, ids2)
+        .eq("voided", false)
+        .order("entry_date")
+        .order("created_at")
+        .order("id")
+        .range(from, to),
+    );
+    all.push(...rows);
+  }
+  return all;
+}
+
+/**
  * Compute the still-open (unpaid) amount for each team-expense share, keyed by
  * team_expense_share id. Mirrors {@link computeBookingShareRemaining}: it finds
  * the wallet each share was actually charged to (reading the ledger directly, so
@@ -386,59 +431,48 @@ export async function computeExpenseShareRemaining(
   if (shareIds.length === 0) return remainingByShare;
 
   // Find which wallet each expense share was charged to (the debit rows).
-  const { data: chargeRows } = await db
-    .from("ledger_entries")
-    .select("player_id, player_group_id")
-    .eq("source_type", "team_expense_share")
-    .eq("voided", false)
-    .gt("debit_amount", 0)
-    .in("source_id", shareIds);
+  const chargeRows: { player_id: string | null; player_group_id: string | null }[] =
+    [];
+  for (const ids2 of chunk(shareIds, 200)) {
+    const rows = await fetchAllRows<{
+      player_id: string | null;
+      player_group_id: string | null;
+    }>((from, to) =>
+      db
+        .from("ledger_entries")
+        .select("player_id, player_group_id, id")
+        .eq("source_type", "team_expense_share")
+        .eq("voided", false)
+        .gt("debit_amount", 0)
+        .in("source_id", ids2)
+        .order("id")
+        .range(from, to),
+    );
+    chargeRows.push(...rows);
+  }
 
   const walletPIds = new Set<string>();
   const walletGIds = new Set<string>();
-  for (const r of (chargeRows ?? []) as {
-    player_id: string | null;
-    player_group_id: string | null;
-  }[]) {
+  for (const r of chargeRows) {
     if (r.player_group_id) walletGIds.add(r.player_group_id);
     else if (r.player_id) walletPIds.add(r.player_id);
   }
   if (walletPIds.size === 0 && walletGIds.size === 0) return remainingByShare;
 
-  // Load full non-voided ledgers for those wallets (batched into two queries).
-  const [{ data: pLedger }, { data: gLedger }] = await Promise.all([
-    walletPIds.size
-      ? db
-          .from("ledger_entries")
-          .select(
-            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_id",
-          )
-          .in("player_id", [...walletPIds])
-          .eq("voided", false)
-          .order("entry_date")
-          .order("created_at")
-      : Promise.resolve({ data: [] }),
-    walletGIds.size
-      ? db
-          .from("ledger_entries")
-          .select(
-            "entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_group_id",
-          )
-          .in("player_group_id", [...walletGIds])
-          .eq("voided", false)
-          .order("entry_date")
-          .order("created_at")
-      : Promise.resolve({ data: [] }),
+  // Load full non-voided ledgers for those wallets (fully paginated).
+  const [pLedger, gLedger] = await Promise.all([
+    fetchLedgerByOwners(db, "player_id", [...walletPIds]),
+    fetchLedgerByOwners(db, "player_group_id", [...walletGIds]),
   ]);
 
   const walletEntries = new Map<string, LedgerRow[]>();
-  for (const row of (pLedger ?? []) as (LedgerRow & { player_id: string })[]) {
+  for (const row of pLedger as (LedgerRow & { player_id: string })[]) {
     const key = `p:${row.player_id}`;
     const list = walletEntries.get(key) ?? [];
     list.push(row);
     walletEntries.set(key, list);
   }
-  for (const row of (gLedger ?? []) as (LedgerRow & {
+  for (const row of gLedger as (LedgerRow & {
     player_group_id: string;
   })[]) {
     const key = `g:${row.player_group_id}`;
