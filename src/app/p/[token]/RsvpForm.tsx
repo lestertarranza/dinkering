@@ -30,13 +30,9 @@ function RsvpButton({
         : value === "going"
           ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
           : "bg-amber-50 text-amber-900 ring-1 ring-amber-200"
-      : value === "maybe"
-        ? selected
-          ? "bg-amber-500 text-white ring-2 ring-amber-300"
-          : "bg-amber-50 text-amber-900 ring-1 ring-amber-200"
-        : selected
-          ? "bg-rose-600 text-white ring-2 ring-rose-300"
-          : "bg-rose-50 text-rose-800 ring-1 ring-rose-200";
+      : selected
+        ? "bg-rose-600 text-white ring-2 ring-rose-300"
+        : "bg-rose-50 text-rose-800 ring-1 ring-rose-200";
 
   return (
     <button
@@ -88,12 +84,6 @@ function RsvpControls({
             Going · Locked 🔒
           </button>
           <RsvpButton
-            value="maybe"
-            label="Maybe"
-            current={currentStatus}
-            disabled
-          />
-          <RsvpButton
             value="not_going"
             label="Not going"
             current={currentStatus}
@@ -120,7 +110,6 @@ function RsvpControls({
         ) : (
           <RsvpButton value="going" label="Going" current={currentStatus} />
         )}
-        <RsvpButton value="maybe" label="Maybe" current={currentStatus} />
         <RsvpButton value="not_going" label="Not going" current={currentStatus} />
       </div>
       {isFull && !onWaitlist && currentStatus !== "going" ? (

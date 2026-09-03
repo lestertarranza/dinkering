@@ -565,7 +565,6 @@ export default async function BookingDetail({
                             className="rounded-md border border-slate-300 px-2 py-1 text-xs"
                           >
                             <option value="going">Going</option>
-                            <option value="maybe">Maybe</option>
                             <option value="not_going">Not going</option>
                             <option value="no_response">No response</option>
                           </select>

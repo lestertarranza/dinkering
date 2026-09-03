@@ -12,7 +12,7 @@ export async function submitRsvp(formData: FormData) {
   const requested = String(formData.get("response_status") || "") as ResponseStatus;
   if (!token || !booking_id) return;
   // Only accept statuses the portal can legitimately submit.
-  const VALID_REQUESTS: ResponseStatus[] = ["going", "maybe", "not_going", "waitlist"];
+  const VALID_REQUESTS: ResponseStatus[] = ["going", "not_going", "waitlist"];
   if (!VALID_REQUESTS.includes(requested)) return;
 
   const db = createAdminClient();
