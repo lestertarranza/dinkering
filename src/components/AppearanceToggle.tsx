@@ -51,35 +51,3 @@ export function AppearanceToggle({ compact = false }: { compact?: boolean }) {
     </button>
   );
 }
-
-export function InstallHint() {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    const nav = window.navigator as Navigator & { standalone?: boolean };
-    const standalone =
-      nav.standalone === true ||
-      window.matchMedia("(display-mode: standalone)").matches;
-    const dismissed = localStorage.getItem("dinkering-a2hs") === "1";
-    const isIos = /iphone|ipad|ipod/i.test(nav.userAgent);
-    setShow(!standalone && !dismissed && isIos);
-  }, []);
-  if (!show) return null;
-  return (
-    <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900">
-      <p>
-        Add Dinkering to your Home Screen: tap Share, then{" "}
-        <span className="font-semibold">Add to Home Screen</span>.
-      </p>
-      <button
-        type="button"
-        className="mt-1 text-xs font-semibold underline"
-        onClick={() => {
-          localStorage.setItem("dinkering-a2hs", "1");
-          setShow(false);
-        }}
-      >
-        Dismiss
-      </button>
-    </div>
-  );
-}

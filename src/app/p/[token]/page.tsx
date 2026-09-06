@@ -35,7 +35,7 @@ import {
   GoingNames,
 } from "@/components/public-ui";
 import { PaymentProofForm } from "@/components/PaymentProofForm";
-import { AppearanceToggle, InstallHint } from "@/components/AppearanceToggle";
+import { AppearanceToggle } from "@/components/AppearanceToggle";
 import {
   fetchGoingAndWaitlist,
   goingNamesForBooking,
@@ -417,7 +417,6 @@ export default async function PlayerPortal({
       <div className="mb-3 flex justify-end">
         <AppearanceToggle />
       </div>
-      <InstallHint />
       <header className="mb-5 text-center">
         <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
           🏓

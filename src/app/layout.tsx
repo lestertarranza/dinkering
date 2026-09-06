@@ -16,11 +16,6 @@ export const metadata: Metadata = {
   title: "Dinkering Pickleball Team Manager",
   description:
     "Ledger-based team manager for pickleball court bookings, attendance, payments, and shared expenses.",
-  appleWebApp: {
-    capable: true,
-    title: "Dinkering",
-    statusBarStyle: "default",
-  },
 };
 
 export default function RootLayout({
