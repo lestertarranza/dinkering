@@ -14,7 +14,7 @@ export type OpenCharge = {
   remaining: number;
 };
 
-type Wallet = {
+export type Wallet = {
   player_id: string | null;
   player_group_id: string | null;
 };
@@ -161,6 +161,63 @@ export async function getOpenCharges(
   const open = computeOpenCharges(rows);
   await enrichChargeLabels(db, open);
   return open;
+}
+
+export function walletKey(wallet: Wallet): string {
+  if (wallet.player_group_id) return `g:${wallet.player_group_id}`;
+  if (wallet.player_id) return `p:${wallet.player_id}`;
+  return "";
+}
+
+/** FIFO open charges from already-loaded ledger rows. No extra DB. */
+export function openChargesFromLedger(rows: LedgerRow[]): OpenCharge[] {
+  return computeOpenCharges(rows);
+}
+
+/** Friendly booking/expense labels for a single wallet's open charges. */
+export async function attachChargeLabels(
+  db: SupabaseClient,
+  charges: OpenCharge[],
+): Promise<OpenCharge[]> {
+  await enrichChargeLabels(db, charges);
+  return charges;
+}
+
+/**
+ * All non-voided ledger rows, grouped by wallet. One paginated scan instead
+ * of N per-wallet queries (the transfer page used to do the latter).
+ */
+export async function fetchActiveLedgerByWallet(
+  db: SupabaseClient,
+): Promise<Map<string, LedgerRow[]>> {
+  const rows = await fetchAllRows<
+    LedgerRow & { player_id: string | null; player_group_id: string | null }
+  >((from, to) =>
+    db
+      .from("ledger_entries")
+      .select(
+        "id, entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, player_id, player_group_id",
+      )
+      .eq("voided", false)
+      .order("entry_date")
+      .order("created_at")
+      .order("id")
+      .range(from, to),
+  );
+
+  const map = new Map<string, LedgerRow[]>();
+  for (const row of rows) {
+    const key = row.player_group_id
+      ? `g:${row.player_group_id}`
+      : row.player_id
+        ? `p:${row.player_id}`
+        : "";
+    if (!key) continue;
+    const list = map.get(key) ?? [];
+    list.push(row);
+    map.set(key, list);
+  }
+  return map;
 }
 
 /**

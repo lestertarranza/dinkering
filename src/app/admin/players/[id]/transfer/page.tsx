@@ -3,19 +3,18 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, PageHeader, buttonClass } from "@/components/ui";
 import { resolveWalletOwner, resolveWalletOwnersForPlayers } from "@/lib/ledger";
-import { getOpenCharges } from "@/lib/payment-allocation";
+import {
+  attachChargeLabels,
+  fetchActiveLedgerByWallet,
+  openChargesFromLedger,
+  walletKey,
+} from "@/lib/payment-allocation";
 import { SETTLE_TOLERANCE } from "@/lib/format";
 import type { Player, PlayerGroup } from "@/lib/types";
 import { TransferForm } from "./TransferForm";
 import { BulkCollectForm, type BulkSource } from "./BulkCollectForm";
 
 export const dynamic = "force-dynamic";
-
-function walletKey(w: { player_id: string | null; player_group_id: string | null }) {
-  if (w.player_group_id) return `g:${w.player_group_id}`;
-  if (w.player_id) return `p:${w.player_id}`;
-  return "";
-}
 
 export default async function TransferPage({
   params,
@@ -26,7 +25,7 @@ export default async function TransferPage({
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [{ data: player }, { data: allPlayers }, { data: groups }] =
+  const [{ data: player }, { data: allPlayers }, { data: groups }, ledgerByWallet] =
     await Promise.all([
       supabase
         .from("players")
@@ -40,6 +39,7 @@ export default async function TransferPage({
         .neq("id", id)
         .order("name"),
       supabase.from("player_groups").select("id, name"),
+      fetchActiveLedgerByWallet(supabase),
     ]);
 
   if (!player) notFound();
@@ -53,19 +53,24 @@ export default async function TransferPage({
     ]),
   );
 
-  const wallet = await resolveWalletOwner(supabase, id, today);
-  const openCharges = await getOpenCharges(supabase, wallet);
+  const [wallet, owners] = await Promise.all([
+    resolveWalletOwner(supabase, id, today),
+    resolveWalletOwnersForPlayers(
+      supabase,
+      others.map((o) => o.id),
+      today,
+    ),
+  ]);
   const targetKey = walletKey(wallet);
 
-  const owners = await resolveWalletOwnersForPlayers(
+  const openCharges = await attachChargeLabels(
     supabase,
-    others.map((o) => o.id),
-    today,
+    openChargesFromLedger(ledgerByWallet.get(targetKey) ?? []),
   );
 
   const unique = new Map<
     string,
-    { sourcePlayerId: string; label: string; wallet: typeof wallet }
+    { sourcePlayerId: string; label: string }
   >();
   for (const o of others) {
     const w = owners.get(o.id);
@@ -77,13 +82,12 @@ export default async function TransferPage({
       label: w.player_group_id
         ? groupName.get(w.player_group_id) || o.name
         : o.name,
-      wallet: w,
     });
   }
 
   const bulkSources: BulkSource[] = [];
-  for (const row of unique.values()) {
-    const charges = await getOpenCharges(supabase, row.wallet);
+  for (const [key, row] of unique) {
+    const charges = openChargesFromLedger(ledgerByWallet.get(key) ?? []);
     const remaining = charges.reduce((s, c) => s + Number(c.remaining), 0);
     if (remaining < SETTLE_TOLERANCE) continue;
     bulkSources.push({
