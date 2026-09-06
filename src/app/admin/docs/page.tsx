@@ -475,21 +475,21 @@ export default function DocsPage() {
             <h3 className={h3Class}>How to transfer a balance</h3>
             <ol className="ml-4 list-decimal space-y-1">
               <li className={liClass}>
-                Go to the source player&apos;s admin page (
+                Go to a player&apos;s admin page (
                 <Link href="/admin/players" className="text-emerald-700 hover:underline">Players</Link>{" "}
-                → click the player).
+                → click the player) and click <em>Transfer balance</em>.
               </li>
               <li className={liClass}>
-                Click the <em>Transfer balance</em> button at the top right.
+                <strong>Send this player&apos;s charges away:</strong> tick
+                individual charges (or Select all), choose one target player,
+                then Transfer.
               </li>
               <li className={liClass}>
-                Select which charges to transfer (individual checkboxes or{" "}
-                <em>Select all</em>).
+                <strong>Collect onto this player:</strong> search and tick every
+                other player (or couple/family wallet) whose outstanding balance
+                should move here, then Move onto this player. Each selected
+                wallet&apos;s full open charges are transferred.
               </li>
-              <li className={liClass}>
-                Choose the target player, set the date, and optionally add a note.
-              </li>
-              <li className={liClass}>Review the preview and click <em>Transfer</em>.</li>
             </ol>
 
             <h3 className={h3Class}>What happens under the hood</h3>

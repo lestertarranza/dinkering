@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
-import { formatMoney } from "@/lib/format";
-import { resolveWalletOwner } from "@/lib/ledger";
+import { formatMoney, SETTLE_TOLERANCE } from "@/lib/format";
+import { resolveWalletOwner, round2 } from "@/lib/ledger";
+import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
@@ -72,62 +74,10 @@ export async function addManualAdjustment(
   );
 }
 
-/**
- * Transfer all or selected open charges from one player's wallet to another.
- * Creates a matched pair of manual adjustments:
- *   – credit to the source wallet (removes their debt)
- *   – charge to the target wallet (adds equivalent debt)
- * The items being transferred are embedded in the adjustment notes so the
- * audit trail is preserved on both player ledgers.
- */
-export async function transferBalance(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const sourcePlayerId = String(formData.get("source_player_id") || "");
-  const targetPlayerId = String(formData.get("target_player_id") || "");
-  const amount = Math.abs(
-    parseFloat(String(formData.get("amount") || "0")),
-  );
-  const itemsJson = String(formData.get("items_json") || "[]");
-  const date =
-    String(formData.get("transfer_date") || "") ||
-    new Date().toISOString().slice(0, 10);
-  const extraNotes = String(formData.get("notes") || "").trim();
-
-  if (!sourcePlayerId || !targetPlayerId)
-    return actionErr("Select both source and target players.");
-  if (sourcePlayerId === targetPlayerId)
-    return actionErr("Source and target must be different players.");
-  if (!amount || amount <= 0)
-    return actionErr("Select at least one charge to transfer.");
-
-  const { supabase, user } = await requireAdmin();
-
-  // Look up player names for descriptions
-  const [{ data: src }, { data: tgt }] = await Promise.all([
-    supabase.from("players").select("name").eq("id", sourcePlayerId).single(),
-    supabase.from("players").select("name").eq("id", targetPlayerId).single(),
-  ]);
-  if (!src || !tgt) return actionErr("Player not found.");
-  const sourceName = src.name as string;
-  const targetName = tgt.name as string;
-
-  // Resolve wallets (respects group pooling)
-  const [sourceWallet, targetWallet] = await Promise.all([
-    resolveWalletOwner(supabase, sourcePlayerId, date),
-    resolveWalletOwner(supabase, targetPlayerId, date),
-  ]);
-
-  // Build item summary from the JSON payload
-  // Format each item as: "Type (₱amount) — details"
-  // e.g. "Expense (₱11.84) — EXP-001 · Pickleball Balls · Paid by Jude"
-  // If the label contains " — " we put the amount between type and details,
-  // otherwise we append it at the end.
-  let itemsSummary = "";
+function formatTransferItems(itemsJson: string): string {
   try {
     const items = JSON.parse(itemsJson) as { label: string; amount: number }[];
-    itemsSummary = items
+    return items
       .map((i) => {
         const dashIdx = i.label.indexOf(" — ");
         if (dashIdx > 0) {
@@ -139,14 +89,57 @@ export async function transferBalance(
       })
       .join("; ");
   } catch {
-    itemsSummary = "selected charges";
+    return "selected charges";
+  }
+}
+
+async function executeTransfer(
+  supabase: SupabaseClient,
+  user: User,
+  opts: {
+    sourcePlayerId: string;
+    targetPlayerId: string;
+    amount: number;
+    itemsSummary: string;
+    extraNotes: string;
+    date: string;
+  },
+): Promise<ActionState> {
+  const { sourcePlayerId, targetPlayerId, amount, date, extraNotes } = opts;
+  if (!sourcePlayerId || !targetPlayerId)
+    return actionErr("Select both source and target players.");
+  if (sourcePlayerId === targetPlayerId)
+    return actionErr("Source and target must be different players.");
+  if (!amount || amount <= 0)
+    return actionErr("Select at least one charge to transfer.");
+
+  const [{ data: src }, { data: tgt }] = await Promise.all([
+    supabase.from("players").select("name").eq("id", sourcePlayerId).single(),
+    supabase.from("players").select("name").eq("id", targetPlayerId).single(),
+  ]);
+  if (!src || !tgt) return actionErr("Player not found.");
+  const sourceName = src.name as string;
+  const targetName = tgt.name as string;
+
+  const [sourceWallet, targetWallet] = await Promise.all([
+    resolveWalletOwner(supabase, sourcePlayerId, date),
+    resolveWalletOwner(supabase, targetPlayerId, date),
+  ]);
+  const sameWallet =
+    (sourceWallet.player_group_id &&
+      sourceWallet.player_group_id === targetWallet.player_group_id) ||
+    (sourceWallet.player_id &&
+      !sourceWallet.player_group_id &&
+      sourceWallet.player_id === targetWallet.player_id);
+  if (sameWallet) {
+    return actionErr(
+      `${sourceName} and ${targetName} share the same wallet, so there is nothing to move.`,
+    );
   }
 
-  const baseDesc = [itemsSummary, extraNotes].filter(Boolean).join(" — ");
-
+  const baseDesc = [opts.itemsSummary, extraNotes].filter(Boolean).join(" — ");
   const createdBy = user?.email ?? "admin";
 
-  // 1. Credit the source wallet (removes their debt)
   const { data: creditAdj, error: creditErr } = await supabase
     .from("manual_adjustments")
     .insert({
@@ -174,7 +167,6 @@ export async function transferBalance(
     credit_amount: amount,
   });
 
-  // 2. Charge the target wallet (adds equivalent debt)
   const { data: debitAdj, error: debitErr } = await supabase
     .from("manual_adjustments")
     .insert({
@@ -206,6 +198,8 @@ export async function transferBalance(
 
   revalidatePath(`/admin/players/${sourcePlayerId}`);
   revalidatePath(`/admin/players/${targetPlayerId}`);
+  revalidatePath(`/admin/players/${sourcePlayerId}/transfer`);
+  revalidatePath(`/admin/players/${targetPlayerId}/transfer`);
   revalidatePath("/admin");
   await logAdminAction(supabase, user, {
     entityType: "player",
@@ -222,6 +216,109 @@ export async function transferBalance(
 
   return actionOk(
     `Transferred ${formatMoney(amount)} from ${sourceName} to ${targetName}.`,
+  );
+}
+
+/**
+ * Transfer all or selected open charges from one player's wallet to another.
+ * Creates a matched pair of manual adjustments:
+ *   credit to the source wallet (removes their debt)
+ *   charge to the target wallet (adds equivalent debt)
+ * The items being transferred are embedded in the adjustment notes so the
+ * audit trail is preserved on both player ledgers.
+ */
+export async function transferBalance(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const sourcePlayerId = String(formData.get("source_player_id") || "");
+  const targetPlayerId = String(formData.get("target_player_id") || "");
+  const amount = Math.abs(
+    parseFloat(String(formData.get("amount") || "0")),
+  );
+  const itemsJson = String(formData.get("items_json") || "[]");
+  const date =
+    String(formData.get("transfer_date") || "") ||
+    new Date().toISOString().slice(0, 10);
+  const extraNotes = String(formData.get("notes") || "").trim();
+
+  const { supabase, user } = await requireAdmin();
+  return executeTransfer(supabase, user, {
+    sourcePlayerId,
+    targetPlayerId,
+    amount,
+    itemsSummary: formatTransferItems(itemsJson),
+    extraNotes,
+    date,
+  });
+}
+
+/** Move every open charge from several players onto one target player. */
+export async function transferBalancesBulk(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const targetPlayerId = String(formData.get("target_player_id") || "");
+  const sourceIds = [
+    ...new Set(formData.getAll("source_player_ids").map(String).filter(Boolean)),
+  ];
+  const date =
+    String(formData.get("transfer_date") || "") ||
+    new Date().toISOString().slice(0, 10);
+  const extraNotes = String(formData.get("notes") || "").trim();
+
+  if (!targetPlayerId) return actionErr("Missing target player.");
+  if (sourceIds.length === 0)
+    return actionErr("Select at least one player to transfer from.");
+
+  const { supabase, user } = await requireAdmin();
+  const okNames: string[] = [];
+  let total = 0;
+
+  for (const sourcePlayerId of sourceIds) {
+    if (sourcePlayerId === targetPlayerId) continue;
+    const wallet = await resolveWalletOwner(supabase, sourcePlayerId, date);
+    const charges = await getOpenCharges(supabase, wallet);
+    const amount = round2(
+      charges.reduce((s, c) => s + Number(c.remaining), 0),
+    );
+    if (amount < SETTLE_TOLERANCE) continue;
+
+    const result = await executeTransfer(supabase, user, {
+      sourcePlayerId,
+      targetPlayerId,
+      amount,
+      itemsSummary: formatTransferItems(
+        JSON.stringify(
+          charges.map((c) => ({ label: c.label, amount: c.remaining })),
+        ),
+      ),
+      extraNotes,
+      date,
+    });
+    if (!result?.ok) {
+      const done =
+        okNames.length > 0
+          ? ` Moved ${formatMoney(total)} from ${okNames.join(", ")} first.`
+          : "";
+      return actionErr((result?.message ?? "Transfer failed.") + done);
+    }
+    const { data: src } = await supabase
+      .from("players")
+      .select("name")
+      .eq("id", sourcePlayerId)
+      .single();
+    okNames.push((src?.name as string) || "player");
+    total = round2(total + amount);
+  }
+
+  if (okNames.length === 0) {
+    return actionErr("None of the selected players have outstanding charges.");
+  }
+  return actionOk(
+    `Transferred ${formatMoney(total)} from ${okNames.length} player${
+      okNames.length === 1 ? "" : "s"
+    } (${okNames.join(", ")}).`,
   );
 }
 
