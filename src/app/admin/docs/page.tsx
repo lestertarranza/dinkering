@@ -20,6 +20,7 @@ const sections = [
   { id: "players", label: "Players & Groups" },
   { id: "bookings", label: "Bookings & Court Shares" },
   { id: "expenses", label: "Team Expenses" },
+  { id: "club-items", label: "Club item funds" },
   { id: "payments", label: "Payments" },
   { id: "bulk-payment", label: "Bulk Payment" },
   { id: "transfer", label: "Balance Transfer" },
@@ -298,6 +299,47 @@ export default function DocsPage() {
               Use <em>Reverse expense</em> to void all shares and the buyer
               reimbursement. The expense stays in history marked as Reversed. Use
               this if the purchase was cancelled or recorded by mistake.
+            </p>
+          </Card>
+
+          {/* ── Club item funds ── */}
+          <Card className="p-6" id="club-items">
+            <h2 className={h2Class}>Club item funds</h2>
+            <p className={pClass}>
+              Use{" "}
+              <Link href="/admin/funds" className="text-emerald-700 hover:underline">Club items</Link>{" "}
+              to earmark cash for future purchases such as pickleballs. This is
+              separate from <strong>Groups / Funds</strong> (those are shared
+              player wallets) and from <strong>Team Expenses</strong> (those
+              split a receipt across players).
+            </p>
+
+            <h3 className={h3Class}>Typical flow</h3>
+            <ol className="ml-4 list-decimal space-y-1">
+              <li className={liClass}>
+                Create a pot, e.g. <em>Pickleballs</em>. Optionally set a target
+                so you can see how close you are.
+              </li>
+              <li className={liClass}>
+                <strong>Add money</strong> when you set cash aside (session extras,
+                surplus, a donation).
+              </li>
+              <li className={liClass}>
+                When you buy the item, <strong>Record purchase</strong>. That
+                amount is deducted from the pot. You cannot spend more than is
+                sitting in the fund.
+              </li>
+              <li className={liClass}>
+                If you also logged the receipt under Team Expenses (to reimburse
+                a buyer or split leftover cost), you can link that expense on
+                the purchase. Linking does not change player balances.
+              </li>
+            </ol>
+
+            <h3 className={h3Class}>Voiding</h3>
+            <p className={pClass}>
+              Void a mistaken add or purchase. Voided rows stay in history and
+              no longer count toward the balance.
             </p>
           </Card>
 

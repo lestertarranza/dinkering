@@ -15,6 +15,7 @@ import {
   type LedgerRow,
 } from "@/lib/payment-allocation";
 import { fetchAllRows } from "@/lib/paginate";
+import { fundBalanceFromEntries } from "@/lib/club-funds";
 import type { Payment, Player, PlayerGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -127,6 +128,17 @@ export default async function Dashboard({
       .limit(PAGE_SIZE * 3),
   ]);
 
+  const [{ data: clubFunds }, { data: clubFundEntries }] = await Promise.all([
+    supabase
+      .from("club_item_funds")
+      .select("id, name, target_amount, status")
+      .eq("status", "active")
+      .order("name"),
+    supabase
+      .from("club_fund_entries")
+      .select("fund_id, kind, amount, voided"),
+  ]);
+
   const playerNameMap = new Map(
     ((players ?? []) as Player[]).map((p) => [p.id, p.name]),
   );
@@ -162,6 +174,32 @@ export default async function Dashboard({
   const playedBookingCost  = Number(dashTotals?.played_booking_cost  ?? 0);
   const upcomingCommitments = Number(dashTotals?.upcoming_commitments ?? 0);
   const totalPayments      = Number(dashTotals?.total_payments        ?? 0);
+
+  const clubFundBalances = new Map<string, { kind: string; amount: number; voided: boolean }[]>();
+  for (const e of (clubFundEntries ?? []) as {
+    fund_id: string;
+    kind: string;
+    amount: number;
+    voided: boolean;
+  }[]) {
+    const rows = clubFundBalances.get(e.fund_id) ?? [];
+    rows.push(e);
+    clubFundBalances.set(e.fund_id, rows);
+  }
+  const clubFundRows = (
+    (clubFunds ?? []) as {
+      id: string;
+      name: string;
+      target_amount: number | null;
+      status: string;
+    }[]
+  ).map((f) => ({
+    ...f,
+    balance: fundBalanceFromEntries(clubFundBalances.get(f.id) ?? []),
+  }));
+  const clubFundsTotal = round2(
+    clubFundRows.reduce((s, f) => s + f.balance, 0),
+  );
 
   // ── Bookings ─────────────────────────────────────────────────────────────
   type BookingShareRow = { id: string; booking_id: string; player_id: string | null; amount_owed: number };
@@ -493,6 +531,32 @@ export default async function Dashboard({
         <StatCard label="Court cost (played)"      value={formatMoney(playedBookingCost)} tone="neutral" hint="Cost of games played & billed" />
         <StatCard label="Upcoming commitments"     value={formatMoney(upcomingCommitments)} tone="neutral" hint="Future booked games not yet billed" />
       </div>
+
+      {clubFundRows.length > 0 ? (
+        <Card className="mt-5 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">Club item funds</h2>
+              <p className="text-xs text-slate-500">
+                Money set aside for balls and other club purchases. {formatMoney(clubFundsTotal)} dedicated.
+              </p>
+            </div>
+            <Link href="/admin/funds" className="text-sm font-medium text-emerald-700 hover:underline">
+              Manage
+            </Link>
+          </div>
+          <ul className="mt-3 divide-y divide-slate-100">
+            {clubFundRows.map((f) => (
+              <li key={f.id} className="flex items-center justify-between py-2 text-sm">
+                <Link href={`/admin/funds/${f.id}`} className="font-medium text-slate-800 hover:text-emerald-800">
+                  {f.name}
+                </Link>
+                <span className="font-semibold text-emerald-700">{formatMoney(f.balance)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <Card className="mt-5 p-4">
         <h2 className="text-sm font-semibold text-slate-800">Daily briefing</h2>

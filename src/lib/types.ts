@@ -184,3 +184,29 @@ export interface Balance {
   total_credit: number;
   balance: number;
 }
+
+export type ClubFundStatus = "active" | "archived";
+export type ClubFundEntryKind = "allocate" | "spend";
+
+export interface ClubItemFund {
+  id: string;
+  name: string;
+  notes: string | null;
+  target_amount: number | null;
+  status: ClubFundStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClubFundEntry {
+  id: string;
+  fund_id: string;
+  entry_date: string;
+  kind: ClubFundEntryKind;
+  amount: number;
+  description: string | null;
+  notes: string | null;
+  team_expense_id: string | null;
+  voided: boolean;
+  created_at: string;
+}
