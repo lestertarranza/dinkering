@@ -24,4 +24,13 @@ describe("fundBalanceFromEntries", () => {
       ]),
     ).toBe(1000);
   });
+
+  it("goes negative when a purchase exceeds the pot", () => {
+    expect(
+      fundBalanceFromEntries([
+        { kind: "allocate", amount: 240 },
+        { kind: "spend", amount: 1200 },
+      ]),
+    ).toBe(-960);
+  });
 });

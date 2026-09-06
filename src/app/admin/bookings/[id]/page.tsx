@@ -35,7 +35,9 @@ import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { computeBookingShareRemaining } from "@/lib/payment-allocation";
 import { BookingForm } from "../BookingForm";
 import { BookingExpenseForm } from "../BookingExpenseForm";
+import { BookingFundContributionForm } from "../BookingFundContributionForm";
 import { createBookingExpense } from "@/app/admin/expenses/actions";
+import { chargeGameContribution, voidFundEntry } from "@/app/admin/funds/actions";
 import {
   updateBooking,
   setBookingStatus,
@@ -87,6 +89,8 @@ export default async function BookingDetail({
     activityRows,
     { data: linkedExpenses },
     { data: expenseGroups },
+    { data: clubFunds },
+    { data: gameFundEntries },
   ] = await Promise.all([
     supabase
       .from("booking_attendance")
@@ -115,6 +119,17 @@ export default async function BookingDetail({
       .eq("booking_id", id)
       .order("created_at", { ascending: false }),
     supabase.from("player_groups").select("id, name").order("name"),
+    supabase
+      .from("club_item_funds")
+      .select("id, name")
+      .eq("status", "active")
+      .order("name"),
+    supabase
+      .from("club_fund_entries")
+      .select("id, fund_id, amount, description, voided, club_item_funds(name)")
+      .eq("booking_id", id)
+      .eq("kind", "allocate")
+      .order("created_at", { ascending: false }),
   ]);
 
   const roster = (attendance ?? []) as (BookingAttendance & {
@@ -736,11 +751,88 @@ export default async function BookingDetail({
           <Card>
             <div className="border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-700">
+                Club item contribution
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Optional. Charge Going/attended a set amount toward a pot
+                (pickleballs). Does not reimburse a buyer. Purchases from that
+                pot are recorded under Club items.
+              </p>
+            </div>
+            {(gameFundEntries ?? []).length > 0 ? (
+              <ul className="divide-y divide-slate-100">
+                {(
+                  (gameFundEntries ?? []) as unknown as {
+                    id: string;
+                    fund_id: string;
+                    amount: number;
+                    description: string | null;
+                    voided: boolean;
+                    club_item_funds: { name: string } | null;
+                  }[]
+                ).map((row) => (
+                  <li
+                    key={row.id}
+                    className={`flex items-center justify-between gap-3 px-4 py-3 ${
+                      row.voided ? "opacity-50" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900">
+                        {row.club_item_funds?.name ?? "Club item"}
+                        {row.voided ? " · voided" : ""}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {row.description ?? "Game contribution"}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <p className="font-semibold text-slate-900">
+                        {formatMoney(row.amount)}
+                      </p>
+                      {!row.voided ? (
+                        <ConfirmButton
+                          action={voidFundEntry}
+                          message="Void this contribution? Player charges and the pot will be reversed."
+                          variant="ghost"
+                          pendingLabel="Voiding…"
+                          hidden={{ id: row.id, fund_id: row.fund_id }}
+                        >
+                          Void
+                        </ConfirmButton>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-4 py-3 text-sm text-slate-400">
+                No club item contribution on this game yet.
+              </p>
+            )}
+            <div className="border-t border-slate-100 p-4">
+              <ActionForm
+                action={chargeGameContribution}
+                pendingLabel="Charging…"
+              >
+                <BookingFundContributionForm
+                  bookingId={b.id}
+                  funds={(clubFunds ?? []) as { id: string; name: string }[]}
+                  playerCount={chargeNames.length}
+                />
+              </ActionForm>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="border-b border-slate-100 px-4 py-3">
+              <h2 className="text-sm font-semibold text-slate-700">
                 Session extras (team expenses)
               </h2>
               <p className="mt-0.5 text-xs text-slate-400">
-                Balls or other fees for this game. They also appear under Team
-                Expenses.
+                One-off extras for this game that you split now (water, etc.).
+                For balls you buy in bulk, use Club item contribution above,
+                then record the shop purchase under Club items.
               </p>
             </div>
             {(linkedExpenses ?? []).length > 0 ? (

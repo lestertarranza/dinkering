@@ -16,6 +16,8 @@ const sourceLabels: Record<string, string> = {
   payment: "Payment",
   team_expense_share: "Expense share",
   team_expense_credit: "Expense reimbursement",
+  club_fund_share: "Club item contribution",
+  club_fund_credit: "Club item reimbursement",
   manual_adjustment: "Adjustment",
 };
 

@@ -7,8 +7,9 @@ import {
   type BalanceItem,
   type BalanceBucket,
 } from "@/components/TeamBalanceBoard";
-import { formatMoney, describeBalance } from "@/lib/format";
+import { formatMoney, describeBalance, formatDate } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
+import { fundBalanceFromEntries } from "@/lib/club-funds";
 import {
   PublicPageHeader,
   publicTapRowClass,
@@ -96,6 +97,27 @@ export default async function TeamBoard({
       .select("player_id, player_group_id, player_groups!inner(type)")
       .in("player_groups.type", ["couple", "family", "team_fund"])
       .is("end_date", null),
+  ]);
+
+  const [{ data: clubFunds }, { data: clubFundBalances }, { data: clubPurchases }] =
+    await Promise.all([
+    db
+      .from("club_item_funds")
+      .select("id, name, status")
+      .eq("status", "active")
+      .order("name"),
+    db
+      .from("club_fund_entries")
+      .select("fund_id, kind, amount, voided"),
+    db
+      .from("club_fund_entries")
+      .select(
+        "id, fund_id, amount, description, entry_date, players:paid_by_player_id(name)",
+      )
+      .eq("kind", "spend")
+      .eq("voided", false)
+      .order("entry_date", { ascending: false })
+      .limit(20),
   ]);
 
   const playerBalMap = new Map(
@@ -230,6 +252,47 @@ export default async function TeamBoard({
       .reduce((s, e) => s + e.amount, 0),
   };
 
+  type FundEntryRow = {
+    fund_id: string;
+    kind: string;
+    amount: number;
+    voided: boolean;
+  };
+  const entriesByFund = new Map<string, FundEntryRow[]>();
+  for (const e of (clubFundBalances ?? []) as FundEntryRow[]) {
+    const list = entriesByFund.get(e.fund_id) ?? [];
+    list.push(e);
+    entriesByFund.set(e.fund_id, list);
+  }
+  type PurchaseRow = {
+    id: string;
+    fund_id: string;
+    amount: number;
+    description: string | null;
+    entry_date: string;
+    players: { name: string } | null;
+  };
+  const purchasesByFund = new Map<string, PurchaseRow[]>();
+  for (const p of (clubPurchases ?? []) as unknown as PurchaseRow[]) {
+    const list = purchasesByFund.get(p.fund_id) ?? [];
+    if (list.length < 4) list.push(p);
+    purchasesByFund.set(p.fund_id, list);
+  }
+  const clubFundRows = (
+    (clubFunds ?? []) as { id: string; name: string; status: string }[]
+  ).map((f) => ({
+    id: f.id,
+    name: f.name,
+    balance: fundBalanceFromEntries(entriesByFund.get(f.id) ?? []),
+    purchases: (purchasesByFund.get(f.id) ?? []).map((p) => ({
+      id: p.id,
+      description: p.description,
+      entry_date: p.entry_date,
+      amount: Number(p.amount),
+      buyer: p.players?.name ?? null,
+    })),
+  }));
+
   return (
     <>
     <RememberPublicTokens teamToken={token} />
@@ -245,6 +308,53 @@ export default async function TeamBoard({
       ) : (
         <TeamBalanceBoard items={items} totals={totals} />
       )}
+
+      {clubFundRows.length > 0 ? (
+        <section className="mt-8">
+          <h2 className={`mb-2 text-sm font-bold uppercase tracking-wide ${publicHintText}`}>
+            Club items
+          </h2>
+          <p className={`mb-3 text-sm ${publicHintText}`}>
+            Money the group has set aside for consumables. Purchases show who bought them.
+          </p>
+          <ul className="space-y-3">
+            {clubFundRows.map((f) => (
+              <li
+                key={f.id}
+                className="rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className={`font-semibold ${publicPrimaryText}`}>{f.name}</p>
+                  <p
+                    className={`shrink-0 font-bold ${
+                      f.balance < 0 ? "text-rose-700" : "text-emerald-700"
+                    }`}
+                  >
+                    {f.balance < 0
+                      ? `${formatMoney(-f.balance)} still to collect`
+                      : formatMoney(f.balance)}
+                  </p>
+                </div>
+                {f.purchases.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                    {f.purchases.map((p) => (
+                      <li key={p.id}>
+                        {p.description ?? "Purchase"} · {formatDate(p.entry_date)}
+                        {p.buyer ? ` · bought by ${p.buyer}` : ""} ·{" "}
+                        {formatMoney(p.amount)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className={`mt-2 text-sm ${publicHintText}`}>
+                    No purchases recorded yet.
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
         Grouped players (couples, families, team funds) share one balance — tap a

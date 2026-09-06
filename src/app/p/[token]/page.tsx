@@ -61,6 +61,8 @@ const STATEMENT_LABELS: Record<string, string> = {
   payment: "Payment",
   team_expense_share: "Team expense",
   team_expense_credit: "Reimbursement",
+  club_fund_share: "Club item",
+  club_fund_credit: "Club purchase reimbursement",
   manual_adjustment: "Adjustment",
 };
 
@@ -124,6 +126,8 @@ export default async function PlayerPortal({
       { data: myPayments },
       { data: myExpensesBought },
       { data: myManualAdj },
+      { data: myFundShares },
+      { data: myFundPurchases },
     ] = await Promise.all([
       db
         .from("group_balances")
@@ -150,6 +154,8 @@ export default async function PlayerPortal({
       db.from("payments").select("id").eq("payer_player_id", p.id),
       db.from("team_expenses").select("id").eq("paid_by_player_id", p.id),
       db.from("manual_adjustments").select("id").eq("player_id", p.id),
+      db.from("club_fund_shares").select("id").eq("player_id", p.id),
+      db.from("club_fund_entries").select("id").eq("paid_by_player_id", p.id).eq("kind", "spend"),
     ]);
 
     // Keep wallets separate for display; combine for ledger running-balance math.
@@ -173,6 +179,12 @@ export default async function PlayerPortal({
     const manualAdjIds = new Set(
       (myManualAdj ?? []).map((r) => r.id as string),
     );
+    const fundShareIds = new Set(
+      (myFundShares ?? []).map((r) => r.id as string),
+    );
+    const fundPurchaseIds = new Set(
+      (myFundPurchases ?? []).map((r) => r.id as string),
+    );
 
     // Keep only group entries that belong to this player
     const playerGroupEntries = ((gl ?? []) as LedgerEntry[]).filter((e) => {
@@ -186,6 +198,10 @@ export default async function PlayerPortal({
           return paymentIds.has(e.source_id);
         case "team_expense_credit":
           return expenseBoughtIds.has(e.source_id);
+        case "club_fund_share":
+          return fundShareIds.has(e.source_id);
+        case "club_fund_credit":
+          return fundPurchaseIds.has(e.source_id);
         case "manual_adjustment":
           return manualAdjIds.has(e.source_id);
         default:
@@ -827,7 +843,8 @@ export default async function PlayerPortal({
                 if (
                   isGroupEntry &&
                   (entry.source_type === "team_expense_share" ||
-                    entry.source_type === "booking_share")
+                    entry.source_type === "booking_share" ||
+                    entry.source_type === "club_fund_share")
                 ) {
                   const groupName = pooled?.player_groups.name;
                   displayDesc = groupName

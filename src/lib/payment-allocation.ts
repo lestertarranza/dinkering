@@ -32,6 +32,7 @@ export type LedgerRow = {
 const CHARGE_TYPES = new Set<SourceType>([
   "booking_share",
   "team_expense_share",
+  "club_fund_share",
   "manual_adjustment",
 ]);
 
@@ -185,6 +186,9 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
   const expenseShareIds = charges
     .filter((c) => c.source_type === "team_expense_share")
     .map((c) => c.source_id);
+  const fundShareIds = charges
+    .filter((c) => c.source_type === "club_fund_share")
+    .map((c) => c.source_id);
 
   const bookingMeta = new Map<
     string,
@@ -259,6 +263,31 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
     }
   }
 
+  const fundMeta = new Map<string, { label: string }>();
+  if (fundShareIds.length) {
+    const { data } = await db
+      .from("club_fund_shares")
+      .select(
+        "id, club_fund_entries(description, club_item_funds(name), bookings:booking_id(booking_code))",
+      )
+      .in("id", fundShareIds);
+    for (const s of (data ?? []) as unknown as {
+      id: string;
+      club_fund_entries: {
+        description: string | null;
+        club_item_funds: { name: string } | null;
+        bookings: { booking_code: string | null } | null;
+      } | null;
+    }[]) {
+      const e = s.club_fund_entries;
+      const fund = e?.club_item_funds?.name ?? "Club item";
+      const code = e?.bookings?.booking_code;
+      fundMeta.set(s.id, {
+        label: code ? `${fund} · ${code}` : (e?.description ?? fund),
+      });
+    }
+  }
+
   for (const c of charges) {
     if (c.source_type === "booking_share") {
       const meta = bookingMeta.get(c.source_id);
@@ -272,6 +301,9 @@ async function enrichChargeLabels(db: SupabaseClient, charges: OpenCharge[]) {
         c.team_expense_id = meta.team_expense_id;
         c.label = meta.label;
       }
+    } else if (c.source_type === "club_fund_share") {
+      const meta = fundMeta.get(c.source_id);
+      if (meta) c.label = meta.label;
     }
   }
 }

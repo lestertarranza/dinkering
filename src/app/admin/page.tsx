@@ -538,7 +538,7 @@ export default async function Dashboard({
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Club item funds</h2>
               <p className="text-xs text-slate-500">
-                Money set aside for balls and other club purchases. {formatMoney(clubFundsTotal)} dedicated.
+                Game contributions minus purchases. {formatMoney(clubFundsTotal)} net in pots.
               </p>
             </div>
             <Link href="/admin/funds" className="text-sm font-medium text-emerald-700 hover:underline">
@@ -551,7 +551,13 @@ export default async function Dashboard({
                 <Link href={`/admin/funds/${f.id}`} className="font-medium text-slate-800 hover:text-emerald-800">
                   {f.name}
                 </Link>
-                <span className="font-semibold text-emerald-700">{formatMoney(f.balance)}</span>
+                <span
+                  className={`font-semibold ${
+                    f.balance < 0 ? "text-rose-700" : "text-emerald-700"
+                  }`}
+                >
+                  {f.balance < 0 ? `−${formatMoney(-f.balance)}` : formatMoney(f.balance)}
+                </span>
               </li>
             ))}
           </ul>

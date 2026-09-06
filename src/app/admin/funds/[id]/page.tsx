@@ -14,8 +14,13 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatMoney, formatDate } from "@/lib/format";
 import { fundBalanceFromEntries } from "@/lib/club-funds";
-import type { ClubFundEntry, ClubItemFund, TeamExpense } from "@/lib/types";
-import { addFundEntry, updateFund, voidFundEntry } from "../actions";
+import type { ClubFundEntry, ClubItemFund } from "@/lib/types";
+import {
+  addFundMoney,
+  recordFundPurchase,
+  updateFund,
+  voidFundEntry,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,40 +32,50 @@ export default async function ClubFundDetail({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: fund }, { data: entries }, { data: expenses }] =
+  const [{ data: fund }, { data: entries }, { data: players }, { data: groups }] =
     await Promise.all([
       supabase.from("club_item_funds").select("*").eq("id", id).single(),
       supabase
         .from("club_fund_entries")
-        .select("*")
+        .select(
+          "*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name), bookings:booking_id(id, booking_code)",
+        )
         .eq("fund_id", id)
         .order("entry_date", { ascending: false })
         .order("created_at", { ascending: false }),
       supabase
-        .from("team_expenses")
-        .select("id, expense_code, description, purchase_date")
-        .order("purchase_date", { ascending: false })
-        .limit(40),
+        .from("players")
+        .select("id, name")
+        .neq("active_status", "archived")
+        .order("name"),
+      supabase.from("player_groups").select("id, name").order("name"),
     ]);
 
   if (!fund) notFound();
   const f = fund as ClubItemFund;
-  const list = (entries ?? []) as ClubFundEntry[];
+  const list = (entries ?? []) as (ClubFundEntry & {
+    players: { name: string } | null;
+    player_groups: { name: string } | null;
+    bookings: { id: string; booking_code: string | null } | null;
+  })[];
   const balance = fundBalanceFromEntries(list);
+  const overdrawn = balance < -0.005;
   const target = Number(f.target_amount) || 0;
   const pct =
-    target > 0 ? Math.min(100, Math.round((balance / target) * 100)) : null;
+    target > 0 && balance > 0
+      ? Math.min(100, Math.round((balance / target) * 100))
+      : target > 0
+        ? 0
+        : null;
   const today = new Date().toISOString().slice(0, 10);
-  const expenseList = (expenses ?? []) as Pick<
-    TeamExpense,
-    "id" | "expense_code" | "description" | "purchase_date"
-  >[];
+  const playerOpts = (players ?? []) as { id: string; name: string }[];
+  const groupOpts = (groups ?? []) as { id: string; name: string }[];
 
   return (
     <div>
       <PageHeader
         title={f.name}
-        description="Add money you have set aside. Record a purchase to deduct it."
+        description="Charge games into this pot. When someone buys the item, credit their wallet from the fund."
         action={
           <Link
             href="/admin/funds"
@@ -76,9 +91,18 @@ export default async function ClubFundDetail({
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Dedicated now
           </p>
-          <p className="mt-1 text-2xl font-semibold text-emerald-700">
-            {formatMoney(balance)}
+          <p
+            className={`mt-1 text-2xl font-semibold ${
+              overdrawn ? "text-rose-700" : "text-emerald-700"
+            }`}
+          >
+            {overdrawn ? `−${formatMoney(-balance)}` : formatMoney(balance)}
           </p>
+          {overdrawn ? (
+            <p className="mt-1 text-xs text-rose-600">
+              Overdrawn. Future game contributions refill this.
+            </p>
+          ) : null}
         </Card>
         <Card className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -118,11 +142,11 @@ export default async function ClubFundDetail({
               Add money
             </h2>
             <p className="mb-3 text-xs text-slate-500">
-              Use this when you earmark collected cash or surplus for this item.
+              Opening cash or a donation. Does not charge players. Game
+              contributions are added from a booking.
             </p>
-            <ActionForm action={addFundEntry} className="space-y-3">
+            <ActionForm action={addFundMoney} className="space-y-3">
               <input type="hidden" name="fund_id" value={f.id} />
-              <input type="hidden" name="kind" value="allocate" />
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Amount">
                   <input
@@ -155,12 +179,12 @@ export default async function ClubFundDetail({
               Record purchase
             </h2>
             <p className="mb-3 text-xs text-slate-500">
-              Deducts from this pot when you buy the item. Does not charge players.
-              Use Team Expenses if you still need to split a receipt.
+              Anyone who bought this for the club. They get a wallet credit for
+              the full amount. If the pot is short, it goes overdrawn and stays
+              on the audit trail.
             </p>
-            <ActionForm action={addFundEntry} className="space-y-3">
+            <ActionForm action={recordFundPurchase} className="space-y-3">
               <input type="hidden" name="fund_id" value={f.id} />
-              <input type="hidden" name="kind" value="spend" />
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Amount">
                   <input
@@ -184,27 +208,39 @@ export default async function ClubFundDetail({
               <Field label="What you bought">
                 <input
                   name="description"
-                  placeholder="e.g. 3 tubes of Franklin balls"
+                  required
+                  placeholder="e.g. 3 tubes of Franklin X-40"
                   className={inputClass}
                 />
               </Field>
-              {expenseList.length > 0 ? (
-                <Field
-                  label="Link a team expense (optional)"
-                  hint="Only if you also logged the receipt under Team Expenses"
-                >
-                  <select name="team_expense_id" className={inputClass}>
-                    <option value="">None</option>
-                    {expenseList.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {(e.expense_code ?? "EXP") + " · "}
-                        {e.description} ({formatDate(e.purchase_date)})
+              <Field label="Bought by" hint="This player or group is credited">
+                <select name="payer" required className={inputClass}>
+                  <option value="">Select buyer…</option>
+                  {groupOpts.length > 0 ? (
+                    <optgroup label="Groups">
+                      {groupOpts.map((g) => (
+                        <option key={g.id} value={`g:${g.id}`}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  <optgroup label="Players">
+                    {playerOpts.map((p) => (
+                      <option key={p.id} value={`p:${p.id}`}>
+                        {p.name}
                       </option>
                     ))}
-                  </select>
-                </Field>
+                  </optgroup>
+                </select>
+              </Field>
+              {overdrawn || balance < 0.01 ? (
+                <p className="text-xs text-amber-700">
+                  Current pot is {formatMoney(Math.max(0, balance))}. A larger
+                  purchase will be tracked as overdrawn.
+                </p>
               ) : null}
-              <SubmitButton variant="secondary">Deduct purchase</SubmitButton>
+              <SubmitButton variant="secondary">Record purchase</SubmitButton>
             </ActionForm>
           </Card>
 
@@ -273,14 +309,31 @@ export default async function ClubFundDetail({
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800">
-                      {e.kind === "allocate" ? "Added" : "Purchase"}
+                      {e.kind === "spend"
+                        ? "Purchase"
+                        : e.booking_id
+                          ? "Game contribution"
+                          : "Added"}
                       {e.voided ? " · voided" : ""}
                     </p>
                     <p className="text-xs text-slate-500">
                       {formatDate(e.entry_date)}
                       {e.description ? ` · ${e.description}` : ""}
                     </p>
-                    {e.team_expense_id ? (
+                    {e.kind === "spend" ? (
+                      <p className="text-xs text-slate-500">
+                        Bought by{" "}
+                        {e.players?.name ?? e.player_groups?.name ?? "unknown"}
+                      </p>
+                    ) : null}
+                    {e.bookings ? (
+                      <Link
+                        href={`/admin/bookings/${e.bookings.id}`}
+                        className="text-xs text-emerald-700 hover:underline"
+                      >
+                        {e.bookings.booking_code ?? "Booking"}
+                      </Link>
+                    ) : e.team_expense_id ? (
                       <Link
                         href={`/admin/expenses/${e.team_expense_id}`}
                         className="text-xs text-emerald-700 hover:underline"
@@ -303,7 +356,7 @@ export default async function ClubFundDetail({
                     {!e.voided ? (
                       <ConfirmButton
                         action={voidFundEntry}
-                        message="Void this entry? It will no longer count toward the balance."
+                        message="Void this entry? The pot and any player wallet charges or credits will be reversed."
                         variant="ghost"
                         pendingLabel="Voiding…"
                         hidden={{ id: e.id, fund_id: f.id }}

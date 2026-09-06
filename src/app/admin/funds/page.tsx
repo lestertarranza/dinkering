@@ -45,7 +45,7 @@ export default async function ClubFundsPage() {
     <div>
       <PageHeader
         title="Club items"
-        description="Set aside money for balls, nets, and other club purchases. Deduct when you buy. This is not a player wallet."
+        description="Charge games toward a pot (pickleballs). Record shop purchases against that pot. The buyer is credited in their wallet. This is not a shared couple/family wallet."
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3">
@@ -125,8 +125,16 @@ export default async function ClubFundsPage() {
                           </p>
                         ) : null}
                       </div>
-                      <p className="shrink-0 text-lg font-semibold text-emerald-700">
-                        {formatMoney(f.balance)}
+                      <p
+                        className={`shrink-0 text-lg font-semibold ${
+                          f.balance < -0.005
+                            ? "text-rose-700"
+                            : "text-emerald-700"
+                        }`}
+                      >
+                        {f.balance < -0.005
+                          ? `−${formatMoney(-f.balance)}`
+                          : formatMoney(f.balance)}
                       </p>
                     </div>
                     {pct !== null ? (

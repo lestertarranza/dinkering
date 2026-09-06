@@ -13,7 +13,9 @@ export type SourceType =
   | "payment"
   | "team_expense_share"
   | "team_expense_credit"
-  | "manual_adjustment";
+  | "manual_adjustment"
+  | "club_fund_share"
+  | "club_fund_credit";
 export type AdjustmentType = "charge" | "credit";
 
 export interface Player {
@@ -207,6 +209,17 @@ export interface ClubFundEntry {
   description: string | null;
   notes: string | null;
   team_expense_id: string | null;
+  paid_by_player_id: string | null;
+  paid_by_group_id: string | null;
+  booking_id: string | null;
   voided: boolean;
+  created_at: string;
+}
+
+export interface ClubFundShare {
+  id: string;
+  fund_entry_id: string;
+  player_id: string;
+  amount_owed: number;
   created_at: string;
 }

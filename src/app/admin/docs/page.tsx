@@ -308,38 +308,69 @@ export default function DocsPage() {
             <p className={pClass}>
               Use{" "}
               <Link href="/admin/funds" className="text-emerald-700 hover:underline">Club items</Link>{" "}
-              to earmark cash for future purchases such as pickleballs. This is
+              to earmark cash for future purchases such as pickleballs, charge
+              games into that pot, and reimburse whoever bought the stock. This is
               separate from <strong>Groups / Funds</strong> (those are shared
               player wallets) and from <strong>Team Expenses</strong> (those
-              split a receipt across players).
+              split one receipt across players immediately).
             </p>
 
             <h3 className={h3Class}>Typical flow</h3>
             <ol className="ml-4 list-decimal space-y-1">
               <li className={liClass}>
-                Create a pot, e.g. <em>Pickleballs</em>. Optionally set a target
-                so you can see how close you are.
+                Create a pot, e.g. <em>Pickleballs</em>.
               </li>
               <li className={liClass}>
-                <strong>Add money</strong> when you set cash aside (session extras,
-                surplus, a donation).
+                On a booking, use <strong>Club item contribution</strong> when
+                you want that game to chip in. Going / attended players are
+                charged a set amount, and the total is added to the pot.
               </li>
               <li className={liClass}>
-                When you buy the item, <strong>Record purchase</strong>. That
-                amount is deducted from the pot. You cannot spend more than is
-                sitting in the fund.
+                Skip that charge on games where you do not want a contribution.
               </li>
               <li className={liClass}>
-                If you also logged the receipt under Team Expenses (to reimburse
-                a buyer or split leftover cost), you can link that expense on
-                the purchase. Linking does not change player balances.
+                When someone buys the item, open the pot and{" "}
+                <strong>Record purchase</strong>: what was bought, the shop
+                total, and who paid. That person is credited in their Dinkering
+                wallet for the full amount.
+              </li>
+              <li className={liClass}>
+                If the shop total is more than the pot, the purchase is still
+                recorded. The pot goes <em>overdrawn</em> and future game
+                contributions refill it. The buyer is still credited in full.
               </li>
             </ol>
 
+            <h3 className={h3Class}>What players see</h3>
+            <ul className="ml-4 list-disc space-y-1">
+              <li className={liClass}>
+                A contribution appears on their private page as a{" "}
+                <strong>Club item</strong> charge (same as court fees: they pay
+                it with their usual BPI / GCash payment).
+              </li>
+              <li className={liClass}>
+                If they bought stock for the club, they see a{" "}
+                <strong>Club purchase reimbursement</strong> credit.
+              </li>
+              <li className={liClass}>
+                The team board lists each pot, how much is sitting in it (or
+                still to collect), and recent identifiable purchases.
+              </li>
+            </ul>
+
+            <h3 className={h3Class}>Team Expenses vs Club items</h3>
+            <p className={pClass}>
+              Use <strong>Team Expenses</strong> when you split one receipt
+              across players right now (a one-off extra on that session). Use
+              <strong> Club items</strong> for consumables you buy in bulk and
+              refill over several games.
+            </p>
+
             <h3 className={h3Class}>Voiding</h3>
             <p className={pClass}>
-              Void a mistaken add or purchase. Voided rows stay in history and
-              no longer count toward the balance.
+              Void a mistaken contribution or purchase. Voided rows stay in
+              history. Player wallet charges or credits for that row are
+              reversed.
             </p>
           </Card>
 

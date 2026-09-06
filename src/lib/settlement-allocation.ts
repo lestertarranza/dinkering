@@ -29,6 +29,7 @@ export type Allocation = {
 const CHARGE_TYPES = new Set<SourceType>([
   "booking_share",
   "team_expense_share",
+  "club_fund_share",
   "manual_adjustment",
 ]);
 
