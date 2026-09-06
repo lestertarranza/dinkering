@@ -11,7 +11,6 @@ import {
 import { validatePublicTeamToken } from "@/lib/public-links";
 import {
   PublicPageHeader,
-  PublicNavLink,
   DateChip,
   CountPill,
   CapacityBar,
@@ -21,6 +20,10 @@ import {
   publicMetaText,
   publicHintText,
 } from "@/components/public-ui";
+import {
+  PublicBottomNav,
+  RememberPublicTokens,
+} from "@/components/PublicBottomNav";
 import type { Booking } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -105,16 +108,14 @@ export default async function PublicSchedule({
   }
 
   return (
+    <>
+    <RememberPublicTokens teamToken={token} />
     <main className={publicMainClass}>
       <PublicPageHeader
         icon="🏓"
         title="Upcoming games"
         subtitle="Tap a game to see who's invited and RSVP status."
       />
-
-      <nav className="mb-5 flex justify-center">
-        <PublicNavLink href={`/board/${token}`}>Team balances</PublicNavLink>
-      </nav>
 
       {upcoming.length === 0 ? (
         <EmptyState
@@ -254,6 +255,27 @@ export default async function PublicSchedule({
                         ↗
                       </a>
                     ))}
+                    {b.venue ? (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.venue)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-emerald-600 hover:underline"
+                      >
+                        Open in Maps ↗
+                      </a>
+                    ) : null}
+                  </div>
+                ) : b.venue ? (
+                  <div className="border-t border-slate-100 px-4 py-2.5">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.venue)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-emerald-600 hover:underline"
+                    >
+                      Open in Maps ↗
+                    </a>
                   </div>
                 ) : null}
               </Card>
@@ -266,5 +288,7 @@ export default async function PublicSchedule({
         Shared schedule · please don&apos;t post publicly
       </footer>
     </main>
+    <PublicBottomNav teamToken={token} />
+    </>
   );
 }

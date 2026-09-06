@@ -13,6 +13,10 @@ import {
   publicPrimaryText,
   publicHintText,
 } from "@/components/public-ui";
+import {
+  PublicBottomNav,
+  RememberPublicTokens,
+} from "@/components/PublicBottomNav";
 import type {
   BookingShare,
   LedgerEntry,
@@ -46,6 +50,7 @@ export default async function GroupPortal({
     { data: bShares },
     { data: eShares },
     { data: payments },
+    { data: settings },
   ] = await Promise.all([
     db.from("group_balances").select("*").eq("player_group_id", g.id).single(),
     db.from("ledger_entries").select("*").eq("player_group_id", g.id).order("entry_date"),
@@ -69,6 +74,7 @@ export default async function GroupPortal({
       .select("*, players(name)")
       .eq("payer_group_id", g.id)
       .order("payment_date", { ascending: false }),
+    db.from("app_settings").select("roster_token, roster_public").single(),
   ]);
 
   const balance = Number(bal?.balance ?? 0);
@@ -78,7 +84,14 @@ export default async function GroupPortal({
     (ledger ?? []) as LedgerEntry[],
   );
 
+  const teamToken =
+    settings?.roster_public && settings.roster_token
+      ? String(settings.roster_token)
+      : null;
+
   return (
+    <>
+    {teamToken ? <RememberPublicTokens teamToken={teamToken} /> : null}
     <main className={publicMainClass}>
       <header className="mb-5 text-center">
         <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
@@ -224,6 +237,8 @@ export default async function GroupPortal({
         Private link · do not share publicly
       </footer>
     </main>
+    {teamToken ? <PublicBottomNav teamToken={teamToken} /> : null}
+    </>
   );
 }
 

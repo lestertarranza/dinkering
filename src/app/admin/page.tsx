@@ -494,6 +494,43 @@ export default async function Dashboard({
         <StatCard label="Upcoming commitments"     value={formatMoney(upcomingCommitments)} tone="neutral" hint="Future booked games not yet billed" />
       </div>
 
+      <Card className="mt-5 p-4">
+        <h2 className="text-sm font-semibold text-slate-800">Daily briefing</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Today / tomorrow</p>
+            {soonBookings.length === 0 ? (
+              <p className="mt-1 text-sm text-slate-600">No games in the next day.</p>
+            ) : (
+              <ul className="mt-1 space-y-1 text-sm">
+                {soonBookings.map((b) => (
+                  <li key={b.id}>
+                    <Link href={`/admin/bookings/${b.id}`} className="font-medium text-emerald-800">
+                      {b.booking_code} · {formatDate(b.play_date)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">No RSVP (soon)</p>
+            <p className="mt-1 text-2xl font-bold text-amber-700">
+              {rsvpAttention.reduce((s, x) => s + x.n, 0)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Collectible now</p>
+            <p className="mt-1 text-2xl font-bold text-rose-700">
+              {formatMoney(totalCollectible)}
+            </p>
+            <Link href="/admin/collections" className="text-sm font-semibold text-emerald-700">
+              Open chase board
+            </Link>
+          </div>
+        </div>
+      </Card>
+
       {missingCourts.length + pastUnplayed.length + rsvpAttention.length + unpaidExpensesAll.length >
       0 ? (
         <Card className="mt-5 border-amber-200">

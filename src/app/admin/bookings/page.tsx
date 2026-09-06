@@ -12,10 +12,21 @@ import { computeBookingShareRemaining } from "@/lib/payment-allocation";
 import type { Booking } from "@/lib/types";
 import { BookingForm } from "./BookingForm";
 import { createBooking } from "./actions";
+import { BookingCalendar } from "@/components/BookingCalendar";
 
 export const dynamic = "force-dynamic";
 
-export default async function BookingsPage() {
+export default async function BookingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cal?: string; month?: string }>;
+}) {
+  const sp = await searchParams;
+  const view = sp.cal === "month" ? "month" : "week";
+  const month =
+    sp.month && /^\d{4}-\d{2}$/.test(sp.month)
+      ? sp.month
+      : new Date().toISOString().slice(0, 7);
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
@@ -142,6 +153,8 @@ export default async function BookingsPage() {
         title="Bookings"
         description="Court reservations, costs, attendance, and shares."
       />
+
+      <BookingCalendar bookings={all} view={view} month={month} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="p-4 lg:order-2" id="new-booking">

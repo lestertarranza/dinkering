@@ -17,6 +17,13 @@ const links = [
   { href: "/admin/docs", label: "Help & Docs", icon: "📖" },
 ];
 
+const mobileLinks = [
+  { href: "/admin", label: "Home", icon: "📊" },
+  { href: "/admin/collections", label: "Collect", icon: "💰" },
+  { href: "/admin/bookings", label: "Games", icon: "📅" },
+  { href: "/admin/payments", label: "Pay", icon: "💸" },
+];
+
 export function AdminNav({ email }: { email: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -110,6 +117,36 @@ export function AdminNav({ email }: { email: string | null }) {
           </button>
         </div>
       </aside>
+
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] md:hidden"
+        aria-label="Admin"
+      >
+        {mobileLinks.map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${
+              isActive(l.href) ? "text-emerald-700" : "text-slate-500"
+            }`}
+          >
+            <span className="text-lg" aria-hidden>
+              {l.icon}
+            </span>
+            {l.label}
+          </Link>
+        ))}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-slate-500"
+        >
+          <span className="text-lg" aria-hidden>
+            {open ? "✕" : "☰"}
+          </span>
+          More
+        </button>
+      </nav>
     </>
   );
 }

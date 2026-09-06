@@ -15,8 +15,8 @@ import {
   publicPlayerLabel,
   validatePublicTeamToken,
 } from "@/lib/public-links";
+import { publicShortName } from "@/lib/public-display";
 import {
-  PublicNavLink,
   DateChip,
   CountPill,
   CapacityBar,
@@ -26,7 +26,12 @@ import {
   publicBackLinkClass,
   publicPrimaryText,
   publicHintText,
+  MapsLink,
 } from "@/components/public-ui";
+import {
+  PublicBottomNav,
+  RememberPublicTokens,
+} from "@/components/PublicBottomNav";
 import type { Booking, BookingAttendance, Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -102,6 +107,8 @@ export default async function PublicBookingRoster({
         : [];
 
   return (
+    <>
+    <RememberPublicTokens teamToken={token} />
     <main className={publicMainClass}>
       <Link
         href={`/schedule/${token}`}
@@ -135,6 +142,9 @@ export default async function PublicBookingRoster({
                   {overallTime ? <span>🕐 {overallTime}</span> : null}
                 </p>
               ) : null}
+              <div className="mt-2">
+                <MapsLink venue={b.venue} />
+              </div>
             </div>
           </div>
 
@@ -241,7 +251,7 @@ export default async function PublicBookingRoster({
               >
                 <div className="min-w-0 flex-1">
                   <p className={`text-base ${publicPrimaryText}`}>
-                    {publicPlayerLabel(r.players)}
+                    {publicShortName(publicPlayerLabel(r.players))}
                   </p>
                   <p className={publicHintText}>Tap to RSVP on your page</p>
                 </div>
@@ -259,14 +269,11 @@ export default async function PublicBookingRoster({
         Tap your name to open your private page and confirm Going / Not going.
       </p>
 
-      <nav className="mt-5 flex flex-wrap justify-center gap-2">
-        <PublicNavLink href={`/board/${token}`}>Team balances</PublicNavLink>
-        <PublicNavLink href={`/schedule/${token}`}>All games</PublicNavLink>
-      </nav>
-
       <footer className="mt-6 text-center text-sm text-slate-400">
         Shared schedule · please don&apos;t post publicly
       </footer>
     </main>
+    <PublicBottomNav teamToken={token} />
+    </>
   );
 }

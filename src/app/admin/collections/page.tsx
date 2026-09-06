@@ -15,16 +15,24 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { DownloadCsvButton } from "@/components/DownloadCsvButton";
 import {
   formatMoney,
+  formatDate,
   describeBalance,
   SETTLE_TOLERANCE,
 } from "@/lib/format";
-import { updateGcashNumber, updateBankTransfer } from "./actions";
+import {
+  updateGcashNumber,
+  updateBankTransfer,
+  markContacted,
+  confirmPaymentProof,
+  rejectPaymentProof,
+} from "./actions";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 type CollectRow = {
   id: string;
+  ownerId: string;
   label: string;
   balance: number;
   kind: "player" | "group";
@@ -52,7 +60,13 @@ function buildReminder(
   return `Hi ${row.label}, your Dinkering balance is ${formatMoney(d.amount)} owed. ${paymentLine}Please send payment and share your reference. View details: ${link}`;
 }
 
-export default async function CollectionsPage() {
+export default async function CollectionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const { view: viewParam } = await searchParams;
+  const view = viewParam === "high" || viewParam === "uncontacted" ? viewParam : "all";
   const supabase = await createClient();
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
@@ -66,6 +80,8 @@ export default async function CollectionsPage() {
     { data: groups },
     { data: memberships },
     { data: recentPayRows },
+    { data: proofs },
+    { data: contacts },
   ] = await Promise.all([
     supabase.from("app_settings").select("gcash_number, bank_transfer_details").single(),
     supabase
@@ -86,6 +102,14 @@ export default async function CollectionsPage() {
       .select("payment_code, payment_date, amount, payment_method, reference_number, notes, players(name), player_groups(name)")
       .order("payment_date", { ascending: false })
       .limit(500),
+    supabase
+      .from("payment_proofs")
+      .select(
+        "id, player_id, player_group_id, amount, reference_number, image_url, status, created_at, players(name), player_groups(name)",
+      )
+      .eq("status", "pending")
+      .order("created_at", { ascending: false }),
+    supabase.from("collection_contacts").select("owner_kind, owner_id, contacted_at"),
   ]);
 
   const gcash = (settings?.gcash_number as string | null) ?? null;
@@ -134,6 +158,7 @@ export default async function CollectionsPage() {
         : playerBalMap.get(p.id) ?? 0;
       return {
         id: p.id,
+        ownerId: pooled ? pooled.groupId : p.id,
         label: p.display_name?.trim() || p.name,
         balance,
         kind: pooled ? ("group" as const) : ("player" as const),
@@ -157,12 +182,50 @@ export default async function CollectionsPage() {
     return s + r.balance;
   }, 0);
 
+  const contactedAt = new Map<string, string>();
+  for (const c of (contacts ?? []) as {
+    owner_kind: string;
+    owner_id: string;
+    contacted_at: string;
+  }[]) {
+    contactedAt.set(`${c.owner_kind}:${c.owner_id}`, c.contacted_at);
+  }
+
+  const filteredRows = rows.filter((r) => {
+    if (view === "high") return r.balance >= 500;
+    if (view === "uncontacted")
+      return !contactedAt.has(`${r.kind}:${r.ownerId}`);
+    return true;
+  });
+
   return (
     <div>
       <PageHeader
         title="Collections"
         description="Who owes the team — copy payment reminders to send via chat."
       />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(
+          [
+            ["all", "All owing"],
+            ["high", "High (₱500+)"],
+            ["uncontacted", "Not contacted"],
+          ] as const
+        ).map(([id, label]) => (
+          <Link
+            key={id}
+            href={id === "all" ? "/admin/collections" : `/admin/collections?view=${id}`}
+            className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+              view === id
+                ? "bg-emerald-600 text-white"
+                : "text-slate-700 ring-1 ring-slate-200"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2">
         <Card className="border-rose-200 bg-rose-50 p-4">
@@ -255,12 +318,83 @@ export default async function CollectionsPage() {
         />
       </p>
 
-      {rows.length === 0 ? (
+      {(proofs ?? []).length > 0 ? (
+        <Card className="mb-5 overflow-hidden">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <h2 className="text-sm font-semibold text-slate-800">
+              Pending payment proofs
+            </h2>
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {(proofs ?? []).map((pr) => {
+              const row = pr as unknown as {
+                id: string;
+                amount: number | null;
+                reference_number: string | null;
+                image_url: string;
+                created_at: string;
+                players: { name: string } | null;
+                player_groups: { name: string } | null;
+              };
+              return (
+                <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <a href={row.image_url} target="_blank" rel="noopener noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={row.image_url}
+                      alt="Payment proof"
+                      className="h-16 w-16 rounded-lg object-cover"
+                    />
+                  </a>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-900">
+                      {row.players?.name ?? row.player_groups?.name ?? "Player"}
+                    </p>
+                    <p className="text-sm text-slate-600">
+                      {row.amount != null ? formatMoney(Number(row.amount)) : "Amount not set"}
+                      {row.reference_number ? ` · ${row.reference_number}` : ""}
+                    </p>
+                  </div>
+                  <ActionForm
+                    action={confirmPaymentProof}
+                    className="flex items-center gap-2"
+                    pendingLabel="Recording…"
+                    hidden={<input type="hidden" name="id" value={row.id} />}
+                  >
+                    <input
+                      name="amount"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      defaultValue={row.amount != null ? String(row.amount) : ""}
+                      required
+                      className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm"
+                    />
+                    <SubmitButton pendingLabel="…">Confirm</SubmitButton>
+                  </ActionForm>
+                  <ActionForm
+                    action={rejectPaymentProof}
+                    pendingLabel="…"
+                    hidden={<input type="hidden" name="id" value={row.id} />}
+                  >
+                    <SubmitButton variant="ghost" pendingLabel="…">
+                      Reject
+                    </SubmitButton>
+                  </ActionForm>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      ) : null}
+
+      {filteredRows.length === 0 ? (
         <EmptyState title="Everyone is settled — nothing to collect" />
       ) : (
         <Card className="divide-y divide-slate-100 overflow-hidden">
-          {rows.map((r) => {
+          {filteredRows.map((r) => {
             const d = describeBalance(r.balance);
+            const last = contactedAt.get(`${r.kind}:${r.ownerId}`);
             const adminHref =
               r.kind === "player"
                 ? `/admin/players/${r.id}`
@@ -287,12 +421,35 @@ export default async function CollectionsPage() {
                     <span className="text-lg font-bold text-rose-700">
                       {formatMoney(d.amount)}
                     </span>
+                    {last ? (
+                      <span className="text-xs text-slate-400">
+                        Contacted {formatDate(last.slice(0, 10))}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-amber-700">Not contacted</span>
+                    )}
                   </div>
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
                 <CopyReminder
                   message={buildReminder(r, gcash, bank, appUrl)}
                   label="Copy reminder"
                 />
+                <ActionForm
+                  action={markContacted}
+                  pendingLabel="Saving…"
+                  hidden={
+                    <>
+                      <input type="hidden" name="owner_kind" value={r.kind} />
+                      <input type="hidden" name="owner_id" value={r.ownerId} />
+                    </>
+                  }
+                >
+                  <SubmitButton variant="secondary" pendingLabel="…">
+                    Mark contacted
+                  </SubmitButton>
+                </ActionForm>
+                </div>
               </div>
             );
           })}

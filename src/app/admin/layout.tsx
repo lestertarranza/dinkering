@@ -21,7 +21,7 @@ export default async function AdminLayout({
     <div className="flex min-h-screen flex-col md:flex-row">
       <AdminNav email={user.email ?? null} />
       <AdminHotkeys />
-      <main className="flex-1 overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8">
+      <main className="flex-1 overflow-x-hidden px-4 py-5 pb-24 sm:px-6 lg:px-8 md:pb-5">
         <div className="mx-auto max-w-6xl">{children}</div>
       </main>
     </div>

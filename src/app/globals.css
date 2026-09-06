@@ -19,6 +19,33 @@ body {
   -webkit-tap-highlight-color: rgba(5, 150, 105, 0.15);
 }
 
+html.sun-mode {
+  --background: #fffbeb;
+  --foreground: #171717;
+}
+html.sun-mode body {
+  font-size: 18px;
+  background: #fffbeb;
+  color: #171717;
+}
+html.dark-mode {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+}
+html.dark-mode body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+@media print {
+  nav,
+  header,
+  .no-print,
+  [aria-label="Player pages"] {
+    display: none !important;
+  }
+}
+
 a,
 button {
   -webkit-tap-highlight-color: rgba(5, 150, 105, 0.2);

@@ -4,7 +4,7 @@ import { dateChipParts } from "@/lib/format";
 
 /** Wrapper for player/group/board/schedule pages — larger base text on mobile. */
 export const publicMainClass =
-  "mx-auto max-w-lg px-4 py-6 text-[17px] leading-relaxed sm:text-base";
+  "mx-auto max-w-lg px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base";
 
 /** Tappable list row — visible press feedback + 44px+ hit area. */
 export const publicTapRowClass =
@@ -204,3 +204,42 @@ export const publicMetaText = "text-sm text-slate-600";
 
 /** Muted helper copy. */
 export const publicHintText = "text-sm text-slate-500";
+
+export function MapsLink({ venue }: { venue: string | null | undefined }) {
+  const q = venue?.trim();
+  if (!q) return null;
+  const href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex min-h-10 items-center text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2"
+    >
+      Open in Maps
+    </a>
+  );
+}
+
+export function GoingNames({
+  names,
+  hiddenCount,
+  total,
+}: {
+  names: string[];
+  hiddenCount: number;
+  total: number;
+}) {
+  if (total === 0) {
+    return <p className={publicHintText}>Nobody going yet</p>;
+  }
+  const extra = hiddenCount > 0 ? ` +${hiddenCount}` : "";
+  return (
+    <p className={publicHintText}>
+      <span className="font-semibold text-slate-700">Who&apos;s going ({total})</span>
+      {": "}
+      {names.length > 0 ? names.join(", ") : "hidden"}
+      {extra}
+    </p>
+  );
+}

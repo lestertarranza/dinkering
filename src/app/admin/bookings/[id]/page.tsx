@@ -48,9 +48,13 @@ import {
   deleteBooking,
   markBookingSharePaid,
   removeBookingConfirmation,
+  duplicateBooking,
 } from "../actions";
 import { CourtAddForm } from "../CourtAddForm";
 import { CourtRow } from "../CourtRow";
+import { CycleRsvpButton } from "@/components/CycleRsvpButton";
+import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
+import { SplitPreview } from "@/components/SplitPreview";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +141,13 @@ export default async function BookingDetail({
   const balMap = new Map(
     (balances ?? []).map((x) => [x.player_id as string, Number(x.balance)]),
   );
+  const chargeNames = roster
+    .filter((r) =>
+      r.actual_status
+        ? chargeable.has(r.actual_status)
+        : r.response_status === "going",
+    )
+    .map((r) => r.players?.name ?? "Player");
 
   const totalShared = round2(
     shareList.reduce((s, x) => s + Number(x.amount_owed), 0),
@@ -219,7 +230,7 @@ export default async function BookingDetail({
   );
 
   return (
-    <div className="pb-24">
+    <div className="pb-36 md:pb-24">
       <PageHeader
         title={`${b.booking_code ?? "Booking"}`}
         description={`${formatDate(b.play_date)}${
@@ -228,9 +239,20 @@ export default async function BookingDetail({
           b.court_number ? ` · ${b.court_number}` : ""
         }${b.booking_reference ? ` · Ref ${b.booking_reference}` : ""}`}
         action={
-          <Link href="/admin/bookings" className={buttonClass("ghost")}>
-            ← All bookings
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/admin/bookings/${b.id}/print`} className={buttonClass("secondary")}>
+              Print sheet
+            </Link>
+            <form action={duplicateBooking}>
+              <input type="hidden" name="id" value={b.id} />
+              <button type="submit" className={buttonClass("secondary")}>
+                Duplicate session
+              </button>
+            </form>
+            <Link href="/admin/bookings" className={buttonClass("ghost")}>
+              ← All bookings
+            </Link>
+          </div>
         }
       />
 
@@ -604,13 +626,31 @@ export default async function BookingDetail({
                           value={r.player_id}
                           className="h-4 w-4 rounded border-slate-300"
                         />
-                        {r.players?.name}
+                        <PlayerDrawerTrigger
+                          payload={{
+                            name: r.players?.name ?? "Player",
+                            playerHref: `/admin/players/${r.player_id}`,
+                            rsvp: r.response_status,
+                            attendance: r.actual_status,
+                            balanceLabel:
+                              (balMap.get(r.player_id) ?? 0) >= SETTLE_TOLERANCE
+                                ? `${formatMoney(balMap.get(r.player_id) ?? 0)} owed`
+                                : null,
+                          }}
+                        >
+                          {r.players?.name}
+                        </PlayerDrawerTrigger>
                       </label>
                       <div className="flex items-center gap-2">
                         {rsvpLocked && r.response_status === "going" ? (
                           <Badge tone="warning">Committed</Badge>
                         ) : null}
                         <StatusBadge status={r.response_status} />
+                        <CycleRsvpButton
+                          bookingId={b.id}
+                          playerId={r.player_id}
+                          current={r.response_status}
+                        />
                         {r.actual_status ? (
                           <StatusBadge status={r.actual_status} />
                         ) : null}
@@ -698,6 +738,10 @@ export default async function BookingDetail({
                   ⚡ Charge everyone who attended
                 </ConfirmButton>
               </div>
+              <SplitPreview
+                totalCost={Number(b.total_booking_cost)}
+                playerNames={chargeNames}
+              />
               <ActionForm
                 action={generateShares}
                 className="p-4"
@@ -984,7 +1028,7 @@ export default async function BookingDetail({
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-6px_16px_rgba(15,23,42,0.12)] backdrop-blur md:left-60">
+      <div className="fixed inset-x-0 bottom-14 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-6px_16px_rgba(15,23,42,0.12)] backdrop-blur md:bottom-0 md:left-60">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
           <p className="mr-auto text-sm font-medium text-slate-600">
             {b.booking_code ?? "Booking"} ·{" "}

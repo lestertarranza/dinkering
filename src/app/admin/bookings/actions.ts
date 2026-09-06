@@ -607,3 +607,120 @@ export async function markBookingSharePaid(
   revalidatePath("/admin");
   return actionOk(`Recorded ${formatMoney(amount)} — ${code}.`);
 }
+
+const RSVP_CYCLE: ResponseStatus[] = [
+  "no_response",
+  "going",
+  "waitlist",
+  "not_going",
+];
+
+/** Tap-to-cycle RSVP on the live roster. */
+export async function cycleResponse(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const booking_id = String(formData.get("booking_id"));
+  const player_id = String(formData.get("player_id"));
+  const { supabase, user } = await requireAdmin();
+  const [{ data: existing }, { data: player }, { data: booking }] =
+    await Promise.all([
+      supabase
+        .from("booking_attendance")
+        .select("response_status")
+        .eq("booking_id", booking_id)
+        .eq("player_id", player_id)
+        .single(),
+      supabase.from("players").select("name").eq("id", player_id).single(),
+      supabase.from("bookings").select("booking_code").eq("id", booking_id).single(),
+    ]);
+  const current = (existing?.response_status as ResponseStatus) ?? "no_response";
+  const idx = RSVP_CYCLE.indexOf(
+    current === "maybe" ? "no_response" : current,
+  );
+  const next = RSVP_CYCLE[(idx < 0 ? 0 : idx + 1) % RSVP_CYCLE.length];
+  await supabase.from("booking_attendance").upsert(
+    { booking_id, player_id, response_status: next },
+    { onConflict: "booking_id,player_id" },
+  );
+  await logRsvpChange({
+    playerId: player_id,
+    bookingId: booking_id,
+    playerName: player?.name ?? null,
+    bookingCode: booking?.booking_code ?? null,
+    from: current,
+    to: next,
+    actorEmail: user.email ?? null,
+    via: "admin",
+  });
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  return actionOk(`${player?.name ?? "Player"} → ${next.replace("_", " ")}`);
+}
+
+/** Copy courts, venue, times, and roster into a new session 7 days later. */
+export async function duplicateBooking(formData: FormData) {
+  const sourceId = String(formData.get("id") || "");
+  const { supabase, user } = await requireAdmin();
+  const { data: source } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("id", sourceId)
+    .single();
+  if (!source) return;
+  const srcDate = new Date(`${source.play_date}T00:00:00`);
+  srcDate.setDate(srcDate.getDate() + 7);
+  const play_date = srcDate.toISOString().slice(0, 10);
+  const code = await nextCode(supabase, "bookings", "booking_code", "PB");
+  const other_fees = Number(source.other_fees ?? 0);
+  const { data: created } = await supabase
+    .from("bookings")
+    .insert({
+      booking_code: code,
+      play_date,
+      venue: source.venue,
+      booking_reference: null,
+      other_fees,
+      total_booking_cost: other_fees,
+      status: "for_booking",
+      notes: source.notes,
+    })
+    .select("id")
+    .single();
+  if (!created?.id) return;
+  const [{ data: courts }, { data: roster }] = await Promise.all([
+    supabase.from("booking_courts").select("*").eq("booking_id", sourceId),
+    supabase.from("booking_attendance").select("player_id").eq("booking_id", sourceId),
+  ]);
+  if ((courts ?? []).length > 0) {
+    await supabase.from("booking_courts").insert(
+      (courts ?? []).map((c) => ({
+        booking_id: created.id,
+        court_number: c.court_number,
+        start_time: c.start_time,
+        end_time: c.end_time,
+        hours: c.hours,
+        rate_per_court_per_hour: c.rate_per_court_per_hour,
+        max_players: c.max_players,
+      })),
+    );
+  }
+  const rows = (roster ?? []).map((r) => ({
+    booking_id: created.id as string,
+    player_id: r.player_id as string,
+    response_status: "no_response" as ResponseStatus,
+  }));
+  if (rows.length > 0) {
+    await supabase.from("booking_attendance").upsert(rows, {
+      onConflict: "booking_id,player_id",
+      ignoreDuplicates: true,
+    });
+  }
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: created.id,
+    action: `Duplicated from ${source.booking_code ?? sourceId}`,
+    details: `Play date ${play_date}`,
+  });
+  revalidatePath("/admin/bookings");
+  redirect(`/admin/bookings/${created.id}`);
+}

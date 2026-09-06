@@ -117,10 +117,30 @@ export async function submitRsvp(
       .limit(isUnlimited ? 999 : 1);
 
     if (next && next.length > 0) {
+      const promoteIds = next.map((r) => r.id as string);
       await db
         .from("booking_attendance")
         .update({ response_status: "going" as ResponseStatus })
-        .in("id", next.map((r) => r.id as string));
+        .in("id", promoteIds);
+      const { data: promoted } = await db
+        .from("booking_attendance")
+        .select("player_id, players(name)")
+        .in("id", promoteIds);
+      for (const row of (promoted ?? []) as unknown as {
+        player_id: string;
+        players: { name: string } | null;
+      }[]) {
+        await logRsvpChange({
+          playerId: row.player_id,
+          bookingId: booking_id,
+          playerName: row.players?.name ?? null,
+          bookingCode: (booking as { booking_code?: string | null } | null)
+            ?.booking_code,
+          from: "waitlist",
+          to: "going",
+          via: "player",
+        });
+      }
     }
   }
 

@@ -11,12 +11,15 @@ import { formatMoney, describeBalance } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
 import {
   PublicPageHeader,
-  PublicNavLink,
   publicTapRowClass,
   publicChevronClass,
   publicPrimaryText,
   publicHintText,
 } from "@/components/public-ui";
+import {
+  PublicBottomNav,
+  RememberPublicTokens,
+} from "@/components/PublicBottomNav";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -228,16 +231,14 @@ export default async function TeamBoard({
   };
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6 text-[17px] leading-relaxed sm:text-base">
+    <>
+    <RememberPublicTokens teamToken={token} />
+    <main className="mx-auto max-w-3xl px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base">
       <PublicPageHeader
         icon="🏓"
         title="Dinkering Pickleball"
         subtitle="Tap your name to open your private page."
       />
-
-      <nav className="mb-5 flex justify-center">
-        <PublicNavLink href={`/schedule/${token}`}>Upcoming games</PublicNavLink>
-      </nav>
 
       {items.length === 0 ? (
         <EmptyState title="No players on the board yet" description="Active players will show up here once they're added." />
@@ -253,5 +254,7 @@ export default async function TeamBoard({
         Shared team board · please don&apos;t post publicly
       </footer>
     </main>
+    <PublicBottomNav teamToken={token} />
+    </>
   );
 }

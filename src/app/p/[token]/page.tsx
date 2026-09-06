@@ -25,13 +25,23 @@ import { HowToPay, BalancePlainSummary } from "@/components/HowToPay";
 import { AddToCalendar } from "@/components/AddToCalendar";
 import { UpcomingGamesFilter } from "@/components/UpcomingGamesFilter";
 import {
-  PublicNavLink,
   PublicSection,
+  DateChip,
   publicMainClass,
   publicPrimaryText,
   publicMetaText,
   publicHintText,
+  MapsLink,
+  GoingNames,
 } from "@/components/public-ui";
+import { PaymentProofForm } from "@/components/PaymentProofForm";
+import { AppearanceToggle, InstallHint } from "@/components/AppearanceToggle";
+import {
+  fetchGoingAndWaitlist,
+  goingNamesForBooking,
+  waitlistPosition,
+} from "@/lib/public-roster";
+import { fetchActivity } from "@/lib/activity-log";
 import type {
   Booking,
   BookingAttendance,
@@ -40,6 +50,10 @@ import type {
 } from "@/lib/types";
 import { RsvpForm } from "./RsvpForm";
 import { ScrollToHash } from "@/components/ScrollToHash";
+import {
+  PublicBottomNav,
+  RememberPublicTokens,
+} from "@/components/PublicBottomNav";
 
 const STATEMENT_LABELS: Record<string, string> = {
   booking_share: "Court",
@@ -52,33 +66,6 @@ const STATEMENT_LABELS: Record<string, string> = {
 export const dynamic = "force-dynamic";
 
 const LEDGER_PAGE_SIZE = 10;
-
-/**
- * Count "going" RSVPs per booking, paging past PostgREST's per-request row cap
- * (default 1000) so capacity counts stay correct once total going rows across
- * upcoming bookings exceed the cap.
- */
-async function fetchAllGoingAttendance(
-  db: ReturnType<typeof createAdminClient>,
-  bookingIds: string[],
-): Promise<{ booking_id: string }[]> {
-  if (bookingIds.length === 0) return [];
-  const pageSize = 1000;
-  const all: { booking_id: string }[] = [];
-  for (let from = 0; ; from += pageSize) {
-    const { data } = await db
-      .from("booking_attendance")
-      .select("booking_id")
-      .in("booking_id", bookingIds)
-      .eq("response_status", "going")
-      .order("booking_id")
-      .range(from, from + pageSize - 1);
-    const rows = (data ?? []) as { booking_id: string }[];
-    all.push(...rows);
-    if (rows.length < pageSize) break;
-  }
-  return all;
-}
 
 export default async function PlayerPortal({
   params,
@@ -300,13 +287,15 @@ export default async function PlayerPortal({
   // bookingId → raw court rows (for merged display)
   type DisplayCourt = { court_number: string | null; start_time: string | null; end_time: string | null; max_players: number };
   const bookingCourtsMap = new Map<string, DisplayCourt[]>();
+  let goingWaitRows: Awaited<ReturnType<typeof fetchGoingAndWaitlist>> = [];
 
   if (upcomingBookingIds.length > 0) {
-    const [{ data: notesRows }, { data: courtRows }, goingRows] = await Promise.all([
+    const [{ data: notesRows }, { data: courtRows }, gw] = await Promise.all([
       db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
       db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
-      fetchAllGoingAttendance(db, upcomingBookingIds),
+      fetchGoingAndWaitlist(db, upcomingBookingIds),
     ]);
+    goingWaitRows = gw;
 
     // Build notes map
     for (const row of (notesRows ?? []) as { id: string; notes: string | null }[]) {
@@ -321,7 +310,8 @@ export default async function PlayerPortal({
       bookingCourtsMap.set(c.booking_id, list);
     }
     const goingByBooking = new Map<string, number>();
-    for (const r of goingRows) {
+    for (const r of goingWaitRows) {
+      if (r.response_status !== "going") continue;
       goingByBooking.set(r.booking_id, (goingByBooking.get(r.booking_id) ?? 0) + 1);
     }
     for (const bid of upcomingBookingIds) {
@@ -330,6 +320,38 @@ export default async function PlayerPortal({
       const totalCap = unlimited ? 0 : cts.reduce((s, c) => s + c.max_players, 0);
       bookingCapMap.set(bid, { totalCap, goingCount: goingByBooking.get(bid) ?? 0 });
     }
+  }
+
+  const historyIds = history.map((h) => h.booking_id);
+  const [playerActivity, histShareRes] = await Promise.all([
+    fetchActivity(db, "player", p.id, 25),
+    historyIds.length > 0
+      ? db
+          .from("booking_shares")
+          .select("booking_id, amount_owed, player_id, player_group_id")
+          .in("booking_id", historyIds)
+      : Promise.resolve({ data: [] as { booking_id: string; amount_owed: number; player_id: string | null; player_group_id: string | null }[] }),
+  ]);
+  const promotedCodes = new Set(
+    playerActivity
+      .filter((row) => row.action.includes("Waitlist → Going"))
+      .map((row) => {
+        const m = row.action.match(/RSVP on ([^:]+):/);
+        return m?.[1]?.trim() ?? "";
+      })
+      .filter(Boolean),
+  );
+  const recapByBooking = new Map<string, number>();
+  for (const s of (histShareRes.data ?? []) as {
+    booking_id: string;
+    amount_owed: number;
+    player_id: string | null;
+    player_group_id: string | null;
+  }[]) {
+    const mine =
+      s.player_id === p.id ||
+      (pooled && s.player_group_id === pooled.player_group_id);
+    if (mine) recapByBooking.set(s.booking_id, Number(s.amount_owed));
   }
 
   const d = describeBalance(balance);
@@ -387,8 +409,14 @@ export default async function PlayerPortal({
     `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
 
   return (
+    <>
+    <RememberPublicTokens playerToken={token} teamToken={teamToken} />
     <main className={publicMainClass}>
       <ScrollToHash />
+      <div className="mb-3 flex justify-end">
+        <AppearanceToggle />
+      </div>
+      <InstallHint />
       <header className="mb-5 text-center">
         <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
           🏓
@@ -586,14 +614,10 @@ export default async function PlayerPortal({
 
       <div className="mb-5">
         <HowToPay bank={payBank} gcash={payGcash} />
+        {d.tone === "collect" ? (
+          <PaymentProofForm token={token} owed={d.amount} />
+        ) : null}
       </div>
-
-      {teamToken ? (
-        <nav className="mb-5 flex flex-wrap justify-center gap-2">
-          <PublicNavLink href={`/board/${teamToken}`}>Team balances</PublicNavLink>
-          <PublicNavLink href={`/schedule/${teamToken}`}>Upcoming games</PublicNavLink>
-        </nav>
-      ) : null}
 
       <PublicSection title="Upcoming games">
         {upcoming.length === 0 ? (
@@ -625,8 +649,10 @@ export default async function PlayerPortal({
                 a.bookings.start_time,
               );
               const node = (
-                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 p-4">
-                  <div className="mb-3">
+                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 overflow-hidden">
+                  <div className="flex items-start gap-4 p-4">
+                    <DateChip value={a.bookings.play_date} />
+                    <div className="min-w-0 flex-1">
                     <p className={`text-lg ${publicPrimaryText}`}>
                       {formatDate(a.bookings.play_date)}
                     </p>
@@ -638,6 +664,9 @@ export default async function PlayerPortal({
                     {venueLine ? (
                       <p className={`mt-1 ${publicHintText}`}>{venueLine}</p>
                     ) : null}
+                    <div className="mt-1">
+                      <MapsLink venue={a.bookings.venue} />
+                    </div>
                     {merged.length > 0 ? (
                       <div className="mt-1 space-y-0.5">
                         {merged.map((m, i) => (
@@ -647,7 +676,9 @@ export default async function PlayerPortal({
                         ))}
                       </div>
                     ) : null}
+                    </div>
                   </div>
+                  <div className="px-4 pb-4">
                   {/* Total capacity + slots remaining */}
                   {cap && cap.totalCap > 0 ? (
                     <p className={`mb-3 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
@@ -703,6 +734,21 @@ export default async function PlayerPortal({
                       }}
                     />
                   </div>
+                  <div className="mb-3">
+                    {(() => {
+                      const going = goingNamesForBooking(
+                        goingWaitRows,
+                        a.booking_id,
+                      );
+                      return (
+                        <GoingNames
+                          names={going.names}
+                          hiddenCount={going.hiddenCount}
+                          total={going.total}
+                        />
+                      );
+                    })()}
+                  </div>
                   <div className="mb-2 flex items-center gap-2">
                     <span className={`text-sm ${publicHintText}`}>Your RSVP</span>
                     <StatusBadge status={a.response_status} size="md" />
@@ -713,11 +759,22 @@ export default async function PlayerPortal({
                     currentStatus={a.response_status}
                     locked={locked}
                     lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
+                    waitlistPosition={waitlistPosition(
+                      goingWaitRows,
+                      a.booking_id,
+                      p.id,
+                    )}
+                    promoted={
+                      a.response_status === "going" &&
+                      !!a.bookings.booking_code &&
+                      promotedCodes.has(a.bookings.booking_code)
+                    }
                     isFull={(() => {
                       const cap = bookingCapMap.get(a.booking_id);
                       return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
                     })()}
                   />
+                  </div>
                 </Card>
               );
               return { key: a.id, status: a.response_status, node };
@@ -921,11 +978,16 @@ export default async function PlayerPortal({
           />
         ) : (
           <Card className="divide-y divide-slate-100 overflow-hidden">
-            {history.map((a) => (
+            {history.map((a) => {
+              const share = recapByBooking.get(a.booking_id);
+              const played = a.bookings.status === "played";
+              const attended = a.actual_status === "attended";
+              return (
               <div
                 key={a.id}
-                className="flex items-center justify-between gap-3 px-4 py-3.5"
+                className="px-4 py-3.5"
               >
+                <div className="flex items-center justify-between gap-3">
                 <div>
                   <span className={`text-base ${publicPrimaryText}`}>
                     {a.bookings.booking_code}
@@ -933,13 +995,29 @@ export default async function PlayerPortal({
                   <span className={`ml-2 ${publicHintText}`}>
                     {formatDate(a.bookings.play_date)}
                   </span>
+                  {a.bookings.venue ? (
+                    <p className={`mt-0.5 ${publicHintText}`}>{a.bookings.venue}</p>
+                  ) : null}
                 </div>
                 <StatusBadge
                   status={a.actual_status ?? a.response_status}
                   size="md"
                 />
+                </div>
+                {played ? (
+                  <p className={`mt-1 ${publicHintText}`}>
+                    {attended ? "You played." : "Marked on this session."}
+                    {share != null
+                      ? ` Share ${formatMoney(share)}.`
+                      : ""}
+                    {d.tone === "collect" && attended
+                      ? " Balance still open — see How to pay above."
+                      : ""}
+                  </p>
+                ) : null}
               </div>
-            ))}
+              );
+            })}
           </Card>
         )}
       </PublicSection>
@@ -948,5 +1026,7 @@ export default async function PlayerPortal({
         Private link · do not share publicly
       </footer>
     </main>
+    <PublicBottomNav playerToken={token} teamToken={teamToken} />
+    </>
   );
 }

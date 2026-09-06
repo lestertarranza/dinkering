@@ -69,11 +69,13 @@ function RsvpControls({
   isFull,
   locked = false,
   lockAtIso,
+  waitlistPosition = null,
 }: {
   currentStatus: string;
   isFull: boolean;
   locked?: boolean;
   lockAtIso?: string | null;
+  waitlistPosition?: { position: number; total: number } | null;
 }) {
   const onWaitlist = currentStatus === "waitlist";
   const showWaitlist = isFull && currentStatus !== "going";
@@ -127,7 +129,9 @@ function RsvpControls({
       ) : null}
       {onWaitlist ? (
         <p className="text-center text-xs text-amber-700">
-          You&apos;re on the waitlist — you&apos;ll be moved to Going if a spot opens.
+          {waitlistPosition
+            ? `You're #${waitlistPosition.position} of ${waitlistPosition.total} on the waitlist — you'll move to Going if a spot opens.`
+            : "You're on the waitlist — you'll be moved to Going if a spot opens."}
         </p>
       ) : null}
     </>
@@ -141,6 +145,8 @@ export function RsvpForm({
   isFull = false,
   locked = false,
   lockAtIso = null,
+  waitlistPosition = null,
+  promoted = false,
 }: {
   token: string;
   bookingId: string;
@@ -148,6 +154,8 @@ export function RsvpForm({
   isFull?: boolean;
   locked?: boolean;
   lockAtIso?: string | null;
+  waitlistPosition?: { position: number; total: number } | null;
+  promoted?: boolean;
 }) {
   const [state, formAction] = useActionState(submitRsvp, null);
   const undoRef = useRef<HTMLFormElement>(null);
@@ -155,6 +163,11 @@ export function RsvpForm({
 
   return (
     <div className="flex flex-col gap-2">
+      {promoted && currentStatus === "going" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+          A spot opened. You&apos;re Going.
+        </p>
+      ) : null}
       <form action={formAction} className="flex flex-col gap-2">
         <input type="hidden" name="token" value={token} />
         <input type="hidden" name="booking_id" value={bookingId} />
@@ -163,6 +176,7 @@ export function RsvpForm({
           isFull={isFull}
           locked={locked}
           lockAtIso={lockAtIso}
+          waitlistPosition={waitlistPosition}
         />
       </form>
       {shown ? (
