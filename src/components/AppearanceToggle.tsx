@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 const KEY = "dinkering-appearance";
 type Mode = "default" | "sun" | "dark";
@@ -11,23 +11,34 @@ function apply(mode: Mode) {
   el.classList.toggle("dark-mode", mode === "dark");
 }
 
+function readMode(): Mode {
+  const stored = localStorage.getItem(KEY);
+  if (stored === "sun" || stored === "dark" || stored === "default") return stored;
+  return "default";
+}
+
+function subscribe(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("dinkering-appearance", onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("dinkering-appearance", onStoreChange);
+  };
+}
+
 export function AppearanceToggle({ compact = false }: { compact?: boolean }) {
-  const [mode, setMode] = useState<Mode>("default");
+  const mode = useSyncExternalStore(subscribe, readMode, () => "default");
 
   useEffect(() => {
-    const stored = (localStorage.getItem(KEY) as Mode | null) ?? "default";
-    if (stored === "sun" || stored === "dark" || stored === "default") {
-      setMode(stored);
-      apply(stored);
-    }
-  }, []);
+    apply(mode);
+  }, [mode]);
 
   function cycle() {
     const next: Mode =
       mode === "default" ? "sun" : mode === "sun" ? "dark" : "default";
-    setMode(next);
     localStorage.setItem(KEY, next);
     apply(next);
+    window.dispatchEvent(new Event("dinkering-appearance"));
   }
 
   const label =

@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { formatLockCountdown } from "@/lib/rsvp-lock";
-import { submitRsvp, type RsvpState } from "./actions";
+import { submitRsvp } from "./actions";
 
 function RsvpButton({
   value,

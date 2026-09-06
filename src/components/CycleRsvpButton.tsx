@@ -21,7 +21,7 @@ export function CycleRsvpButton({
       <button
         type="submit"
         disabled={pending}
-        title="Tap to cycle RSVP"
+        title={`Tap to cycle RSVP (now ${current})`}
         className="min-h-9 rounded-md px-2 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200 disabled:opacity-60"
       >
         {pending ? "…" : "Cycle"}

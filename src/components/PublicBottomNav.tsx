@@ -1,11 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 export const PLAYER_TOKEN_KEY = "dinkering-player-token";
 const TEAM_TOKEN_KEY = "dinkering-team-token";
+
+function subscribeHome(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("dinkering-home", onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("dinkering-home", onStoreChange);
+  };
+}
+
+function readPlayerToken() {
+  return localStorage.getItem(PLAYER_TOKEN_KEY);
+}
+
+function readTeamToken() {
+  return localStorage.getItem(TEAM_TOKEN_KEY);
+}
 
 export function rememberPublicTokens(opts: {
   playerToken?: string | null;
@@ -52,18 +69,15 @@ export function SaveAsMyPage({
   compact?: boolean;
 }) {
   const router = useRouter();
-  const [state, setState] = useState<"unknown" | "mine" | "other" | "none">(
-    "unknown",
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
   );
+  const saved = useSyncExternalStore(subscribeHome, readPlayerToken, () => null);
+  const state = !saved ? "none" : saved === playerToken ? "mine" : "other";
 
-  useEffect(() => {
-    const saved = localStorage.getItem(PLAYER_TOKEN_KEY);
-    if (!saved) setState("none");
-    else if (saved === playerToken) setState("mine");
-    else setState("other");
-  }, [playerToken]);
-
-  if (state === "unknown") return null;
+  if (!hydrated) return null;
   if (state === "mine") {
     return (
       <p
@@ -87,7 +101,6 @@ export function SaveAsMyPage({
           teamToken,
           claimPlayer: true,
         });
-        setState("mine");
         if (goHome) router.push(`/p/${playerToken}`);
       }}
       className={
@@ -109,25 +122,10 @@ export function PublicBottomNav({
   teamToken?: string | null;
 }) {
   const pathname = usePathname();
-  const [stored, setStored] = useState<{ p: string | null; t: string | null }>({
-    p: playerToken ?? null,
-    t: teamToken ?? null,
-  });
-
-  useEffect(() => {
-    function refresh() {
-      setStored({
-        p: playerToken || localStorage.getItem(PLAYER_TOKEN_KEY),
-        t: teamToken || localStorage.getItem(TEAM_TOKEN_KEY),
-      });
-    }
-    refresh();
-    window.addEventListener("dinkering-home", refresh);
-    return () => window.removeEventListener("dinkering-home", refresh);
-  }, [playerToken, teamToken]);
-
-  const p = stored.p;
-  const t = stored.t;
+  const storedP = useSyncExternalStore(subscribeHome, readPlayerToken, () => null);
+  const storedT = useSyncExternalStore(subscribeHome, readTeamToken, () => null);
+  const p = playerToken || storedP;
+  const t = teamToken || storedT;
 
   if (!t && !p) return null;
 
