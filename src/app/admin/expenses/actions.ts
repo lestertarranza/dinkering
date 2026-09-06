@@ -96,6 +96,7 @@ export async function createExpense(formData: FormData) {
       split_method,
       status: "open",
       notes: String(formData.get("notes") || "").trim() || null,
+      booking_id,
     })
     .select("*")
     .single();
@@ -121,7 +122,93 @@ export async function createExpense(formData: FormData) {
 
   revalidatePath("/admin/expenses");
   revalidatePath("/admin");
+  if (booking_id) revalidatePath(`/admin/bookings/${booking_id}`);
   if (expenseRow?.id) redirect(`/admin/expenses/${expenseRow.id}`);
+}
+
+/**
+ * Add a team expense from a booking page (e.g. balls for this session).
+ * Splits across this booking's attendees / Going players and stays on the booking.
+ */
+export async function createBookingExpense(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const booking_id = String(formData.get("booking_id") || "");
+  const description =
+    String(formData.get("description") || "").trim() || "Session extra";
+  const total_cost = Math.abs(parseFloat(String(formData.get("total_cost") || "0")));
+  const payer = String(formData.get("payer") || "");
+  if (!booking_id) return actionErr("Missing booking.");
+  if (!total_cost) return actionErr("Enter a cost greater than zero.");
+  if (!payer) return actionErr("Select who paid.");
+
+  const paid_by_player_id = payer.startsWith("p:") ? payer.slice(2) : null;
+  const paid_by_group_id = payer.startsWith("g:") ? payer.slice(2) : null;
+  const { supabase } = await requireAdmin();
+
+  const { data: booking } = await supabase
+    .from("bookings")
+    .select("id, play_date, booking_code")
+    .eq("id", booking_id)
+    .single();
+  if (!booking) return actionErr("Booking not found.");
+
+  const participants = await resolveParticipants(
+    supabase,
+    "attendees",
+    booking.play_date as string,
+    [],
+    booking_id,
+  );
+  const set = new Set(participants);
+  if (paid_by_player_id) set.add(paid_by_player_id);
+  if (set.size === 0) {
+    return actionErr(
+      "No attendees yet. Mark Going or attendance first, then add the expense.",
+    );
+  }
+
+  const code = await nextCode(supabase, "team_expenses", "expense_code", "EXP");
+  const { data: expenseRow, error } = await supabase
+    .from("team_expenses")
+    .insert({
+      expense_code: code,
+      purchase_date: booking.play_date,
+      description,
+      paid_by_player_id,
+      paid_by_group_id,
+      total_cost,
+      split_method: "attendees",
+      status: "open",
+      notes: String(formData.get("notes") || "").trim() || null,
+      booking_id,
+    })
+    .select("*")
+    .single();
+  if (error || !expenseRow) {
+    return actionErr(error?.message ?? "Could not create expense.");
+  }
+
+  const rows: ShareRow[] = [...set].map((player_id) => ({
+    player_id,
+    share_units: 1,
+    override_share_amount: null,
+  }));
+  try {
+    await rebuildExpenseShares(supabase, expenseRow as TeamExpense, rows);
+  } catch (e) {
+    return actionErr(
+      e instanceof Error ? e.message : "Could not split this expense.",
+    );
+  }
+
+  revalidatePath(`/admin/bookings/${booking_id}`);
+  revalidatePath("/admin/expenses");
+  revalidatePath("/admin");
+  return actionOk(
+    `${description} added (${formatMoney(total_cost)} split across ${rows.length} player${rows.length === 1 ? "" : "s"}). It also shows on Team Expenses.`,
+  );
 }
 
 export async function regenerateExpenseShares(

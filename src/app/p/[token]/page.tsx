@@ -53,6 +53,7 @@ import { ScrollToHash } from "@/components/ScrollToHash";
 import {
   PublicBottomNav,
   RememberPublicTokens,
+  SaveAsMyPage,
 } from "@/components/PublicBottomNav";
 
 const STATEMENT_LABELS: Record<string, string> = {
@@ -425,6 +426,9 @@ export default async function PlayerPortal({
           {p.display_name || p.name}
         </h1>
         <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
+        <div className="mt-3 flex justify-center">
+          <SaveAsMyPage playerToken={token} teamToken={teamToken} />
+        </div>
       </header>
 
       {upcoming[0] ? (() => {

@@ -98,18 +98,29 @@ export function ExpenseForm({
         </Field>
       ) : null}
 
-      {method === "attendees" ? (
-        <Field label="Booking">
-          <select name="booking_id" className={inputClass}>
-            <option value="">Select booking…</option>
-            {bookings.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.booking_code} · {formatDate(b.play_date)}
-              </option>
-            ))}
-          </select>
-        </Field>
-      ) : null}
+      <Field
+        label={method === "attendees" ? "Booking" : "Linked session (optional)"}
+        hint={
+          method === "attendees"
+            ? "Split across Going / attended players of this booking"
+            : "Optional. Ties this purchase to a game so it also shows on that booking."
+        }
+      >
+        <select
+          name="booking_id"
+          className={inputClass}
+          required={method === "attendees"}
+        >
+          <option value="">
+            {method === "attendees" ? "Select booking…" : "None"}
+          </option>
+          {bookings.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.booking_code} · {formatDate(b.play_date)}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <Field label="Notes">
         <textarea name="notes" rows={2} className={inputClass} />

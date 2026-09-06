@@ -40,13 +40,14 @@ export default async function ExpenseDetail({
 
   const { data: expense } = await supabase
     .from("team_expenses")
-    .select("*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name)")
+    .select("*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name), bookings:booking_id(id, booking_code, play_date)")
     .eq("id", id)
     .single();
   if (!expense) notFound();
   const e = expense as TeamExpense & {
     players: { name: string } | null;
     player_groups: { name: string } | null;
+    bookings: { id: string; booking_code: string | null; play_date: string } | null;
   };
 
   const [{ data: shares }, { data: players }] = await Promise.all([
@@ -143,11 +144,25 @@ export default async function ExpenseDetail({
     <div>
       <PageHeader
         title={e.description}
-        description={`${e.expense_code} · ${formatDate(e.purchase_date)}`}
+        description={`${e.expense_code} · ${formatDate(e.purchase_date)}${
+          e.bookings?.booking_code
+            ? ` · ${e.bookings.booking_code}`
+            : ""
+        }`}
         action={
-          <Link href="/admin/expenses" className={buttonClass("ghost")}>
-            ← All expenses
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {e.bookings ? (
+              <Link
+                href={`/admin/bookings/${e.bookings.id}`}
+                className={buttonClass("secondary")}
+              >
+                Open booking
+              </Link>
+            ) : null}
+            <Link href="/admin/expenses" className={buttonClass("ghost")}>
+              ← All expenses
+            </Link>
+          </div>
         }
       />
 

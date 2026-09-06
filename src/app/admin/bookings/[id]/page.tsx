@@ -29,11 +29,14 @@ import type {
   BookingCourt,
   BookingShare,
   Player,
+  TeamExpense,
 } from "@/lib/types";
 import { round2 } from "@/lib/ledger";
 import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { computeBookingShareRemaining } from "@/lib/payment-allocation";
 import { BookingForm } from "../BookingForm";
+import { BookingExpenseForm } from "../BookingExpenseForm";
+import { createBookingExpense } from "@/app/admin/expenses/actions";
 import {
   updateBooking,
   setBookingStatus,
@@ -83,6 +86,8 @@ export default async function BookingDetail({
     { data: players },
     { data: balances },
     activityRows,
+    { data: linkedExpenses },
+    { data: expenseGroups },
   ] = await Promise.all([
     supabase
       .from("booking_attendance")
@@ -103,6 +108,14 @@ export default async function BookingDetail({
       .order("name"),
     supabase.from("player_balances").select("*"),
     fetchActivity(supabase, "booking", id),
+    supabase
+      .from("team_expenses")
+      .select(
+        "id, expense_code, description, total_cost, status, purchase_date, players:paid_by_player_id(name), player_groups:paid_by_group_id(name)",
+      )
+      .eq("booking_id", id)
+      .order("created_at", { ascending: false }),
+    supabase.from("player_groups").select("id, name").order("name"),
   ]);
 
   const roster = (attendance ?? []) as (BookingAttendance & {
@@ -718,6 +731,72 @@ export default async function BookingDetail({
                   </ActionForm>
                 ) : null}
               </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="border-b border-slate-100 px-4 py-3">
+              <h2 className="text-sm font-semibold text-slate-700">
+                Session extras (team expenses)
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Balls or other fees for this game. They also appear under Team
+                Expenses.
+              </p>
+            </div>
+            {(linkedExpenses ?? []).length > 0 ? (
+              <ul className="divide-y divide-slate-100">
+                {(
+                  (linkedExpenses ?? []) as unknown as (Pick<
+                    TeamExpense,
+                    "id" | "expense_code" | "description" | "total_cost" | "status"
+                  > & {
+                    players: { name: string } | null;
+                    player_groups: { name: string } | null;
+                  })[]
+                ).map((ex) => (
+                  <li key={ex.id}>
+                    <Link
+                      href={`/admin/expenses/${ex.id}`}
+                      className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-900">
+                          {ex.description}
+                          {ex.status === "reversed" ? (
+                            <Badge tone="neutral">Reversed</Badge>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {ex.expense_code} · paid by{" "}
+                          {ex.players?.name ?? ex.player_groups?.name ?? "—"}
+                        </p>
+                      </div>
+                      <p className="font-semibold text-slate-900">
+                        {formatMoney(ex.total_cost)}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-4 py-3 text-sm text-slate-400">
+                No extras on this session yet.
+              </p>
+            )}
+            <div className="border-t border-slate-100 p-4">
+              <ActionForm
+                action={createBookingExpense}
+                pendingLabel="Adding extra…"
+              >
+                <BookingExpenseForm
+                  bookingId={b.id}
+                  players={((players ?? []) as Player[])
+                    .filter((p) => p.active_status !== "archived")
+                    .map((p) => ({ id: p.id, name: p.name }))}
+                  groups={(expenseGroups ?? []) as { id: string; name: string }[]}
+                />
+              </ActionForm>
             </div>
           </Card>
 

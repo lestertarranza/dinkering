@@ -17,7 +17,7 @@ export default async function ExpensesPage() {
     await Promise.all([
       supabase
         .from("team_expenses")
-        .select("*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name)")
+        .select("*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name), bookings:booking_id(booking_code, play_date)")
         .order("purchase_date", { ascending: false }),
       supabase
         .from("players")
@@ -35,6 +35,7 @@ export default async function ExpensesPage() {
   const expenseList = (expenses ?? []) as (TeamExpense & {
     players: { name: string } | null;
     player_groups: { name: string } | null;
+    bookings: { booking_code: string | null; play_date: string } | null;
   })[];
 
   // Per-expense settlement: sum each active expense's shares' still-open amount.
@@ -109,7 +110,7 @@ export default async function ExpensesPage() {
                 const outstanding = settle?.outstanding ?? 0;
                 return {
                   key: e.id,
-                  search: `${e.description} ${e.expense_code ?? ""} ${e.players?.name ?? ""} ${e.player_groups?.name ?? ""}`,
+                  search: `${e.description} ${e.expense_code ?? ""} ${e.players?.name ?? ""} ${e.player_groups?.name ?? ""} ${e.bookings?.booking_code ?? ""}`,
                   node: (
                     <Link
                       href={`/admin/expenses/${e.id}`}
@@ -133,6 +134,9 @@ export default async function ExpensesPage() {
                         <p className="mt-1 text-xs text-slate-400">
                           {e.expense_code} · {formatDate(e.purchase_date)} · paid by{" "}
                           {e.players?.name ?? e.player_groups?.name ?? "—"}
+                          {e.bookings?.booking_code
+                            ? ` · ${e.bookings.booking_code}`
+                            : ""}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">

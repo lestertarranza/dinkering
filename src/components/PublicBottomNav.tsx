@@ -2,32 +2,103 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
-const PLAYER_TOKEN_KEY = "dinkering-player-token";
+export const PLAYER_TOKEN_KEY = "dinkering-player-token";
 const TEAM_TOKEN_KEY = "dinkering-team-token";
 
 export function rememberPublicTokens(opts: {
   playerToken?: string | null;
   teamToken?: string | null;
+  /** Overwrite an already-saved My page. */
+  claimPlayer?: boolean;
 }) {
   if (typeof window === "undefined") return;
-  if (opts.playerToken)
-    localStorage.setItem(PLAYER_TOKEN_KEY, opts.playerToken);
   if (opts.teamToken) localStorage.setItem(TEAM_TOKEN_KEY, opts.teamToken);
+  if (opts.playerToken) {
+    const existing = localStorage.getItem(PLAYER_TOKEN_KEY);
+    if (opts.claimPlayer || !existing) {
+      localStorage.setItem(PLAYER_TOKEN_KEY, opts.playerToken);
+      window.dispatchEvent(new Event("dinkering-home"));
+    }
+  }
 }
 
 export function RememberPublicTokens({
   playerToken,
   teamToken,
+  claimPlayer = false,
 }: {
   playerToken?: string | null;
   teamToken?: string | null;
+  claimPlayer?: boolean;
 }) {
   useEffect(() => {
-    rememberPublicTokens({ playerToken, teamToken });
-  }, [playerToken, teamToken]);
+    rememberPublicTokens({ playerToken, teamToken, claimPlayer });
+  }, [playerToken, teamToken, claimPlayer]);
   return null;
+}
+
+/** Save this player as Home / My page. */
+export function SaveAsMyPage({
+  playerToken,
+  teamToken,
+  goHome = false,
+  compact = false,
+}: {
+  playerToken: string;
+  teamToken?: string | null;
+  goHome?: boolean;
+  compact?: boolean;
+}) {
+  const router = useRouter();
+  const [state, setState] = useState<"unknown" | "mine" | "other" | "none">(
+    "unknown",
+  );
+
+  useEffect(() => {
+    const saved = localStorage.getItem(PLAYER_TOKEN_KEY);
+    if (!saved) setState("none");
+    else if (saved === playerToken) setState("mine");
+    else setState("other");
+  }, [playerToken]);
+
+  if (state === "unknown") return null;
+  if (state === "mine") {
+    return (
+      <p
+        className={
+          compact
+            ? "text-xs font-semibold text-emerald-700"
+            : "text-sm font-semibold text-emerald-700"
+        }
+      >
+        Saved as My page
+      </p>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        rememberPublicTokens({
+          playerToken,
+          teamToken,
+          claimPlayer: true,
+        });
+        setState("mine");
+        if (goHome) router.push(`/p/${playerToken}`);
+      }}
+      className={
+        compact
+          ? "min-h-10 shrink-0 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
+          : "min-h-11 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+      }
+    >
+      This is me
+    </button>
+  );
 }
 
 export function PublicBottomNav({
@@ -44,10 +115,15 @@ export function PublicBottomNav({
   });
 
   useEffect(() => {
-    setStored({
-      p: playerToken || localStorage.getItem(PLAYER_TOKEN_KEY),
-      t: teamToken || localStorage.getItem(TEAM_TOKEN_KEY),
-    });
+    function refresh() {
+      setStored({
+        p: playerToken || localStorage.getItem(PLAYER_TOKEN_KEY),
+        t: teamToken || localStorage.getItem(TEAM_TOKEN_KEY),
+      });
+    }
+    refresh();
+    window.addEventListener("dinkering-home", refresh);
+    return () => window.removeEventListener("dinkering-home", refresh);
   }, [playerToken, teamToken]);
 
   const p = stored.p;
@@ -56,9 +132,8 @@ export function PublicBottomNav({
   if (!t && !p) return null;
 
   const items = [
-    p
-      ? { href: `/p/${p}`, label: "My page", icon: "🏓" }
-      : null,
+    p ? { href: `/p/${p}`, label: "My page", icon: "🏓" } : null,
+    t ? { href: `/players/${t}`, label: "Players", icon: "🧑" } : null,
     t ? { href: `/schedule/${t}`, label: "Games", icon: "📅" } : null,
     t ? { href: `/board/${t}`, label: "Balances", icon: "💰" } : null,
   ].filter(Boolean) as { href: string; label: string; icon: string }[];

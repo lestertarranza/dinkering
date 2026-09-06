@@ -136,6 +136,7 @@ export interface TeamExpense {
   split_method: SplitMethod;
   status: string;
   notes: string | null;
+  booking_id: string | null;
   created_at: string;
   updated_at: string;
 }
