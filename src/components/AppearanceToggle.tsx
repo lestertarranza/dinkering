@@ -17,6 +17,10 @@ function readMode(): Mode {
   return "default";
 }
 
+function serverMode(): Mode {
+  return "default";
+}
+
 function subscribe(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);
   window.addEventListener("dinkering-appearance", onStoreChange);
@@ -27,7 +31,7 @@ function subscribe(onStoreChange: () => void) {
 }
 
 export function AppearanceToggle({ compact = false }: { compact?: boolean }) {
-  const mode = useSyncExternalStore(subscribe, readMode, () => "default");
+  const mode = useSyncExternalStore(subscribe, readMode, serverMode);
 
   useEffect(() => {
     apply(mode);
