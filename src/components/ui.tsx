@@ -43,7 +43,7 @@ export function Badge({
       : "px-2.5 py-0.5 text-xs font-medium";
   return (
     <span
-      className={`inline-flex items-center rounded-full ring-1 ring-inset ${sizeClass} ${toneClasses[tone]}`}
+      className={`inline-flex items-center gap-[5px] rounded-full ring-1 ring-inset ${sizeClass} ${toneClasses[tone]}`}
     >
       {children}
     </span>
@@ -93,18 +93,18 @@ export function StatusBadge({
     status.charAt(0).toUpperCase() + status.slice(1);
   const icon =
     status === "going" || status === "attended"
-      ? "✓ "
+      ? "✓"
       : status === "not_going" || status === "absent"
-        ? "✕ "
+        ? "✕"
         : status === "waitlist"
-          ? "⏳ "
+          ? "⏳"
           : status === "no_response"
-            ? "○ "
+            ? "○"
             : "";
   return (
     <Badge tone={tone} size={size}>
-      <span aria-hidden>{icon}</span>
-      {label}
+      {icon ? <span aria-hidden>{icon}</span> : null}
+      <span>{label}</span>
     </Badge>
   );
 }
