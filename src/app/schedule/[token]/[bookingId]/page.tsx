@@ -15,7 +15,6 @@ import {
   publicPlayerLabel,
   validatePublicTeamToken,
 } from "@/lib/public-links";
-import { publicShortName } from "@/lib/public-display";
 import {
   DateChip,
   CountPill,
@@ -251,7 +250,7 @@ export default async function PublicBookingRoster({
               >
                 <div className="min-w-0 flex-1">
                   <p className={`text-base ${publicPrimaryText}`}>
-                    {publicShortName(publicPlayerLabel(r.players))}
+                    {publicPlayerLabel(r.players)}
                   </p>
                   <p className={publicHintText}>Tap to RSVP on your page</p>
                 </div>
