@@ -184,6 +184,7 @@ export async function createPayment(
 
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
+  revalidatePath("/admin/funds");
   if (booking_id) revalidatePath(`/admin/bookings/${booking_id}`);
   if (team_expense_id) revalidatePath(`/admin/expenses/${team_expense_id}`);
   await logAdminAction(supabase, user, {
@@ -275,6 +276,7 @@ export async function createBulkPayment(
 
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
+  revalidatePath("/admin/funds");
   revalidatePath("/admin/collections");
   for (const bid of bookingIds) revalidatePath(`/admin/bookings/${bid}`);
   for (const eid of expenseIds) revalidatePath(`/admin/expenses/${eid}`);
@@ -315,6 +317,7 @@ export async function reversePayment(
     .eq("id", id);
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
+  revalidatePath("/admin/funds");
   if (pay?.booking_id) revalidatePath(`/admin/bookings/${pay.booking_id}`);
   if (pay?.team_expense_id)
     revalidatePath(`/admin/expenses/${pay.team_expense_id}`);

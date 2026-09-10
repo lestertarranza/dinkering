@@ -15,7 +15,7 @@ import {
   type LedgerRow,
 } from "@/lib/payment-allocation";
 import { fetchAllRows } from "@/lib/paginate";
-import { fundBalanceFromEntries } from "@/lib/club-funds";
+import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
 import type { Payment, Player, PlayerGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -128,15 +128,13 @@ export default async function Dashboard({
       .limit(PAGE_SIZE * 3),
   ]);
 
-  const [{ data: clubFunds }, { data: clubFundEntries }] = await Promise.all([
+  const [{ data: clubFunds }, { byFund: clubCashByFund }] = await Promise.all([
     supabase
       .from("club_item_funds")
       .select("id, name, target_amount, status")
       .eq("status", "active")
       .order("name"),
-    supabase
-      .from("club_fund_entries")
-      .select("fund_id, kind, amount, voided"),
+    loadClubFundCashSummaries(supabase),
   ]);
 
   const playerNameMap = new Map(
@@ -175,17 +173,6 @@ export default async function Dashboard({
   const upcomingCommitments = Number(dashTotals?.upcoming_commitments ?? 0);
   const totalPayments      = Number(dashTotals?.total_payments        ?? 0);
 
-  const clubFundBalances = new Map<string, { kind: string; amount: number; voided: boolean }[]>();
-  for (const e of (clubFundEntries ?? []) as {
-    fund_id: string;
-    kind: string;
-    amount: number;
-    voided: boolean;
-  }[]) {
-    const rows = clubFundBalances.get(e.fund_id) ?? [];
-    rows.push(e);
-    clubFundBalances.set(e.fund_id, rows);
-  }
   const clubFundRows = (
     (clubFunds ?? []) as {
       id: string;
@@ -193,12 +180,20 @@ export default async function Dashboard({
       target_amount: number | null;
       status: string;
     }[]
-  ).map((f) => ({
-    ...f,
-    balance: fundBalanceFromEntries(clubFundBalances.get(f.id) ?? []),
-  }));
+  ).map((f) => {
+    const cash = clubCashByFund.get(f.id);
+    return {
+      ...f,
+      balance: cash?.available ?? 0,
+      collected: cash?.collected ?? 0,
+      unpaid: cash?.unpaid ?? 0,
+    };
+  });
   const clubFundsTotal = round2(
     clubFundRows.reduce((s, f) => s + f.balance, 0),
+  );
+  const clubUnpaidTotal = round2(
+    clubFundRows.reduce((s, f) => s + f.unpaid, 0),
   );
 
   // ── Bookings ─────────────────────────────────────────────────────────────
@@ -538,7 +533,12 @@ export default async function Dashboard({
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Club item funds</h2>
               <p className="text-xs text-slate-500">
-                Game contributions minus purchases. {formatMoney(clubFundsTotal)} net in pots.
+                Collected cash minus purchases. {formatMoney(clubFundsTotal)} in
+                pots
+                {clubUnpaidTotal >= SETTLE_TOLERANCE
+                  ? ` · ${formatMoney(clubUnpaidTotal)} unpaid`
+                  : ""}
+                .
               </p>
             </div>
             <Link href="/admin/funds" className="text-sm font-medium text-emerald-700 hover:underline">
@@ -548,9 +548,16 @@ export default async function Dashboard({
           <ul className="mt-3 divide-y divide-slate-100">
             {clubFundRows.map((f) => (
               <li key={f.id} className="flex items-center justify-between py-2 text-sm">
-                <Link href={`/admin/funds/${f.id}`} className="font-medium text-slate-800 hover:text-emerald-800">
-                  {f.name}
-                </Link>
+                <div className="min-w-0">
+                  <Link href={`/admin/funds/${f.id}`} className="font-medium text-slate-800 hover:text-emerald-800">
+                    {f.name}
+                  </Link>
+                  {f.unpaid >= SETTLE_TOLERANCE ? (
+                    <p className="text-xs text-rose-600">
+                      {formatMoney(f.unpaid)} unpaid
+                    </p>
+                  ) : null}
+                </div>
                 <span
                   className={`font-semibold ${
                     f.balance < 0 ? "text-rose-700" : "text-emerald-700"

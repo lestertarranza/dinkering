@@ -12,8 +12,11 @@ import {
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { formatMoney, formatDate } from "@/lib/format";
-import { fundBalanceFromEntries } from "@/lib/club-funds";
+import { formatMoney, formatDate, SETTLE_TOLERANCE, isSettled } from "@/lib/format";
+import {
+  loadClubFundCashSummaries,
+  loadClubFundShareAudit,
+} from "@/lib/club-fund-cash";
 import type { ClubFundEntry, ClubItemFund } from "@/lib/types";
 import {
   addFundMoney,
@@ -32,24 +35,32 @@ export default async function ClubFundDetail({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: fund }, { data: entries }, { data: players }, { data: groups }] =
-    await Promise.all([
-      supabase.from("club_item_funds").select("*").eq("id", id).single(),
-      supabase
-        .from("club_fund_entries")
-        .select(
-          "*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name), bookings:booking_id(id, booking_code)",
-        )
-        .eq("fund_id", id)
-        .order("entry_date", { ascending: false })
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("players")
-        .select("id, name")
-        .neq("active_status", "archived")
-        .order("name"),
-      supabase.from("player_groups").select("id, name").order("name"),
-    ]);
+  const [
+    { data: fund },
+    { data: entries },
+    { data: players },
+    { data: groups },
+    cashBundle,
+    shareAudit,
+  ] = await Promise.all([
+    supabase.from("club_item_funds").select("*").eq("id", id).single(),
+    supabase
+      .from("club_fund_entries")
+      .select(
+        "*, players:paid_by_player_id(name), player_groups:paid_by_group_id(name), bookings:booking_id(id, booking_code)",
+      )
+      .eq("fund_id", id)
+      .order("entry_date", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("players")
+      .select("id, name")
+      .neq("active_status", "archived")
+      .order("name"),
+    supabase.from("player_groups").select("id, name").order("name"),
+    loadClubFundCashSummaries(supabase, [id]),
+    loadClubFundShareAudit(supabase, id),
+  ]);
 
   if (!fund) notFound();
   const f = fund as ClubItemFund;
@@ -58,8 +69,16 @@ export default async function ClubFundDetail({
     player_groups: { name: string } | null;
     bookings: { id: string; booking_code: string | null } | null;
   })[];
-  const balance = fundBalanceFromEntries(list);
-  const overdrawn = balance < -0.005;
+  const cash = cashBundle.byFund.get(id) ?? {
+    billed: 0,
+    collected: 0,
+    unpaid: 0,
+    manualIn: 0,
+    spent: 0,
+    available: 0,
+  };
+  const balance = cash.available;
+  const overdrawn = balance < -SETTLE_TOLERANCE;
   const target = Number(f.target_amount) || 0;
   const pct =
     target > 0 && balance > 0
@@ -75,7 +94,7 @@ export default async function ClubFundDetail({
     <div>
       <PageHeader
         title={f.name}
-        description="Charge games into this pot. When someone buys the item, credit their wallet from the fund."
+        description="Charge games into this pot. The pot only grows when players pay. When someone buys the item, credit their wallet from collected cash."
         action={
           <Link
             href="/admin/funds"
@@ -86,10 +105,10 @@ export default async function ClubFundDetail({
         }
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Dedicated now
+            In pot
           </p>
           <p
             className={`mt-1 text-2xl font-semibold ${
@@ -100,9 +119,41 @@ export default async function ClubFundDetail({
           </p>
           {overdrawn ? (
             <p className="mt-1 text-xs text-rose-600">
-              Overdrawn. Future game contributions refill this.
+              Overdrawn. Future collected contributions refill this.
             </p>
-          ) : null}
+          ) : (
+            <p className="mt-1 text-xs text-slate-400">
+              Collected plus donations, minus purchases
+            </p>
+          )}
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Collected
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-700">
+            {formatMoney(cash.collected)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Of {formatMoney(cash.billed)} charged
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Unpaid
+          </p>
+          <p
+            className={`mt-1 text-2xl font-semibold ${
+              cash.unpaid >= SETTLE_TOLERANCE
+                ? "text-rose-700"
+                : "text-slate-900"
+            }`}
+          >
+            {formatMoney(cash.unpaid)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Charged but not yet paid
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -113,15 +164,10 @@ export default async function ClubFundDetail({
           </p>
           {pct !== null ? (
             <p className="mt-1 text-xs text-slate-400">{pct}% funded</p>
-          ) : (
-            <p className="mt-1 text-xs text-slate-400">No target set</p>
-          )}
-        </Card>
-        <Card className="flex items-center p-4">
-          {f.status === "archived" ? (
+          ) : f.status === "archived" ? (
             <Badge>Archived</Badge>
           ) : (
-            <Badge tone="going">Active</Badge>
+            <p className="mt-1 text-xs text-slate-400">No target set</p>
           )}
         </Card>
       </div>
@@ -143,7 +189,8 @@ export default async function ClubFundDetail({
             </h2>
             <p className="mb-3 text-xs text-slate-500">
               Opening cash or a donation. Does not charge players. Game
-              contributions are added from a booking.
+              contributions are charged from a booking and count here after they
+              pay.
             </p>
             <ActionForm action={addFundMoney} className="space-y-3">
               <input type="hidden" name="fund_id" value={f.id} />
@@ -180,8 +227,8 @@ export default async function ClubFundDetail({
             </h2>
             <p className="mb-3 text-xs text-slate-500">
               Anyone who bought this for the club. They get a wallet credit for
-              the full amount. If the pot is short, it goes overdrawn and stays
-              on the audit trail.
+              the full amount. If collected cash is short, the pot goes
+              overdrawn and stays on the audit trail.
             </p>
             <ActionForm action={recordFundPurchase} className="space-y-3">
               <input type="hidden" name="fund_id" value={f.id} />
@@ -292,15 +339,91 @@ export default async function ClubFundDetail({
         </div>
 
         <div className="lg:order-1 lg:col-span-2">
+          {shareAudit.length > 0 ? (
+            <Card className="mb-5">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <h2 className="text-sm font-semibold text-slate-700">
+                  Who has paid
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Same FIFO as court fees. Collected is money actually paid, not
+                  the amount charged.
+                </p>
+              </div>
+              <div className="overflow-x-auto p-4">
+                <table className="w-full min-w-[480px] text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="py-2 font-medium">Player</th>
+                      <th className="py-2 font-medium">Game</th>
+                      <th className="py-2 text-right font-medium">Charged</th>
+                      <th className="py-2 text-right font-medium">Paid</th>
+                      <th className="py-2 text-right font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {shareAudit.map((row) => {
+                      const settled = isSettled(row.remaining);
+                      return (
+                        <tr key={row.shareId}>
+                          <td className="py-2 font-medium text-slate-700">
+                            {row.playerName}
+                          </td>
+                          <td className="py-2 text-slate-600">
+                            {row.bookingId ? (
+                              <Link
+                                href={`/admin/bookings/${row.bookingId}`}
+                                className="text-emerald-700 hover:underline"
+                              >
+                                {row.bookingCode ?? "Booking"}
+                              </Link>
+                            ) : (
+                              "—"
+                            )}
+                            {row.playDate ? (
+                              <span className="ml-1 text-xs text-slate-400">
+                                {formatDate(row.playDate)}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="py-2 text-right text-slate-600">
+                            {formatMoney(row.amount)}
+                          </td>
+                          <td className="py-2 text-right text-emerald-700">
+                            {row.paid > 0 ? formatMoney(row.paid) : "—"}
+                          </td>
+                          <td
+                            className={`py-2 text-right font-medium ${
+                              settled
+                                ? "text-slate-400"
+                                : "text-rose-700"
+                            }`}
+                          >
+                            {settled
+                              ? "Settled"
+                              : `${formatMoney(row.remaining)} due`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ) : null}
+
           <h2 className="mb-3 text-sm font-semibold text-slate-700">History</h2>
           {list.length === 0 ? (
             <EmptyState
               title="No money in this fund yet"
-              description="Add the amount you currently have dedicated, then deduct when you buy."
+              description="Charge a game contribution, or add opening cash you already have."
             />
           ) : (
             <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-              {list.map((e) => (
+              {list.map((e) => {
+                const entryCash = cashBundle.byEntry.get(e.id);
+                const isGame = e.kind === "allocate" && Boolean(e.booking_id);
+                return (
                 <div
                   key={e.id}
                   className={`flex items-start justify-between gap-3 px-4 py-3 ${
@@ -311,7 +434,7 @@ export default async function ClubFundDetail({
                     <p className="text-sm font-medium text-slate-800">
                       {e.kind === "spend"
                         ? "Purchase"
-                        : e.booking_id
+                        : isGame
                           ? "Game contribution"
                           : "Added"}
                       {e.voided ? " · voided" : ""}
@@ -324,6 +447,15 @@ export default async function ClubFundDetail({
                       <p className="text-xs text-slate-500">
                         Bought by{" "}
                         {e.players?.name ?? e.player_groups?.name ?? "unknown"}
+                      </p>
+                    ) : null}
+                    {isGame && entryCash && !e.voided ? (
+                      <p className="text-xs text-slate-500">
+                        Charged {formatMoney(entryCash.billed)} · collected{" "}
+                        {formatMoney(entryCash.collected)}
+                        {entryCash.unpaid >= SETTLE_TOLERANCE
+                          ? ` · ${formatMoney(entryCash.unpaid)} unpaid`
+                          : " · all paid"}
                       </p>
                     ) : null}
                     {e.bookings ? (
@@ -345,13 +477,18 @@ export default async function ClubFundDetail({
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span
                       className={`font-semibold ${
-                        e.kind === "allocate"
-                          ? "text-emerald-700"
-                          : "text-rose-700"
+                        e.kind === "spend"
+                          ? "text-rose-700"
+                          : isGame
+                            ? "text-slate-700"
+                            : "text-emerald-700"
                       }`}
                     >
-                      {e.kind === "allocate" ? "+" : "−"}
-                      {formatMoney(e.amount)}
+                      {e.kind === "spend"
+                        ? `−${formatMoney(e.amount)}`
+                        : isGame
+                          ? `charged ${formatMoney(e.amount)}`
+                          : `+${formatMoney(e.amount)}`}
                     </span>
                     {!e.voided ? (
                       <ConfirmButton
@@ -366,7 +503,8 @@ export default async function ClubFundDetail({
                     ) : null}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

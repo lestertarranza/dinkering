@@ -13,7 +13,7 @@ import {
   voidLedgerForSource,
   type LedgerEntryInput,
 } from "@/lib/ledger";
-import { fundBalanceFromEntries } from "@/lib/club-funds";
+import { remainingCashForFund } from "@/lib/club-fund-cash";
 
 function revalidateFunds(id?: string, bookingId?: string | null) {
   revalidatePath("/admin/funds");
@@ -21,19 +21,6 @@ function revalidateFunds(id?: string, bookingId?: string | null) {
   revalidatePath("/admin/collections");
   if (id) revalidatePath(`/admin/funds/${id}`);
   if (bookingId) revalidatePath(`/admin/bookings/${bookingId}`);
-}
-
-async function remainingForFund(
-  supabase: SupabaseClient,
-  fundId: string,
-): Promise<number> {
-  const { data } = await supabase
-    .from("club_fund_entries")
-    .select("kind, amount, voided")
-    .eq("fund_id", fundId);
-  return fundBalanceFromEntries(
-    (data ?? []) as { kind: string; amount: number; voided: boolean }[],
-  );
 }
 
 const chargeable = new Set(["attended", "late_cancel", "guest"]);
@@ -163,7 +150,7 @@ export async function recordFundPurchase(
     new Date().toISOString().slice(0, 10);
 
   const { supabase } = await requireAdmin();
-  const remaining = await remainingForFund(supabase, fund_id);
+  const remaining = await remainingCashForFund(supabase, fund_id);
   const overdrawn = round2(amount - remaining);
 
   const { data: row, error } = await supabase
@@ -211,7 +198,7 @@ export async function recordFundPurchase(
   revalidateFunds(fund_id);
   if (overdrawn > 0.005) {
     return actionOk(
-      `Purchase recorded. ${formatMoney(amount)} credited to the buyer. This fund is now ${formatMoney(overdrawn)} overdrawn. Future game contributions will refill it.`,
+      `Purchase recorded. ${formatMoney(amount)} credited to the buyer. This fund is now ${formatMoney(overdrawn)} overdrawn. Future collected contributions will refill it.`,
     );
   }
   return actionOk(
@@ -306,7 +293,7 @@ export async function chargeGameContribution(
 
   revalidateFunds(fund_id, booking_id);
   return actionOk(
-    `Charged ${playerIds.length} player${playerIds.length === 1 ? "" : "s"} ${formatMoney(perPlayer)} each (${formatMoney(total)}) toward ${fundName}.`,
+    `Charged ${playerIds.length} player${playerIds.length === 1 ? "" : "s"} ${formatMoney(perPlayer)} each (${formatMoney(total)}) toward ${fundName}. The pot counts this as collected after they pay, same FIFO as court fees.`,
   );
 }
 

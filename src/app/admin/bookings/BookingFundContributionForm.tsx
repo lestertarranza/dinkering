@@ -52,7 +52,7 @@ export function BookingFundContributionForm({
       </Field>
       <p className="text-xs text-slate-500">
         {playerCount > 0
-          ? `Will charge ${playerCount} player${playerCount === 1 ? "" : "s"} and add the total to the fund.`
+          ? `Will charge ${playerCount} player${playerCount === 1 ? "" : "s"}. Who paid shows with court fees under Player shares & payments. The pot only counts money after they pay.`
           : "No Going or attended players to charge yet."}
       </p>
       <SubmitButton className="w-full" pendingLabel="Charging…">

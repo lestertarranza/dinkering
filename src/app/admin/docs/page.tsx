@@ -323,7 +323,9 @@ export default function DocsPage() {
               <li className={liClass}>
                 On a booking, use <strong>Club item contribution</strong> when
                 you want that game to chip in. Going / attended players are
-                charged a set amount, and the total is added to the pot.
+                charged a set amount. Who paid is tracked with court fees under{" "}
+                <strong>Player shares &amp; payments</strong>. The pot only
+                counts money after they pay (same FIFO as court fees).
               </li>
               <li className={liClass}>
                 Skip that charge on games where you do not want a contribution.
@@ -335,9 +337,10 @@ export default function DocsPage() {
                 wallet for the full amount.
               </li>
               <li className={liClass}>
-                If the shop total is more than the pot, the purchase is still
-                recorded. The pot goes <em>overdrawn</em> and future game
-                contributions refill it. The buyer is still credited in full.
+                If the shop total is more than collected cash, the purchase is
+                still recorded. The pot goes <em>overdrawn</em> and future
+                collected contributions refill it. The buyer is still credited
+                in full.
               </li>
             </ol>
 
@@ -353,8 +356,9 @@ export default function DocsPage() {
                 <strong>Club purchase reimbursement</strong> credit.
               </li>
               <li className={liClass}>
-                The team board lists each pot, how much is sitting in it (or
-                still to collect), and recent identifiable purchases.
+                The team board lists each pot, how much cash is sitting in it
+                (or still unpaid from players), and recent identifiable
+                purchases.
               </li>
             </ul>
 

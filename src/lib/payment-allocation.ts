@@ -504,22 +504,23 @@ async function fetchLedgerByOwners(
   return all;
 }
 
+type LedgerShareSource = "team_expense_share" | "club_fund_share";
+
 /**
- * Compute the still-open (unpaid) amount for each team-expense share, keyed by
- * team_expense_share id. Mirrors {@link computeBookingShareRemaining}: it finds
- * the wallet each share was actually charged to (reading the ledger directly, so
- * group-pooling is handled correctly), then FIFO-applies each wallet's credits
- * and payments across all its charges. A share id absent from the map (or ≈0)
- * is fully settled. Used by the Team Expenses list to flag settled vs. due.
+ * Compute the still-open (unpaid) amount for ledger share charges, keyed by
+ * share id. Finds the wallet each share was actually charged to (reading the
+ * ledger directly, so group-pooling is handled correctly), then FIFO-applies
+ * each wallet's credits and payments across all its charges. A share id absent
+ * from the map (or ≈0) is fully settled.
  */
-export async function computeExpenseShareRemaining(
+async function computeShareRemainingForSourceType(
   db: SupabaseClient,
   shareIds: string[],
+  sourceType: LedgerShareSource,
 ): Promise<Map<string, number>> {
   const remainingByShare = new Map<string, number>();
   if (shareIds.length === 0) return remainingByShare;
 
-  // Find which wallet each expense share was charged to (the debit rows).
   const chargeRows: { player_id: string | null; player_group_id: string | null }[] =
     [];
   for (const ids2 of chunk(shareIds, 200)) {
@@ -530,7 +531,7 @@ export async function computeExpenseShareRemaining(
       db
         .from("ledger_entries")
         .select("player_id, player_group_id, id")
-        .eq("source_type", "team_expense_share")
+        .eq("source_type", sourceType)
         .eq("voided", false)
         .gt("debit_amount", 0)
         .in("source_id", ids2)
@@ -548,7 +549,6 @@ export async function computeExpenseShareRemaining(
   }
   if (walletPIds.size === 0 && walletGIds.size === 0) return remainingByShare;
 
-  // Load full non-voided ledgers for those wallets (fully paginated).
   const [pLedger, gLedger] = await Promise.all([
     fetchLedgerByOwners(db, "player_id", [...walletPIds]),
     fetchLedgerByOwners(db, "player_group_id", [...walletGIds]),
@@ -574,11 +574,38 @@ export async function computeExpenseShareRemaining(
   const chargesByWallet = batchComputePlayerOpenCharges(walletEntries);
   for (const charges of chargesByWallet.values()) {
     for (const c of charges) {
-      if (c.source_type === "team_expense_share" && wanted.has(c.source_id))
+      if (c.source_type === sourceType && wanted.has(c.source_id))
         remainingByShare.set(c.source_id, c.remaining);
     }
   }
   return remainingByShare;
+}
+
+/**
+ * Still-open amount for each team-expense share. Used by the Team Expenses list
+ * to flag settled vs. due.
+ */
+export async function computeExpenseShareRemaining(
+  db: SupabaseClient,
+  shareIds: string[],
+): Promise<Map<string, number>> {
+  return computeShareRemainingForSourceType(
+    db,
+    shareIds,
+    "team_expense_share",
+  );
+}
+
+/**
+ * Still-open amount for each club-item contribution share. Same FIFO engine as
+ * court shares and team expenses, so a payment that settles a pickleball chip-in
+ * is counted as collected cash, not as an unpaid charge sitting in the pot.
+ */
+export async function computeClubFundShareRemaining(
+  db: SupabaseClient,
+  shareIds: string[],
+): Promise<Map<string, number>> {
+  return computeShareRemainingForSourceType(db, shareIds, "club_fund_share");
 }
 
 export { planBulkAllocation, totalOpenDue } from "@/lib/payment-allocation-plan";

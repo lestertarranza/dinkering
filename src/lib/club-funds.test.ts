@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fundBalanceFromEntries } from "./club-funds";
+import { fundBalanceFromEntries, fundCashAvailable } from "./club-funds";
 
 describe("fundBalanceFromEntries", () => {
   it("starts at zero", () => {
@@ -32,5 +32,31 @@ describe("fundBalanceFromEntries", () => {
         { kind: "spend", amount: 1200 },
       ]),
     ).toBe(-960);
+  });
+});
+
+describe("fundCashAvailable", () => {
+  it("counts collected contributions and donations, not billed charges", () => {
+    expect(
+      fundCashAvailable({
+        billed: 240,
+        collected: 80,
+        unpaid: 160,
+        manualIn: 500,
+        spent: 200,
+      }),
+    ).toBe(380);
+  });
+
+  it("goes overdrawn when purchases exceed collected cash", () => {
+    expect(
+      fundCashAvailable({
+        billed: 240,
+        collected: 0,
+        unpaid: 240,
+        manualIn: 0,
+        spent: 1200,
+      }),
+    ).toBe(-1200);
   });
 });

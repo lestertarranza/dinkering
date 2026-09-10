@@ -605,6 +605,7 @@ export async function markBookingSharePaid(
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
+  revalidatePath("/admin/funds");
   return actionOk(`Recorded ${formatMoney(amount)} — ${code}.`);
 }
 

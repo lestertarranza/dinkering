@@ -9,55 +9,90 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { formatMoney } from "@/lib/format";
-import { fundBalanceFromEntries } from "@/lib/club-funds";
-import type { ClubFundEntry, ClubItemFund } from "@/lib/types";
+import { formatMoney, SETTLE_TOLERANCE } from "@/lib/format";
+import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
+import type { ClubItemFund } from "@/lib/types";
 import { createFund } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClubFundsPage() {
   const supabase = await createClient();
-  const [{ data: funds }, { data: entries }] = await Promise.all([
+  const [{ data: funds }, { byFund }] = await Promise.all([
     supabase.from("club_item_funds").select("*").order("name"),
-    supabase.from("club_fund_entries").select("fund_id, kind, amount, voided"),
+    loadClubFundCashSummaries(supabase),
   ]);
-
-  const byFund = new Map<string, ClubFundEntry[]>();
-  for (const e of (entries ?? []) as Pick<
-    ClubFundEntry,
-    "fund_id" | "kind" | "amount" | "voided"
-  >[]) {
-    const list = byFund.get(e.fund_id) ?? [];
-    list.push(e as ClubFundEntry);
-    byFund.set(e.fund_id, list);
-  }
 
   const list = ((funds ?? []) as ClubItemFund[]).map((f) => ({
     ...f,
-    balance: fundBalanceFromEntries(byFund.get(f.id) ?? []),
+    cash: byFund.get(f.id) ?? {
+      billed: 0,
+      collected: 0,
+      unpaid: 0,
+      manualIn: 0,
+      spent: 0,
+      available: 0,
+    },
   }));
   const active = list.filter((f) => f.status !== "archived");
   const archived = list.filter((f) => f.status === "archived");
-  const totalDedicated = active.reduce((s, f) => s + f.balance, 0);
+  const totalInPot = active.reduce((s, f) => s + f.cash.available, 0);
+  const totalCollected = active.reduce((s, f) => s + f.cash.collected, 0);
+  const totalUnpaid = active.reduce((s, f) => s + f.cash.unpaid, 0);
 
   return (
     <div>
       <PageHeader
         title="Club items"
-        description="Charge games toward a pot (pickleballs). Record shop purchases against that pot. The buyer is credited in their wallet. This is not a shared couple/family wallet."
+        description="Charge games toward a pot (pickleballs). The pot only counts money after players pay. Record shop purchases against collected cash. The buyer is credited in their wallet. This is not a shared couple/family wallet."
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Dedicated now
+            In pot
           </p>
-          <p className="mt-1 text-2xl font-semibold text-emerald-700">
-            {formatMoney(totalDedicated)}
+          <p
+            className={`mt-1 text-2xl font-semibold ${
+              totalInPot < -SETTLE_TOLERANCE
+                ? "text-rose-700"
+                : "text-emerald-700"
+            }`}
+          >
+            {totalInPot < -SETTLE_TOLERANCE
+              ? `−${formatMoney(-totalInPot)}`
+              : formatMoney(Math.max(0, totalInPot))}
           </p>
           <p className="mt-1 text-xs text-slate-400">
-            Across {active.length} active pot{active.length === 1 ? "" : "s"}
+            Collected cash plus donations, minus purchases
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Collected
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-700">
+            {formatMoney(totalCollected)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Actually paid toward game contributions
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Unpaid
+          </p>
+          <p
+            className={`mt-1 text-2xl font-semibold ${
+              totalUnpaid >= SETTLE_TOLERANCE
+                ? "text-rose-700"
+                : "text-slate-900"
+            }`}
+          >
+            {formatMoney(totalUnpaid)}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Charged but not yet paid
           </p>
         </Card>
       </div>
@@ -101,9 +136,13 @@ export default async function ClubFundsPage() {
             <div className="space-y-3">
               {active.map((f) => {
                 const target = Number(f.target_amount) || 0;
+                const inPot = f.cash.available;
                 const pct =
                   target > 0
-                    ? Math.min(100, Math.round((f.balance / target) * 100))
+                    ? Math.min(
+                        100,
+                        Math.round((Math.max(0, inPot) / target) * 100),
+                      )
                     : null;
                 return (
                   <Link
@@ -119,6 +158,15 @@ export default async function ClubFundsPage() {
                             {f.notes}
                           </p>
                         ) : null}
+                        <p className="mt-1 text-xs text-slate-500">
+                          Collected {formatMoney(f.cash.collected)}
+                          {f.cash.unpaid >= SETTLE_TOLERANCE
+                            ? ` · ${formatMoney(f.cash.unpaid)} unpaid`
+                            : ""}
+                          {f.cash.billed > 0
+                            ? ` of ${formatMoney(f.cash.billed)} charged`
+                            : ""}
+                        </p>
                         {pct !== null ? (
                           <p className="mt-1 text-xs text-slate-400">
                             {pct}% of {formatMoney(target)} target
@@ -127,14 +175,14 @@ export default async function ClubFundsPage() {
                       </div>
                       <p
                         className={`shrink-0 text-lg font-semibold ${
-                          f.balance < -0.005
+                          inPot < -SETTLE_TOLERANCE
                             ? "text-rose-700"
                             : "text-emerald-700"
                         }`}
                       >
-                        {f.balance < -0.005
-                          ? `−${formatMoney(-f.balance)}`
-                          : formatMoney(f.balance)}
+                        {inPot < -SETTLE_TOLERANCE
+                          ? `−${formatMoney(-inPot)}`
+                          : formatMoney(inPot)}
                       </p>
                     </div>
                     {pct !== null ? (
@@ -167,7 +215,7 @@ export default async function ClubFundsPage() {
                         {f.name}
                         <Badge>Archived</Badge>
                       </span>
-                      <span>{formatMoney(f.balance)}</span>
+                      <span>{formatMoney(f.cash.available)}</span>
                     </Link>
                   </li>
                 ))}

@@ -1,7 +1,8 @@
--- Wire club item pots to player wallets:
--- game contributions charge Going/attended players and add to a pot;
--- purchases credit the buyer and may overdraw the pot.
+-- Wire club item pots to player wallets.
+-- If the SQL editor deadlocks, run PART 1, then PART 2, then PART 3 as
+-- three separate queries (do not paste the whole file at once).
 
+-- ── PART 1 ────────────────────────────────────────────────────────────────
 alter table club_fund_entries
   add column if not exists paid_by_player_id uuid references players(id) on delete set null,
   add column if not exists paid_by_group_id uuid references player_groups(id) on delete set null,
@@ -11,6 +12,7 @@ create index if not exists idx_club_fund_entries_booking
   on club_fund_entries (booking_id)
   where booking_id is not null;
 
+-- ── PART 2 ────────────────────────────────────────────────────────────────
 create table if not exists club_fund_shares (
   id            uuid primary key default gen_random_uuid(),
   fund_entry_id uuid not null references club_fund_entries(id) on delete cascade,
@@ -22,9 +24,11 @@ create index if not exists idx_club_fund_shares_entry on club_fund_shares(fund_e
 create index if not exists idx_club_fund_shares_player on club_fund_shares(player_id);
 
 alter table club_fund_shares enable row level security;
+drop policy if exists "admin_all_club_fund_shares" on club_fund_shares;
 create policy "admin_all_club_fund_shares" on club_fund_shares
   for all to authenticated using (true) with check (true);
 
+-- ── PART 3 (hot table: run this one alone) ────────────────────────────────
 do $$
 declare r record;
 begin

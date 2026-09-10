@@ -9,7 +9,7 @@ import {
 } from "@/components/TeamBalanceBoard";
 import { formatMoney, describeBalance, formatDate } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
-import { fundBalanceFromEntries } from "@/lib/club-funds";
+import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
 import {
   PublicPageHeader,
   publicTapRowClass,
@@ -99,16 +99,14 @@ export default async function TeamBoard({
       .is("end_date", null),
   ]);
 
-  const [{ data: clubFunds }, { data: clubFundBalances }, { data: clubPurchases }] =
+  const [{ data: clubFunds }, { byFund: clubCashByFund }, { data: clubPurchases }] =
     await Promise.all([
     db
       .from("club_item_funds")
       .select("id, name, status")
       .eq("status", "active")
       .order("name"),
-    db
-      .from("club_fund_entries")
-      .select("fund_id, kind, amount, voided"),
+    loadClubFundCashSummaries(db),
     db
       .from("club_fund_entries")
       .select(
@@ -252,18 +250,6 @@ export default async function TeamBoard({
       .reduce((s, e) => s + e.amount, 0),
   };
 
-  type FundEntryRow = {
-    fund_id: string;
-    kind: string;
-    amount: number;
-    voided: boolean;
-  };
-  const entriesByFund = new Map<string, FundEntryRow[]>();
-  for (const e of (clubFundBalances ?? []) as FundEntryRow[]) {
-    const list = entriesByFund.get(e.fund_id) ?? [];
-    list.push(e);
-    entriesByFund.set(e.fund_id, list);
-  }
   type PurchaseRow = {
     id: string;
     fund_id: string;
@@ -280,18 +266,22 @@ export default async function TeamBoard({
   }
   const clubFundRows = (
     (clubFunds ?? []) as { id: string; name: string; status: string }[]
-  ).map((f) => ({
-    id: f.id,
-    name: f.name,
-    balance: fundBalanceFromEntries(entriesByFund.get(f.id) ?? []),
-    purchases: (purchasesByFund.get(f.id) ?? []).map((p) => ({
-      id: p.id,
-      description: p.description,
-      entry_date: p.entry_date,
-      amount: Number(p.amount),
-      buyer: p.players?.name ?? null,
-    })),
-  }));
+  ).map((f) => {
+    const cash = clubCashByFund.get(f.id);
+    return {
+      id: f.id,
+      name: f.name,
+      balance: cash?.available ?? 0,
+      unpaid: cash?.unpaid ?? 0,
+      purchases: (purchasesByFund.get(f.id) ?? []).map((p) => ({
+        id: p.id,
+        description: p.description,
+        entry_date: p.entry_date,
+        amount: Number(p.amount),
+        buyer: p.players?.name ?? null,
+      })),
+    };
+  });
 
   return (
     <>
@@ -315,7 +305,9 @@ export default async function TeamBoard({
             Club items
           </h2>
           <p className={`mb-3 text-sm ${publicHintText}`}>
-            Money the group has set aside for consumables. Purchases show who bought them.
+            Money the group has set aside for consumables. Amounts are cash
+            actually paid, not charges that are still unpaid. Purchases show who
+            bought them.
           </p>
           <ul className="space-y-3">
             {clubFundRows.map((f) => (
@@ -335,6 +327,11 @@ export default async function TeamBoard({
                       : formatMoney(f.balance)}
                   </p>
                 </div>
+                {f.unpaid > 0.005 ? (
+                  <p className={`mt-1 text-sm ${publicHintText}`}>
+                    {formatMoney(f.unpaid)} still unpaid from players
+                  </p>
+                ) : null}
                 {f.purchases.length > 0 ? (
                   <ul className="mt-2 space-y-1 text-sm text-slate-600">
                     {f.purchases.map((p) => (

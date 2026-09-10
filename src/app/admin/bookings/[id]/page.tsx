@@ -32,7 +32,10 @@ import type {
 } from "@/lib/types";
 import { round2 } from "@/lib/ledger";
 import { isRsvpLocked } from "@/lib/rsvp-lock";
-import { computeBookingShareRemaining } from "@/lib/payment-allocation";
+import {
+  computeBookingShareRemaining,
+  computeClubFundShareRemaining,
+} from "@/lib/payment-allocation";
 import { BookingForm } from "../BookingForm";
 import { BookingExpenseForm } from "../BookingExpenseForm";
 import { BookingFundContributionForm } from "../BookingFundContributionForm";
@@ -132,6 +135,33 @@ export default async function BookingDetail({
       .order("created_at", { ascending: false }),
   ]);
 
+  type GameFundEntryRow = {
+    id: string;
+    fund_id: string;
+    amount: number;
+    description: string | null;
+    voided: boolean;
+    club_item_funds: { name: string } | null;
+  };
+  const fundEntryList = (gameFundEntries ?? []) as unknown as GameFundEntryRow[];
+  const liveFundEntryIds = fundEntryList.filter((e) => !e.voided).map((e) => e.id);
+  const { data: clubSharesRaw } =
+    liveFundEntryIds.length > 0
+      ? await supabase
+          .from("club_fund_shares")
+          .select("id, player_id, amount_owed, fund_entry_id, players(name)")
+          .in("fund_entry_id", liveFundEntryIds)
+      : { data: [] as never[] };
+
+  type ClubShareRow = {
+    id: string;
+    player_id: string;
+    amount_owed: number;
+    fund_entry_id: string;
+    players: { name: string } | null;
+  };
+  const clubShareList = (clubSharesRaw ?? []) as unknown as ClubShareRow[];
+
   const roster = (attendance ?? []) as (BookingAttendance & {
     players: Pick<Player, "id" | "name">;
   })[];
@@ -197,12 +227,22 @@ export default async function BookingDetail({
     new Map([[b.id, b.play_date]]),
     new Date().toISOString().slice(0, 10),
   );
+  const remainingByClubShare = await computeClubFundShareRemaining(
+    supabase,
+    clubShareList.map((s) => s.id),
+  );
   const shareRemaining = (shareId: string, amount: number) => {
     const r = remainingByShare.get(shareId);
     return r === undefined ? 0 : Math.min(amount, Math.max(0, r));
   };
   const shareSettled = (shareId: string, amount: number) =>
     round2(amount - shareRemaining(shareId, amount));
+  const clubShareRemaining = (shareId: string, amount: number) => {
+    const r = remainingByClubShare.get(shareId);
+    return r === undefined ? 0 : Math.min(amount, Math.max(0, r));
+  };
+  const clubShareSettled = (shareId: string, amount: number) =>
+    round2(amount - clubShareRemaining(shareId, amount));
 
   const paid = round2(
     shareList.reduce(
@@ -229,13 +269,24 @@ export default async function BookingDetail({
     kind: "player" | "group";
     charged: number;
     paid: number;
+    clubCharged: number;
+    clubPaid: number;
     shareCount: number;
   };
   const reconMap = new Map<string, ReconLine>();
   const ensureLine = (key: string, name: string, kind: "player" | "group") => {
     let line = reconMap.get(key);
     if (!line) {
-      line = { key, name, kind, charged: 0, paid: 0, shareCount: 0 };
+      line = {
+        key,
+        name,
+        kind,
+        charged: 0,
+        paid: 0,
+        clubCharged: 0,
+        clubPaid: 0,
+        shareCount: 0,
+      };
       reconMap.set(key, line);
     }
     return line;
@@ -252,9 +303,46 @@ export default async function BookingDetail({
     line.paid += shareSettled(s.id, amount);
     line.shareCount += 1;
   }
+  for (const s of clubShareList) {
+    const line = ensureLine(
+      `p:${s.player_id}`,
+      s.players?.name ?? "Unknown player",
+      "player",
+    );
+    const amount = Number(s.amount_owed);
+    line.clubCharged += amount;
+    line.clubPaid += clubShareSettled(s.id, amount);
+  }
   const reconLines = [...reconMap.values()].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const hasClubShares = clubShareList.length > 0;
+  const clubChargedTotal = round2(
+    clubShareList.reduce((s, x) => s + Number(x.amount_owed), 0),
+  );
+  const clubPaidTotal = round2(
+    clubShareList.reduce(
+      (s, x) => s + clubShareSettled(x.id, Number(x.amount_owed)),
+      0,
+    ),
+  );
+  const clubByEntry = new Map<
+    string,
+    { billed: number; collected: number; unpaid: number }
+  >();
+  for (const s of clubShareList) {
+    const amount = Number(s.amount_owed);
+    const collected = clubShareSettled(s.id, amount);
+    const cur = clubByEntry.get(s.fund_entry_id) ?? {
+      billed: 0,
+      collected: 0,
+      unpaid: 0,
+    };
+    cur.billed = round2(cur.billed + amount);
+    cur.collected = round2(cur.collected + collected);
+    cur.unpaid = round2(cur.unpaid + (amount - collected));
+    clubByEntry.set(s.fund_entry_id, cur);
+  }
 
   return (
     <div className="pb-36 md:pb-24">
@@ -755,22 +843,16 @@ export default async function BookingDetail({
               </h2>
               <p className="mt-0.5 text-xs text-slate-400">
                 Optional. Charge Going/attended a set amount toward a pot
-                (pickleballs). Does not reimburse a buyer. Purchases from that
-                pot are recorded under Club items.
+                (pickleballs). Who paid is tracked with court fees under Player
+                shares &amp; payments. The pot only grows when they actually
+                pay.
               </p>
             </div>
-            {(gameFundEntries ?? []).length > 0 ? (
+            {fundEntryList.length > 0 ? (
               <ul className="divide-y divide-slate-100">
-                {(
-                  (gameFundEntries ?? []) as unknown as {
-                    id: string;
-                    fund_id: string;
-                    amount: number;
-                    description: string | null;
-                    voided: boolean;
-                    club_item_funds: { name: string } | null;
-                  }[]
-                ).map((row) => (
+                {fundEntryList.map((row) => {
+                  const cash = clubByEntry.get(row.id);
+                  return (
                   <li
                     key={row.id}
                     className={`flex items-center justify-between gap-3 px-4 py-3 ${
@@ -785,6 +867,25 @@ export default async function BookingDetail({
                       <p className="text-xs text-slate-400">
                         {row.description ?? "Game contribution"}
                       </p>
+                      {!row.voided && cash ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Charged {formatMoney(cash.billed)} · collected{" "}
+                          <span className="font-medium text-emerald-700">
+                            {formatMoney(cash.collected)}
+                          </span>
+                          {cash.unpaid >= SETTLE_TOLERANCE ? (
+                            <>
+                              {" "}
+                              ·{" "}
+                              <span className="font-medium text-rose-700">
+                                {formatMoney(cash.unpaid)} unpaid
+                              </span>
+                            </>
+                          ) : (
+                            " · all paid"
+                          )}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <p className="font-semibold text-slate-900">
@@ -793,7 +894,7 @@ export default async function BookingDetail({
                       {!row.voided ? (
                         <ConfirmButton
                           action={voidFundEntry}
-                          message="Void this contribution? Player charges and the pot will be reversed."
+                          message="Void this contribution? Player charges will be reversed. Collected cash in the pot will drop."
                           variant="ghost"
                           pendingLabel="Voiding…"
                           hidden={{ id: row.id, fund_id: row.fund_id }}
@@ -803,7 +904,8 @@ export default async function BookingDetail({
                       ) : null}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             ) : (
               <p className="px-4 py-3 text-sm text-slate-400">
@@ -1037,9 +1139,17 @@ export default async function BookingDetail({
           {/* Player shares & payments (merged) */}
           <Card>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <h2 className="text-sm font-semibold text-slate-700">
-                Player shares &amp; payments
-              </h2>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-700">
+                  Player shares &amp; payments
+                </h2>
+                {hasClubShares ? (
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Court and club item on one row. Paid is actual FIFO
+                    settlement, the same as each player&apos;s wallet.
+                  </p>
+                ) : null}
+              </div>
               <Link
                 href={`/admin/payments?booking=${b.id}`}
                 className={buttonClass("secondary")}
@@ -1050,7 +1160,8 @@ export default async function BookingDetail({
             <div className="p-4">
               {reconLines.length === 0 ? (
                 <p className="text-sm text-slate-400">
-                  No shares or payments recorded for this booking yet.
+                  No shares or club item contributions recorded for this booking
+                  yet.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -1058,7 +1169,14 @@ export default async function BookingDetail({
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                         <th className="py-2 font-medium">Player</th>
-                        <th className="py-2 text-right font-medium">Share</th>
+                        <th className="py-2 text-right font-medium">
+                          {hasClubShares ? "Court" : "Share"}
+                        </th>
+                        {hasClubShares ? (
+                          <th className="py-2 text-right font-medium">
+                            Club item
+                          </th>
+                        ) : null}
                         <th className="py-2 text-right font-medium">Paid</th>
                         <th className="py-2 text-right font-medium">Balance</th>
                         {b.status === "played" ? (
@@ -1068,7 +1186,9 @@ export default async function BookingDetail({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {reconLines.map((line) => {
-                        const bal = round2(line.charged - line.paid);
+                        const charged = round2(line.charged + line.clubCharged);
+                        const paidAmt = round2(line.paid + line.clubPaid);
+                        const bal = round2(charged - paidAmt);
                         const settled = Math.abs(bal) < SETTLE_TOLERANCE;
                         const due = bal >= SETTLE_TOLERANCE;
                         return (
@@ -1095,8 +1215,15 @@ export default async function BookingDetail({
                                 ? formatMoney(line.charged)
                                 : "—"}
                             </td>
+                            {hasClubShares ? (
+                              <td className="py-2 text-right text-slate-600">
+                                {line.clubCharged > 0
+                                  ? formatMoney(line.clubCharged)
+                                  : "—"}
+                              </td>
+                            ) : null}
                             <td className="py-2 text-right text-emerald-600">
-                              {line.paid > 0 ? formatMoney(line.paid) : "—"}
+                              {paidAmt > 0 ? formatMoney(paidAmt) : "—"}
                             </td>
                             <td
                               className={`py-2 text-right font-medium ${
@@ -1142,11 +1269,23 @@ export default async function BookingDetail({
                         <td className="py-2 text-right">
                           {formatMoney(totalShared)}
                         </td>
+                        {hasClubShares ? (
+                          <td className="py-2 text-right">
+                            {formatMoney(clubChargedTotal)}
+                          </td>
+                        ) : null}
                         <td className="py-2 text-right text-emerald-700">
-                          {formatMoney(paid)}
+                          {formatMoney(round2(paid + clubPaidTotal))}
                         </td>
                         <td className="py-2 text-right">
-                          {formatMoney(round2(totalShared - paid))}
+                          {formatMoney(
+                            round2(
+                              totalShared +
+                                clubChargedTotal -
+                                paid -
+                                clubPaidTotal,
+                            ),
+                          )}
                         </td>
                       </tr>
                     </tfoot>
