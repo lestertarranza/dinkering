@@ -26,6 +26,7 @@ export type ClubFundShareAudit = {
   bookingId: string | null;
   bookingCode: string | null;
   playDate: string | null;
+  sourceLabel: string | null;
 };
 
 type EntryRow = {
@@ -35,6 +36,7 @@ type EntryRow = {
   amount: number;
   voided: boolean;
   booking_id: string | null;
+  description?: string | null;
 };
 
 type ShareRow = {
@@ -123,14 +125,15 @@ export async function loadClubFundCashSummaries(
   const byEntry = new Map<string, ClubFundEntryCash>();
 
   const entries = await loadEntries(db, fundIds);
-  const billedEntryIds = entries
-    .filter((e) => !e.voided && e.kind === "allocate" && e.booking_id)
+  const allocateIds = entries
+    .filter((e) => !e.voided && e.kind === "allocate")
     .map((e) => e.id);
-  const shares = await loadShares(db, billedEntryIds);
+  const shares = await loadShares(db, allocateIds);
   const remainingByShare = await computeClubFundShareRemaining(
     db,
     shares.map((s) => s.id),
   );
+  const entryIdsWithShares = new Set(shares.map((s) => s.fund_entry_id));
 
   const billedByFund = new Map<string, number>();
   const unpaidByFund = new Map<string, number>();
@@ -181,7 +184,7 @@ export async function loadClubFundCashSummaries(
       const n = Number(e.amount);
       if (!Number.isFinite(n)) continue;
       if (e.kind === "spend") spent = round2(spent + n);
-      else if (e.kind === "allocate" && !e.booking_id) {
+      else if (e.kind === "allocate" && !entryIdsWithShares.has(e.id)) {
         manualIn = round2(manualIn + n);
       }
     }
@@ -210,7 +213,7 @@ export async function loadClubFundShareAudit(
     db
       .from("club_fund_entries")
       .select(
-        "id, fund_id, kind, amount, voided, booking_id, bookings:booking_id(booking_code, play_date)",
+        "id, fund_id, kind, amount, voided, booking_id, description, bookings:booking_id(booking_code, play_date)",
       )
       .eq("fund_id", fundId)
       .eq("kind", "allocate")
@@ -218,17 +221,15 @@ export async function loadClubFundShareAudit(
       .order("id")
       .range(from, to),
   );
-  const billedEntries = entries.filter((e) => e.booking_id);
-
   const shares = await loadShares(
     db,
-    billedEntries.map((e) => e.id),
+    entries.map((e) => e.id),
   );
   const remainingByShare = await computeClubFundShareRemaining(
     db,
     shares.map((s) => s.id),
   );
-  const entryById = new Map(billedEntries.map((e) => [e.id, e]));
+  const entryById = new Map(entries.map((e) => [e.id, e]));
 
   return shares
     .map((s) => {
@@ -246,6 +247,10 @@ export async function loadClubFundShareAudit(
         bookingId: entry?.booking_id ?? null,
         bookingCode: entry?.bookings?.booking_code ?? null,
         playDate: entry?.bookings?.play_date ?? null,
+        sourceLabel:
+          entry?.bookings?.booking_code ??
+          entry?.description ??
+          null,
       };
     })
     .sort((a, b) => {

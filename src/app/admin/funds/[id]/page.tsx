@@ -370,7 +370,7 @@ export default async function ClubFundDetail({
                             {row.playerName}
                           </td>
                           <td className="py-2 text-slate-600">
-                            {row.bookingId ? (
+                          {row.bookingId ? (
                               <Link
                                 href={`/admin/bookings/${row.bookingId}`}
                                 className="text-emerald-700 hover:underline"
@@ -378,7 +378,7 @@ export default async function ClubFundDetail({
                                 {row.bookingCode ?? "Booking"}
                               </Link>
                             ) : (
-                              "—"
+                              row.sourceLabel ?? "—"
                             )}
                             {row.playDate ? (
                               <span className="ml-1 text-xs text-slate-400">
@@ -422,7 +422,8 @@ export default async function ClubFundDetail({
             <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
               {list.map((e) => {
                 const entryCash = cashBundle.byEntry.get(e.id);
-                const isGame = e.kind === "allocate" && Boolean(e.booking_id);
+                const isContribution =
+                  e.kind === "allocate" && Boolean(entryCash);
                 return (
                 <div
                   key={e.id}
@@ -434,8 +435,10 @@ export default async function ClubFundDetail({
                     <p className="text-sm font-medium text-slate-800">
                       {e.kind === "spend"
                         ? "Purchase"
-                        : isGame
-                          ? "Game contribution"
+                        : isContribution
+                          ? e.booking_id
+                            ? "Game contribution"
+                            : "Player contribution"
                           : "Added"}
                       {e.voided ? " · voided" : ""}
                     </p>
@@ -449,7 +452,7 @@ export default async function ClubFundDetail({
                         {e.players?.name ?? e.player_groups?.name ?? "unknown"}
                       </p>
                     ) : null}
-                    {isGame && entryCash && !e.voided ? (
+                    {isContribution && entryCash && !e.voided ? (
                       <p className="text-xs text-slate-500">
                         Charged {formatMoney(entryCash.billed)} · collected{" "}
                         {formatMoney(entryCash.collected)}
@@ -479,14 +482,14 @@ export default async function ClubFundDetail({
                       className={`font-semibold ${
                         e.kind === "spend"
                           ? "text-rose-700"
-                          : isGame
+                          : isContribution
                             ? "text-slate-700"
                             : "text-emerald-700"
                       }`}
                     >
                       {e.kind === "spend"
                         ? `−${formatMoney(e.amount)}`
-                        : isGame
+                        : isContribution
                           ? `charged ${formatMoney(e.amount)}`
                           : `+${formatMoney(e.amount)}`}
                     </span>
