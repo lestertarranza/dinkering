@@ -33,6 +33,10 @@ import type {
 import { round2 } from "@/lib/ledger";
 import { isRsvpLocked } from "@/lib/rsvp-lock";
 import {
+  inEqualCourtSplit,
+  isLateCancelActual,
+} from "@/lib/attendance";
+import {
   computeBookingShareRemaining,
   computeClubFundShareRemaining,
 } from "@/lib/payment-allocation";
@@ -64,8 +68,6 @@ import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
 import { SplitPreview } from "@/components/SplitPreview";
 
 export const dynamic = "force-dynamic";
-
-const chargeable = new Set(["attended", "late_cancel", "guest"]);
 
 export default async function BookingDetail({
   params,
@@ -199,11 +201,7 @@ export default async function BookingDetail({
     (balances ?? []).map((x) => [x.player_id as string, Number(x.balance)]),
   );
   const chargeNames = roster
-    .filter((r) =>
-      r.actual_status
-        ? chargeable.has(r.actual_status)
-        : r.response_status === "going",
-    )
+    .filter((r) => inEqualCourtSplit(r))
     .map((r) => r.players?.name ?? "Player");
 
   const totalShared = round2(
@@ -654,14 +652,20 @@ export default async function BookingDetail({
                       const defaultActual =
                         r.actual_status ??
                         (r.response_status === "going" ? "attended" : "absent");
-                      const isConfirmedAttended = r.actual_status === "attended";
+                      const saved = Boolean(r.actual_status);
+                      const isAttended = r.actual_status === "attended";
+                      const isLate = isLateCancelActual(r.actual_status);
                       return (
                         <ActionForm
                           key={r.id}
                           action={setPlayerActualStatus}
                           pendingLabel="…"
                           className={`rounded-lg px-3 py-1.5 ${
-                            isConfirmedAttended ? "bg-emerald-50" : "bg-slate-50"
+                            isAttended
+                              ? "bg-emerald-50"
+                              : isLate
+                                ? "bg-amber-50"
+                                : "bg-slate-50"
                           }`}
                           hidden={
                             <>
@@ -673,9 +677,11 @@ export default async function BookingDetail({
                           <div className="flex items-center gap-2">
                             <span
                               className={`flex-1 text-sm ${
-                                isConfirmedAttended
+                                isAttended
                                   ? "font-medium text-emerald-800"
-                                  : "text-slate-700"
+                                  : isLate
+                                    ? "font-medium text-amber-900"
+                                    : "text-slate-700"
                               }`}
                             >
                               {r.players?.name}
@@ -683,7 +689,6 @@ export default async function BookingDetail({
                             {rsvpLocked && r.response_status === "going" ? (
                               <Badge tone="warning">Committed</Badge>
                             ) : null}
-                            {/* RSVP as a muted hint badge */}
                             <StatusBadge status={r.response_status} />
                             <select
                               name="actual_status"
@@ -695,22 +700,18 @@ export default async function BookingDetail({
                               <option value="late_cancel">Late cancel</option>
                               <option value="guest">Guest</option>
                             </select>
-                            {isConfirmedAttended ? (
-                              <span className="w-20 text-center text-xs font-medium text-emerald-600">
-                                ✓ Confirmed
-                              </span>
-                            ) : (
-                              <SubmitButton variant="secondary" pendingLabel="…">
-                                Confirm
-                              </SubmitButton>
-                            )}
+                            <SubmitButton variant="secondary" pendingLabel="…">
+                              {saved ? "Update" : "Confirm"}
+                            </SubmitButton>
                           </div>
                         </ActionForm>
                       );
                     })}
                   <p className="pt-1 text-xs text-slate-400">
-                    RSVP badge shown as context. Going players pre-selected as
-                    Attended. Change if needed, then click Confirm.
+                    RSVP stays as-is (including locked Going). Attendance is what
+                    you charge. Late cancel is not a court seat; a waitlisted
+                    player who played should be Attended. Add a penalty with
+                    Override ₱ on Booking shares.
                   </p>
                 </div>
               ) : (
@@ -1002,7 +1003,7 @@ export default async function BookingDetail({
                 </h2>
                 <ConfirmButton
                   action={chargeAttendees}
-                  message="Charge everyone who played? This splits the court cost equally across all attended (or RSVP'd going) players and replaces any existing shares."
+                  message="Split the court equally across Attended and Guest (or Going if attendance is not set)? Late cancel is skipped. Existing shares are replaced; add a late-cancel penalty afterward with Override ₱ on Generate shares."
                   variant="secondary"
                   hidden={{ booking_id: b.id }}
                   pendingLabel="Charging…"
@@ -1035,14 +1036,13 @@ export default async function BookingDetail({
                     <tbody className="divide-y divide-slate-100">
                       {[...roster]
                         .sort((a, b) => {
-                          // Mirror the defaultInclude logic: existing share OR
-                          // chargeable actual_status OR going RSVP = included.
                           const included = (r: typeof a) => {
                             const ex = shareByPlayer.get(r.player_id);
-                            return ex != null ||
-                              (r.actual_status
-                                ? chargeable.has(r.actual_status)
-                                : r.response_status === "going");
+                            return (
+                              ex != null ||
+                              isLateCancelActual(r.actual_status) ||
+                              inEqualCourtSplit(r)
+                            );
                           };
                           const ai = included(a) ? 0 : 1;
                           const bi = included(b) ? 0 : 1;
@@ -1051,11 +1051,11 @@ export default async function BookingDetail({
                         })
                         .map((r) => {
                         const existing = shareByPlayer.get(r.player_id);
+                        const isLate = isLateCancelActual(r.actual_status);
                         const defaultInclude =
                           existing != null ||
-                          (r.actual_status
-                            ? chargeable.has(r.actual_status)
-                            : r.response_status === "going");
+                          isLate ||
+                          inEqualCourtSplit(r);
                         const bal = balMap.get(r.player_id) ?? 0;
                         const credit =
                           bal <= -SETTLE_TOLERANCE ? Math.abs(bal) : 0;
@@ -1075,6 +1075,11 @@ export default async function BookingDetail({
                             </td>
                             <td className="py-2 font-medium text-slate-700">
                               {r.players?.name}
+                              {isLate ? (
+                                <span className="ml-2 align-middle">
+                                  <Badge tone="warning">Late cancel</Badge>
+                                </span>
+                              ) : null}
                             </td>
                             <td className="py-2">
                               <input
@@ -1082,7 +1087,9 @@ export default async function BookingDetail({
                                 type="number"
                                 step="0.5"
                                 min="0"
-                                defaultValue={existing?.share_units ?? 1}
+                                defaultValue={
+                                  existing?.share_units ?? (isLate ? 0 : 1)
+                                }
                                 className="w-16 rounded-md border border-slate-300 px-2 py-1"
                               />
                             </td>
@@ -1095,7 +1102,7 @@ export default async function BookingDetail({
                                 defaultValue={
                                   existing?.override_share_amount ?? ""
                                 }
-                                placeholder="—"
+                                placeholder={isLate ? "penalty" : "—"}
                                 className="w-24 rounded-md border border-slate-300 px-2 py-1"
                               />
                             </td>
@@ -1120,9 +1127,10 @@ export default async function BookingDetail({
                   </table>
                 </div>
                 <p className="mt-3 text-xs text-slate-400">
-                  Cost is split by share units across included players. Use
-                  Override to set a fixed amount for a player. Regenerating voids
-                  and replaces the previous shares.
+                  Court cost is split by units across Attended and Guest (or
+                  Going). Late cancel is not a seat; type a penalty in Override
+                  ₱. That penalty is added on top of the court total. Regenerating
+                  voids and replaces the previous shares.
                 </p>
                 <div className="mt-3">
                   <ConfirmSubmit

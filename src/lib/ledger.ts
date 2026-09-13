@@ -201,3 +201,38 @@ export function splitByUnits<T extends { share_units: number; override_share_amo
   );
   return result;
 }
+
+type ShareSplitRow = {
+  player_id: string;
+  share_units: number;
+  override_share_amount?: number | null;
+};
+
+/**
+ * Court cost is split only among seat rows (attended / guest / Going).
+ * Late-cancel Override ₱ is an extra penalty on top of the court total, not
+ * a reduction of everyone else's share.
+ */
+export function allocateBookingShareAmounts<T extends ShareSplitRow>(
+  rows: T[],
+  courtTotal: number,
+  lateCancelIds: Set<string>,
+): { row: T; amount: number }[] {
+  const seat: T[] = [];
+  const penalties: T[] = [];
+  for (const row of rows) {
+    if (lateCancelIds.has(row.player_id)) {
+      const penalty = Number(row.override_share_amount);
+      if (Number.isFinite(penalty) && penalty > 0) penalties.push(row);
+      continue;
+    }
+    seat.push(row);
+  }
+  return [
+    ...splitByUnits(seat, courtTotal),
+    ...penalties.map((row) => ({
+      row,
+      amount: round2(Number(row.override_share_amount)),
+    })),
+  ];
+}

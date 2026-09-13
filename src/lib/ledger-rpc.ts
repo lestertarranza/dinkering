@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  allocateBookingShareAmounts,
   resolveWalletOwner,
   splitByUnits,
   type WalletOwner,
@@ -50,6 +51,7 @@ export async function rebuildBookingSharesAtomic(
   db: SupabaseClient,
   booking: BookingRecord,
   rows: ShareRow[],
+  lateCancelIds: Iterable<string> = [],
 ) {
   if (rows.length === 0) {
     const { error } = await db.rpc("rebuild_booking_shares_atomic", {
@@ -62,7 +64,11 @@ export async function rebuildBookingSharesAtomic(
     return;
   }
 
-  const allocations = splitByUnits(rows, Number(booking.total_booking_cost));
+  const allocations = allocateBookingShareAmounts(
+    rows,
+    Number(booking.total_booking_cost),
+    new Set(lateCancelIds),
+  );
   const rpcRows = [];
   for (const { row, amount } of allocations) {
     const owner = await resolveWalletOwner(db, row.player_id, booking.play_date);

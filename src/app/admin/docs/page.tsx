@@ -202,14 +202,26 @@ export default function DocsPage() {
             <h3 className={h3Class}>Generating shares</h3>
             <p className={pClass}>
               After attendance is confirmed, click <strong>Generate shares</strong>{" "}
-              (or <strong>Charge attendees</strong>). This divides the total booking
-              cost equally among chargeable players (attended / late cancel / guest)
-              and posts a debit to each player&apos;s wallet.
+              (or <strong>Charge attendees</strong>). This divides the court cost
+              equally among players who used a seat (attended / guest, or Going
+              if attendance is not set yet) and posts a debit to each wallet.
             </p>
             <ul className="ml-4 mt-2 list-disc space-y-1">
               <li className={liClass}>
+                <strong>Late cancel</strong> is not a court seat. If a waitlisted
+                player filled in, mark them Attended and the canceller Late
+                cancel. Optionally type a penalty in Override ₱ on the late
+                cancel row. That penalty is extra, on top of the court total.
+              </li>
+              <li className={liClass}>
+                You can change attendance after the booking is Played, including
+                players already marked Attended. RSVP (Going) stays as the
+                commitment record.
+              </li>
+              <li className={liClass}>
                 <strong>Custom shares</strong> — you can override the share amount or
-                unit weighting per player before generating.
+                unit weighting per player before generating. Seat overrides still
+                come out of the court total; late-cancel Override ₱ does not.
               </li>
               <li className={liClass}>
                 <strong>Regenerating shares</strong> — if attendance changes, you can

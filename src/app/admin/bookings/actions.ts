@@ -12,6 +12,7 @@ import {
   resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
+import { inEqualCourtSplit, lateCancelPlayerIds } from "@/lib/attendance";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
 
 export async function createBooking(formData: FormData) {
@@ -337,6 +338,10 @@ export async function setPlayerActualStatus(
   const actual_status = String(
     formData.get("actual_status") || "attended",
   ) as ActualStatus;
+  const allowed: ActualStatus[] = ["attended", "absent", "late_cancel", "guest"];
+  if (!allowed.includes(actual_status)) {
+    return actionErr("Invalid attendance status.");
+  }
   const { supabase } = await requireAdmin();
   await supabase
     .from("booking_attendance")
@@ -431,8 +436,21 @@ export async function generateShares(
     return actionErr("Select at least one player to include in shares.");
   }
 
+  const { data: attendance } = await supabase
+    .from("booking_attendance")
+    .select("player_id, actual_status")
+    .eq("booking_id", booking_id);
+  const lateIds = lateCancelPlayerIds(
+    (attendance ?? []) as { player_id: string; actual_status?: string | null }[],
+  );
+
   try {
-    await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
+    await rebuildBookingSharesAtomic(
+      supabase,
+      booking as BookingRecord,
+      rows,
+      lateIds,
+    );
   } catch (e) {
     return actionErr(
       e instanceof Error ? e.message : "Could not generate shares.",
@@ -441,17 +459,23 @@ export async function generateShares(
 
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
+  const penaltyCount = rows.filter(
+    (r) =>
+      lateIds.has(r.player_id) &&
+      r.override_share_amount != null &&
+      r.override_share_amount > 0,
+  ).length;
   return actionOk(
-    `Shares generated for ${rows.length} player${rows.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} total).`,
+    penaltyCount > 0
+      ? `Shares generated. Court ${formatMoney(booking.total_booking_cost)} plus ${penaltyCount} late-cancel ${penaltyCount === 1 ? "penalty" : "penalties"}.`
+      : `Shares generated for ${rows.length} player${rows.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} total).`,
   );
 }
 
-const CHARGEABLE_ACTUAL = new Set(["attended", "late_cancel", "guest"]);
-
 /**
- * One-click: charge everyone who played. Splits the cost equally (1 unit each)
- * across players whose confirmed attendance is chargeable, or — if attendance
- * hasn't been confirmed yet — those who RSVP'd "going".
+ * One-click: split the court equally among players who used a seat
+ * (attended / guest, or Going if attendance is not confirmed yet).
+ * Late cancel is skipped; add a penalty with Override ₱ on Generate shares.
  */
 export async function chargeAttendees(
   _prev: ActionState,
@@ -482,12 +506,13 @@ export async function chargeAttendees(
     .eq("booking_id", booking_id);
 
   const included = (roster ?? []).filter((r) =>
-    r.actual_status
-      ? CHARGEABLE_ACTUAL.has(r.actual_status as string)
-      : r.response_status === "going",
+    inEqualCourtSplit({
+      actual_status: r.actual_status as string | null,
+      response_status: r.response_status as string | null,
+    }),
   );
   if (included.length === 0) {
-    return actionErr("No chargeable players — confirm attendance or RSVP first.");
+    return actionErr("No players on a court seat — confirm attendance or RSVP first.");
   }
 
   const rows: ShareRow[] = included.map((r) => ({
@@ -497,7 +522,14 @@ export async function chargeAttendees(
   }));
 
   try {
-    await rebuildBookingSharesAtomic(supabase, booking as BookingRecord, rows);
+    await rebuildBookingSharesAtomic(
+      supabase,
+      booking as BookingRecord,
+      rows,
+      lateCancelPlayerIds(
+        (roster ?? []) as { player_id: string; actual_status?: string | null }[],
+      ),
+    );
   } catch (e) {
     return actionErr(
       e instanceof Error ? e.message : "Could not charge attendees.",
