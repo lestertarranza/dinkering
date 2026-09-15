@@ -94,6 +94,7 @@ export interface BookingAttendance {
   actual_status: ActualStatus | null;
   confirmed_by_admin: boolean;
   notes: string | null;
+  waitlisted_at?: string | null;
   created_at: string;
   updated_at: string;
 }

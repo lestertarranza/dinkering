@@ -199,6 +199,15 @@ export default function DocsPage() {
               </li>
             </ol>
 
+            <h3 className={h3Class}>Waitlist</h3>
+            <p className={pClass}>
+              When a game is full, new Going RSVPs land on the waitlist in{" "}
+              <strong>first-come, first-served</strong> order (when they joined
+              the waitlist, not when they were added to the roster). If someone
+              leaves Going, the first person on the waitlist is moved to Going
+              automatically, including when you change RSVP as admin.
+            </p>
+
             <h3 className={h3Class}>Generating shares</h3>
             <p className={pClass}>
               After attendance is confirmed, click <strong>Generate shares</strong>{" "}

@@ -1,11 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { goingChipLabel } from "@/lib/public-display";
+import { waitlistPositionOf } from "@/lib/waitlist-order";
+import { waitlistedAtColumnExists } from "@/lib/waitlist";
 
 export type GoingWaitRow = {
   booking_id: string;
   player_id: string;
   response_status: string;
   created_at: string;
+  updated_at: string;
+  waitlisted_at?: string | null;
   players: {
     name: string;
     display_name: string | null;
@@ -21,14 +25,16 @@ export async function fetchGoingAndWaitlist(
   bookingIds: string[],
 ): Promise<GoingWaitRow[]> {
   if (bookingIds.length === 0) return [];
+  const withAt = await waitlistedAtColumnExists(db);
+  const cols = withAt
+    ? "booking_id, player_id, response_status, created_at, updated_at, waitlisted_at, players(name, display_name, hidden_on_board)"
+    : "booking_id, player_id, response_status, created_at, updated_at, players(name, display_name, hidden_on_board)";
   const pageSize = 1000;
   const all: GoingWaitRow[] = [];
   for (let from = 0; ; from += pageSize) {
     const { data } = await db
       .from("booking_attendance")
-      .select(
-        "booking_id, player_id, response_status, created_at, players(name, display_name, hidden_on_board)",
-      )
+      .select(cols)
       .in("booking_id", bookingIds)
       .in("response_status", ["going", "waitlist"])
       .order("created_at")
@@ -63,12 +69,8 @@ export function waitlistPosition(
   bookingId: string,
   playerId: string,
 ): { position: number; total: number } | null {
-  const wait = rows
-    .filter(
-      (r) => r.booking_id === bookingId && r.response_status === "waitlist",
-    )
-    .sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const idx = wait.findIndex((r) => r.player_id === playerId);
-  if (idx === -1) return null;
-  return { position: idx + 1, total: wait.length };
+  const wait = rows.filter(
+    (r) => r.booking_id === bookingId && r.response_status === "waitlist",
+  );
+  return waitlistPositionOf(wait, playerId);
 }

@@ -32,6 +32,7 @@ import type {
 } from "@/lib/types";
 import { round2 } from "@/lib/ledger";
 import { isRsvpLocked } from "@/lib/rsvp-lock";
+import { compareWaitlistOrder } from "@/lib/waitlist-order";
 import {
   inEqualCourtSplit,
   isLateCancelActual,
@@ -167,6 +168,12 @@ export default async function BookingDetail({
   const roster = (attendance ?? []) as (BookingAttendance & {
     players: Pick<Player, "id" | "name">;
   })[];
+  const waitlistQueue = roster
+    .filter((r) => r.response_status === "waitlist")
+    .sort(compareWaitlistOrder);
+  const waitlistNumber = new Map(
+    waitlistQueue.map((r, i) => [r.id, i + 1]),
+  );
   const rosterIds = new Set(roster.map((r) => r.player_id));
   const availablePlayers = ((players ?? []) as Player[]).filter(
     (p) => !rosterIds.has(p.id) && p.active_status !== "archived",
@@ -719,7 +726,7 @@ export default async function BookingDetail({
                 <ul className="mb-4 space-y-2">
                   {[...roster]
                     .sort((a, b) => {
-                      // Responded first (going → waitlist → not going), then no response
+                      // Going, then waitlist in FCFS join order, then not going, then no response
                       const rsvpRank = (r: typeof a) => {
                         if (r.response_status === "going") return 0;
                         if (r.response_status === "waitlist") return 1;
@@ -727,7 +734,11 @@ export default async function BookingDetail({
                         return 3; // no_response / leftover maybe last
                       };
                       const dr = rsvpRank(a) - rsvpRank(b);
-                      return dr !== 0 ? dr : (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
+                      if (dr !== 0) return dr;
+                      if (a.response_status === "waitlist") {
+                        return compareWaitlistOrder(a, b);
+                      }
+                      return (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
                     })
                     .map((r) => (
                     <li
@@ -762,6 +773,11 @@ export default async function BookingDetail({
                           <Badge tone="warning">Committed</Badge>
                         ) : null}
                         <StatusBadge status={r.response_status} />
+                        {r.response_status === "waitlist" ? (
+                          <span className="text-xs font-medium text-amber-800">
+                            #{waitlistNumber.get(r.id)}
+                          </span>
+                        ) : null}
                         <CycleRsvpButton
                           bookingId={b.id}
                           playerId={r.player_id}
@@ -787,6 +803,7 @@ export default async function BookingDetail({
                             className="rounded-md border border-slate-300 px-2 py-1 text-xs"
                           >
                             <option value="going">Going</option>
+                            <option value="waitlist">Waitlist</option>
                             <option value="not_going">Not going</option>
                             <option value="no_response">No response</option>
                           </select>

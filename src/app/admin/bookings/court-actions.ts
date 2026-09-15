@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
-import type { ResponseStatus } from "@/lib/types";
+import { admitWaitlistedPlayers } from "@/lib/waitlist";
 
 /** Add a court to a booking. */
 export async function addCourt(
@@ -35,8 +35,7 @@ export async function addCourt(
 
   if (error) return actionErr(error.message);
 
-  // After adding a court, check if any waitlisted players can be admitted.
-  await admitWaitlistedPlayers(supabase, booking_id);
+  await admitWaitlistedPlayers(supabase, booking_id, { via: "admin" });
 
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk("Court added.");
@@ -66,8 +65,7 @@ export async function updateCourt(
 
   if (error) return actionErr(error.message);
 
-  // Max players may have increased — admit waitlisted players if possible.
-  await admitWaitlistedPlayers(supabase, booking_id);
+  await admitWaitlistedPlayers(supabase, booking_id, { via: "admin" });
 
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk("Court updated.");
@@ -89,79 +87,3 @@ export async function removeCourt(
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk("Court removed.");
 }
-
-// ─── Shared helpers ──────────────────────────────────────────────────────────
-
-type SupabaseClient = Awaited<ReturnType<typeof requireAdmin>>["supabase"];
-
-/** Total capacity of all courts on a booking (0 = unlimited). */
-async function getTotalCapacity(
-  supabase: SupabaseClient,
-  booking_id: string,
-): Promise<number> {
-  const { data } = await supabase
-    .from("booking_courts")
-    .select("max_players")
-    .eq("booking_id", booking_id);
-  const courts = (data ?? []) as { max_players: number }[];
-  // If any court is unlimited (0), whole booking is unlimited.
-  if (courts.some((c) => c.max_players === 0)) return 0;
-  return courts.reduce((s, c) => s + c.max_players, 0);
-}
-
-/** Current count of "going" attendees for a booking. */
-async function getGoingCount(
-  supabase: SupabaseClient,
-  booking_id: string,
-): Promise<number> {
-  const { count } = await supabase
-    .from("booking_attendance")
-    .select("id", { count: "exact", head: true })
-    .eq("booking_id", booking_id)
-    .eq("response_status", "going");
-  return count ?? 0;
-}
-
-/**
- * After capacity increases (court added / max_players raised / player cancels),
- * promote the oldest waitlisted players to "going" up to the new capacity.
- */
-export async function admitWaitlistedPlayers(
-  supabase: SupabaseClient,
-  booking_id: string,
-): Promise<void> {
-  const capacity = await getTotalCapacity(supabase, booking_id);
-  if (capacity === 0) {
-    // Unlimited — promote all waitlisted to going.
-    await supabase
-      .from("booking_attendance")
-      .update({ response_status: "going" as ResponseStatus })
-      .eq("booking_id", booking_id)
-      .eq("response_status", "waitlist");
-    return;
-  }
-
-  const going = await getGoingCount(supabase, booking_id);
-  const slots = capacity - going;
-  if (slots <= 0) return;
-
-  // Get oldest waitlisted players (by created_at, FIFO).
-  const { data: waitlisted } = await supabase
-    .from("booking_attendance")
-    .select("id")
-    .eq("booking_id", booking_id)
-    .eq("response_status", "waitlist")
-    .order("created_at")
-    .limit(slots);
-
-  const ids = (waitlisted ?? []).map((r) => r.id as string);
-  if (ids.length === 0) return;
-
-  await supabase
-    .from("booking_attendance")
-    .update({ response_status: "going" as ResponseStatus })
-    .in("id", ids);
-}
-
-/** Exported so RSVP cancel action can call it. */
-export { getTotalCapacity, getGoingCount };

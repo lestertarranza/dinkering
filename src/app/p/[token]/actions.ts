@@ -5,6 +5,7 @@ import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ResponseStatus } from "@/lib/types";
 import { logRsvpChange } from "@/lib/activity-log";
+import { admitWaitlistedPlayers, upsertAttendanceRsvp } from "@/lib/waitlist";
 
 export type RsvpState = {
   ok: boolean;
@@ -55,11 +56,16 @@ export async function submitRsvp(
 
   const { data: existing } = await db
     .from("booking_attendance")
-    .select("response_status")
+    .select("*")
     .eq("booking_id", booking_id)
     .eq("player_id", player.id)
-    .single();
-  const prevStatus = (existing?.response_status as ResponseStatus | undefined) ?? "no_response";
+    .maybeSingle();
+  const prevStatus =
+    ((existing as { response_status?: ResponseStatus } | null)?.response_status) ??
+    "no_response";
+  const prevWaitlistedAt =
+    ((existing as { waitlisted_at?: string | null } | null)?.waitlisted_at) ??
+    null;
 
   let response_status = requested;
   if (requested === "going") {
@@ -92,56 +98,18 @@ export async function submitRsvp(
     };
   }
 
-  await db
-    .from("booking_attendance")
-    .upsert(
-      { booking_id, player_id: player.id, response_status },
-      { onConflict: "booking_id,player_id" },
-    );
+  await upsertAttendanceRsvp(db, {
+    booking_id,
+    player_id: player.id,
+    response_status,
+    prevStatus,
+    prevWaitlistedAt,
+  });
 
-  const wasCancelled =
-    prevStatus === "going" &&
-    response_status !== "going" &&
-    response_status !== "waitlist";
+  const wasCancelled = prevStatus === "going" && response_status !== "going";
 
   if (wasCancelled) {
-    const isUnlimited =
-      courtList.length === 0 || courtList.some((c) => c.max_players === 0);
-
-    const { data: next } = await db
-      .from("booking_attendance")
-      .select("id")
-      .eq("booking_id", booking_id)
-      .eq("response_status", "waitlist")
-      .order("created_at")
-      .limit(isUnlimited ? 999 : 1);
-
-    if (next && next.length > 0) {
-      const promoteIds = next.map((r) => r.id as string);
-      await db
-        .from("booking_attendance")
-        .update({ response_status: "going" as ResponseStatus })
-        .in("id", promoteIds);
-      const { data: promoted } = await db
-        .from("booking_attendance")
-        .select("player_id, players(name)")
-        .in("id", promoteIds);
-      for (const row of (promoted ?? []) as unknown as {
-        player_id: string;
-        players: { name: string } | null;
-      }[]) {
-        await logRsvpChange({
-          playerId: row.player_id,
-          bookingId: booking_id,
-          playerName: row.players?.name ?? null,
-          bookingCode: (booking as { booking_code?: string | null } | null)
-            ?.booking_code,
-          from: "waitlist",
-          to: "going",
-          via: "player",
-        });
-      }
-    }
+    await admitWaitlistedPlayers(db, booking_id, { via: "player" });
   }
 
   revalidatePath(`/p/${token}`);
@@ -162,7 +130,7 @@ export async function submitRsvp(
   return {
     ok: true,
     message: waitlisted
-      ? "Booking is full — you're on the waitlist"
+      ? "Booking is full. You're on the waitlist"
       : labelOf(response_status),
     previous: prevStatus,
     saved: response_status,

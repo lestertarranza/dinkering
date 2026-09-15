@@ -13,6 +13,11 @@ import {
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
 import { inEqualCourtSplit, lateCancelPlayerIds } from "@/lib/attendance";
+import {
+  admitWaitlistedPlayers,
+  loadAttendanceRsvp,
+  upsertAttendanceRsvp,
+} from "@/lib/waitlist";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
 
 export async function createBooking(formData: FormData) {
@@ -237,28 +242,32 @@ export async function setResponse(
     supabase.from("players").select("name").eq("id", player_id).single(),
     supabase.from("bookings").select("booking_code").eq("id", booking_id).single(),
   ]);
-  const { data: existing } = await supabase
-    .from("booking_attendance")
-    .select("response_status")
-    .eq("booking_id", booking_id)
-    .eq("player_id", player_id)
-    .single();
-  await supabase
-    .from("booking_attendance")
-    .upsert(
-      { booking_id, player_id, response_status },
-      { onConflict: "booking_id,player_id" },
-    );
+  const existing = await loadAttendanceRsvp(supabase, booking_id, player_id);
+  const prevStatus = existing.response_status ?? "no_response";
+  const saved = await upsertAttendanceRsvp(supabase, {
+    booking_id,
+    player_id,
+    response_status,
+    prevStatus,
+    prevWaitlistedAt: existing.waitlisted_at,
+  });
+  if (saved.error) return actionErr(saved.error.message);
   await logRsvpChange({
     playerId: player_id,
     bookingId: booking_id,
     playerName: player?.name ?? null,
     bookingCode: booking?.booking_code ?? null,
-    from: (existing?.response_status as string) ?? "no_response",
+    from: prevStatus,
     to: response_status,
     actorEmail: user.email ?? null,
     via: "admin",
   });
+  if (prevStatus === "going" && response_status !== "going") {
+    await admitWaitlistedPlayers(supabase, booking_id, {
+      via: "admin",
+      actorEmail: user.email ?? null,
+    });
+  }
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath(`/admin/players/${player_id}`);
   return actionOk("RSVP updated.");
@@ -279,19 +288,38 @@ export async function bulkSetResponse(
   const allowed: ResponseStatus[] = ["going", "not_going", "no_response", "waitlist"];
   if (!allowed.includes(response_status)) return actionErr("Invalid RSVP.");
   const { supabase, user } = await requireAdmin();
-  const rows = ids.map((player_id) => ({
-    booking_id,
-    player_id,
-    response_status,
-  }));
-  await supabase.from("booking_attendance").upsert(rows, {
-    onConflict: "booking_id,player_id",
-  });
+  const { data: existingRows } = await supabase
+    .from("booking_attendance")
+    .select("*")
+    .eq("booking_id", booking_id)
+    .in("player_id", ids);
+  const existingByPlayer = new Map(
+    ((existingRows ?? []) as {
+      player_id: string;
+      response_status: string;
+      waitlisted_at?: string | null;
+    }[]).map((r) => [r.player_id, r]),
+  );
+  for (const player_id of ids) {
+    const prev = existingByPlayer.get(player_id);
+    const saved = await upsertAttendanceRsvp(supabase, {
+      booking_id,
+      player_id,
+      response_status,
+      prevStatus: (prev?.response_status as ResponseStatus) ?? "no_response",
+      prevWaitlistedAt: prev?.waitlisted_at ?? null,
+    });
+    if (saved.error) return actionErr(saved.error.message);
+  }
   await logAdminAction(supabase, user, {
     entityType: "booking",
     entityId: booking_id,
     action: `Bulk RSVP → ${response_status}`,
     details: `${ids.length} player(s)`,
+  });
+  await admitWaitlistedPlayers(supabase, booking_id, {
+    via: "admin",
+    actorEmail: user.email ?? null,
   });
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk(`Set ${ids.length} player${ids.length === 1 ? "" : "s"} to ${response_status}.`);
@@ -656,26 +684,34 @@ export async function cycleResponse(
   const booking_id = String(formData.get("booking_id"));
   const player_id = String(formData.get("player_id"));
   const { supabase, user } = await requireAdmin();
-  const [{ data: existing }, { data: player }, { data: booking }] =
+  const [{ data: existingRow }, { data: player }, { data: booking }] =
     await Promise.all([
       supabase
         .from("booking_attendance")
-        .select("response_status")
+        .select("*")
         .eq("booking_id", booking_id)
         .eq("player_id", player_id)
-        .single(),
+        .maybeSingle(),
       supabase.from("players").select("name").eq("id", player_id).single(),
       supabase.from("bookings").select("booking_code").eq("id", booking_id).single(),
     ]);
+  const existing = existingRow as {
+    response_status?: string;
+    waitlisted_at?: string | null;
+  } | null;
   const current = (existing?.response_status as ResponseStatus) ?? "no_response";
   const idx = RSVP_CYCLE.indexOf(
     current === "maybe" ? "no_response" : current,
   );
   const next = RSVP_CYCLE[(idx < 0 ? 0 : idx + 1) % RSVP_CYCLE.length];
-  await supabase.from("booking_attendance").upsert(
-    { booking_id, player_id, response_status: next },
-    { onConflict: "booking_id,player_id" },
-  );
+  const saved = await upsertAttendanceRsvp(supabase, {
+    booking_id,
+    player_id,
+    response_status: next,
+    prevStatus: current,
+    prevWaitlistedAt: existing?.waitlisted_at ?? null,
+  });
+  if (saved.error) return actionErr(saved.error.message);
   await logRsvpChange({
     playerId: player_id,
     bookingId: booking_id,
@@ -686,6 +722,12 @@ export async function cycleResponse(
     actorEmail: user.email ?? null,
     via: "admin",
   });
+  if (current === "going" && next !== "going") {
+    await admitWaitlistedPlayers(supabase, booking_id, {
+      via: "admin",
+      actorEmail: user.email ?? null,
+    });
+  }
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk(`${player?.name ?? "Player"} → ${next.replace("_", " ")}`);
 }

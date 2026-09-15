@@ -32,6 +32,7 @@ import {
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
 import type { Booking, BookingAttendance, Player } from "@/lib/types";
+import { compareWaitlistOrder } from "@/lib/waitlist-order";
 
 export const dynamic = "force-dynamic";
 
@@ -77,10 +78,16 @@ export default async function PublicBookingRoster({
     const ra = RSVP_ORDER[a.response_status] ?? 9;
     const rb = RSVP_ORDER[b.response_status] ?? 9;
     if (ra !== rb) return ra - rb;
+    if (a.response_status === "waitlist") return compareWaitlistOrder(a, b);
     return publicPlayerLabel(a.players).localeCompare(
       publicPlayerLabel(b.players),
     );
   });
+  const waitlistNumber = new Map(
+    roster
+      .filter((r) => r.response_status === "waitlist")
+      .map((r, i) => [r.id, i + 1]),
+  );
 
   const going = roster.filter((r) => r.response_status === "going").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
@@ -255,6 +262,11 @@ export default async function PublicBookingRoster({
                   <p className={publicHintText}>Tap to RSVP on your page</p>
                 </div>
                 <StatusBadge status={r.response_status} size="md" />
+                {r.response_status === "waitlist" && waitlistNumber.get(r.id) ? (
+                  <span className={`ml-1 text-xs ${publicHintText}`}>
+                    #{waitlistNumber.get(r.id)}
+                  </span>
+                ) : null}
                 <span className={publicChevronClass} aria-hidden>
                   ›
                 </span>
