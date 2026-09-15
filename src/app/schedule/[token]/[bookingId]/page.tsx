@@ -26,6 +26,7 @@ import {
   publicPrimaryText,
   publicHintText,
   MapsLink,
+  WaitlistQueue,
 } from "@/components/public-ui";
 import {
   PublicBottomNav,
@@ -88,6 +89,13 @@ export default async function PublicBookingRoster({
       .filter((r) => r.response_status === "waitlist")
       .map((r, i) => [r.id, i + 1]),
   );
+  const waitlistPeople = roster
+    .filter((r) => r.response_status === "waitlist")
+    .map((r, i) => ({
+      position: i + 1,
+      playerId: r.player_id,
+      name: publicPlayerLabel(r.players),
+    }));
 
   const going = roster.filter((r) => r.response_status === "going").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
@@ -218,6 +226,9 @@ export default async function PublicBookingRoster({
             {totalMax > 0 ? (
               <CapacityBar going={going} totalMax={totalMax} />
             ) : null}
+            {waitlistPeople.length > 0 ? (
+              <WaitlistQueue people={waitlistPeople} />
+            ) : null}
           </div>
         ) : null}
       </Card>
@@ -263,7 +274,7 @@ export default async function PublicBookingRoster({
                 </div>
                 <StatusBadge status={r.response_status} size="md" />
                 {r.response_status === "waitlist" && waitlistNumber.get(r.id) ? (
-                  <span className={`ml-1 text-xs ${publicHintText}`}>
+                  <span className="ml-1 text-xs font-semibold text-amber-800">
                     #{waitlistNumber.get(r.id)}
                   </span>
                 ) : null}

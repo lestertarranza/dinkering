@@ -100,7 +100,7 @@ function RsvpControls({
           />
         </div>
         <p className="text-center text-xs text-slate-600">
-          RSVP locked — within 24h of game time. You&apos;re committed and will
+          RSVP locked. Within 24h of game time. You&apos;re committed and will
           be charged.
         </p>
       </>
@@ -124,14 +124,14 @@ function RsvpControls({
       {lockAtIso && !locked ? <LockCountdown lockAtIso={lockAtIso} /> : null}
       {isFull && !onWaitlist && currentStatus !== "going" ? (
         <p className="text-center text-xs text-amber-700">
-          Booking is full — joining places you on the waitlist.
+          Booking is full. Joining places you on the waitlist.
         </p>
       ) : null}
       {onWaitlist ? (
         <p className="text-center text-xs text-amber-700">
           {waitlistPosition
-            ? `You're #${waitlistPosition.position} of ${waitlistPosition.total} on the waitlist — you'll move to Going if a spot opens.`
-            : "You're on the waitlist — you'll be moved to Going if a spot opens."}
+            ? `You're #${waitlistPosition.position} of ${waitlistPosition.total}. If a spot opens, #1 moves to Going.`
+            : "You're on the waitlist. If a spot opens, #1 moves to Going."}
         </p>
       ) : null}
     </>

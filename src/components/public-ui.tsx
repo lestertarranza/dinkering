@@ -182,7 +182,7 @@ export function CapacityBar({
         <span className="text-slate-500">{totalMax} max</span>
         <span className={full ? "text-rose-600" : "text-emerald-700"}>
           {full
-            ? "Full — join waitlist"
+            ? "Full. Join waitlist"
             : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
         </span>
       </div>
@@ -241,5 +241,47 @@ export function GoingNames({
       {names.length > 0 ? names.join(", ") : "hidden"}
       {extra}
     </p>
+  );
+}
+
+/** Numbered waitlist so everyone can see who is next. */
+export function WaitlistQueue({
+  people,
+  viewerPlayerId,
+}: {
+  people: { position: number; playerId: string; name: string }[];
+  viewerPlayerId?: string | null;
+}) {
+  if (people.length === 0) return null;
+  return (
+    <div>
+      <p className={publicHintText}>
+        <span className="font-semibold text-amber-800">
+          Waitlist ({people.length})
+        </span>
+        {": first come, first served. #1 goes in if a spot opens."}
+      </p>
+      <ol className="mt-1.5 space-y-0.5">
+        {people.map((p) => {
+          const you = Boolean(viewerPlayerId && p.playerId === viewerPlayerId);
+          return (
+            <li
+              key={p.playerId}
+              className={`flex items-baseline gap-2 text-sm ${
+                you ? "font-semibold text-amber-950" : "text-slate-600"
+              }`}
+            >
+              <span className="w-7 shrink-0 tabular-nums text-amber-700">
+                #{p.position}
+              </span>
+              <span className="min-w-0 truncate">
+                {p.name}
+                {you ? " (you)" : ""}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }

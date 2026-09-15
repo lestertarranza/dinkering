@@ -205,7 +205,9 @@ export default function DocsPage() {
               <strong>first-come, first-served</strong> order (when they joined
               the waitlist, not when they were added to the roster). If someone
               leaves Going, the first person on the waitlist is moved to Going
-              automatically, including when you change RSVP as admin.
+              automatically, including when you change RSVP as admin. Players
+              see the numbered waitlist on their page and on the public game
+              roster.
             </p>
 
             <h3 className={h3Class}>Generating shares</h3>

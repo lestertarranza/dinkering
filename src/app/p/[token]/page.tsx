@@ -33,6 +33,7 @@ import {
   publicHintText,
   MapsLink,
   GoingNames,
+  WaitlistQueue,
 } from "@/components/public-ui";
 import { PaymentProofForm } from "@/components/PaymentProofForm";
 import { AppearanceToggle } from "@/components/AppearanceToggle";
@@ -40,6 +41,7 @@ import {
   fetchGoingAndWaitlist,
   goingNamesForBooking,
   waitlistPosition,
+  waitlistQueueForBooking,
 } from "@/lib/public-roster";
 import { fetchActivity } from "@/lib/activity-log";
 import type {
@@ -703,7 +705,7 @@ export default async function PlayerPortal({
                     <p className={`mb-3 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
                       {cap.totalCap} max ·{" "}
                       {slotsLeft === 0
-                        ? "Full — join waitlist"
+                        ? "Full. Join waitlist"
                         : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
                     </p>
                   ) : null}
@@ -760,11 +762,22 @@ export default async function PlayerPortal({
                         a.booking_id,
                       );
                       return (
-                        <GoingNames
-                          names={going.names}
-                          hiddenCount={going.hiddenCount}
-                          total={going.total}
-                        />
+                        <>
+                          <GoingNames
+                            names={going.names}
+                            hiddenCount={going.hiddenCount}
+                            total={going.total}
+                          />
+                          <div className="mt-3">
+                            <WaitlistQueue
+                              people={waitlistQueueForBooking(
+                                goingWaitRows,
+                                a.booking_id,
+                              )}
+                              viewerPlayerId={p.id}
+                            />
+                          </div>
+                        </>
                       );
                     })()}
                   </div>

@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { goingChipLabel } from "@/lib/public-display";
-import { waitlistPositionOf } from "@/lib/waitlist-order";
+import {
+  compareWaitlistOrder,
+  waitlistPositionOf,
+} from "@/lib/waitlist-order";
 import { waitlistedAtColumnExists } from "@/lib/waitlist";
 
 export type GoingWaitRow = {
@@ -73,4 +76,29 @@ export function waitlistPosition(
     (r) => r.booking_id === bookingId && r.response_status === "waitlist",
   );
   return waitlistPositionOf(wait, playerId);
+}
+
+export type WaitlistQueuePerson = {
+  position: number;
+  playerId: string;
+  name: string;
+};
+
+/** Numbered FCFS waitlist for a booking, for player-facing pages. */
+export function waitlistQueueForBooking(
+  rows: GoingWaitRow[],
+  bookingId: string,
+): WaitlistQueuePerson[] {
+  return rows
+    .filter(
+      (r) => r.booking_id === bookingId && r.response_status === "waitlist",
+    )
+    .sort(compareWaitlistOrder)
+    .map((r, i) => ({
+      position: i + 1,
+      playerId: r.player_id,
+      name: r.players
+        ? r.players.display_name?.trim() || r.players.name
+        : "Player",
+    }));
 }
