@@ -1,6 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { dateChipParts } from "@/lib/format";
+import { PlayerAvatar, PlayerChip } from "@/components/PlayerChip";
+
+export { PlayerAvatar, PlayerChip };
 
 /** Wrapper for player/group/board/schedule pages — larger base text on mobile. */
 export const publicMainClass =
@@ -221,57 +224,6 @@ export function MapsLink({ venue }: { venue: string | null | undefined }) {
   );
 }
 
-export function PlayerAvatar({
-  name,
-  src,
-  size = "sm",
-}: {
-  name: string;
-  src?: string | null;
-  size?: "xs" | "sm" | "md" | "lg";
-}) {
-  const dim =
-    size === "lg"
-      ? "h-16 w-16 text-xl"
-      : size === "md"
-        ? "h-10 w-10 text-sm"
-        : size === "xs"
-          ? "h-6 w-6 text-[10px]"
-          : "h-8 w-8 text-xs";
-  if (src) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={src}
-        alt=""
-        className={`${dim} shrink-0 rounded-full object-cover ring-1 ring-slate-200`}
-      />
-    );
-  }
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
-  return (
-    <span
-      aria-hidden
-      className={`${dim} inline-flex shrink-0 items-center justify-center rounded-full bg-slate-200 font-semibold text-slate-600`}
-    >
-      {initial}
-    </span>
-  );
-}
-
-export function VerifiedBadge({ compact = false }: { compact?: boolean }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-100 font-semibold text-emerald-800 ${
-        compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]"
-      }`}
-    >
-      <span aria-hidden>✓</span>
-      Verified
-    </span>
-  );
-}
-
 export function PlayerNameLine({
   name,
   verified,
@@ -287,13 +239,15 @@ export function PlayerNameLine({
 }) {
   return (
     <span className="flex min-w-0 items-center gap-2.5">
-      <PlayerAvatar name={name} src={avatarUrl} size={size} />
+      <PlayerAvatar
+        name={name}
+        src={avatarUrl}
+        size={size}
+        verified={verified}
+      />
       <span className="min-w-0">
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span className="min-w-0 truncate font-semibold text-slate-900">
-            {name}
-          </span>
-          {verified ? <VerifiedBadge compact={size === "xs"} /> : null}
+        <span className="block min-w-0 truncate font-semibold text-slate-900">
+          {name}
         </span>
         {subtitle ? (
           <span className={`block truncate ${publicHintText}`}>{subtitle}</span>
@@ -336,17 +290,14 @@ export function GoingNames({
         </span>
       </p>
       {list.length > 0 ? (
-        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+        <ul className="mt-1.5 flex flex-wrap gap-1">
           {list.map((p, i) => (
-            <li
-              key={`${p.name}-${i}`}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2"
-            >
-              <PlayerAvatar name={p.name} src={p.avatarUrl} size="xs" />
-              <span className="truncate text-xs font-medium text-slate-800">
-                {p.name}
-              </span>
-              {p.verified ? <VerifiedBadge compact /> : null}
+            <li key={`${p.name}-${i}`}>
+              <PlayerChip
+                name={p.name}
+                src={p.avatarUrl}
+                verified={p.verified}
+              />
             </li>
           ))}
         </ul>
@@ -383,25 +334,25 @@ export function WaitlistQueue({
         </span>
         {": first come, first served. #1 goes in if a spot opens."}
       </p>
-      <ol className="mt-1.5 space-y-1">
+      <ol className="mt-1.5 flex flex-wrap items-center gap-1.5">
         {people.map((p) => {
           const you = Boolean(viewerPlayerId && p.playerId === viewerPlayerId);
           return (
             <li
               key={p.playerId}
-              className={`flex items-center gap-2 text-sm ${
-                you ? "font-semibold text-amber-950" : "text-slate-600"
+              className={`flex items-center gap-1 ${
+                you ? "rounded-full bg-amber-50 p-0.5" : ""
               }`}
             >
-              <span className="w-7 shrink-0 tabular-nums text-amber-700">
+              <span className="w-5 shrink-0 text-right text-[11px] font-semibold tabular-nums text-amber-700">
                 #{p.position}
               </span>
-              <PlayerAvatar name={p.name} src={p.avatarUrl} size="xs" />
-              <span className="min-w-0 truncate">
-                {p.name}
-                {you ? " (you)" : ""}
-              </span>
-              {p.verified ? <VerifiedBadge compact /> : null}
+              <PlayerChip
+                name={p.name}
+                src={p.avatarUrl}
+                verified={p.verified}
+                hint={you ? "you" : undefined}
+              />
             </li>
           );
         })}

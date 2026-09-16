@@ -28,7 +28,7 @@ import {
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import { linkedAccountForPlayer, loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
-import { VerifiedBadge } from "@/components/public-ui";
+import { PlayerAvatar } from "@/components/public-ui";
 import { InviteSelect } from "@/components/InviteSelect";
 import {
   inviteLineFromIndex,
@@ -147,8 +147,13 @@ export default async function PlayerDetail({
       <PageHeader
         title={
           <span className="inline-flex flex-wrap items-center gap-2">
+            <PlayerAvatar
+              name={p.name}
+              src={linkedAccount?.avatar_url}
+              size="sm"
+              verified={!!linkedAccount}
+            />
             {p.name}
-            {linkedAccount ? <VerifiedBadge /> : null}
           </span>
         }
         description={

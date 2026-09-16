@@ -17,7 +17,7 @@ import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
 import { createPlayer, regenerateRosterToken } from "./actions";
 import { playerLinkMap, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
-import { PlayerAvatar, VerifiedBadge } from "@/components/public-ui";
+import { PlayerAvatar } from "@/components/public-ui";
 import { InviteSelect } from "@/components/InviteSelect";
 import {
   inviteLineFromIndex,
@@ -232,15 +232,11 @@ export default async function PlayersPage({
                         name={p.name}
                         src={identities.get(p.id)?.avatarUrl}
                         size="md"
+                        verified={links.linked.has(p.id)}
                       />
                       <div className="min-w-0">
                         <p className="truncate font-medium text-slate-900">
                           {p.name}
-                          {links.linked.has(p.id) ? (
-                            <span className="ml-2 inline-flex align-middle">
-                              <VerifiedBadge />
-                            </span>
-                          ) : null}
                           {p.display_name ? (
                             <span className="ml-2 text-sm font-normal text-slate-400">
                               {p.display_name}

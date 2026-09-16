@@ -149,7 +149,7 @@ export default async function PublicBookingRoster({
         ← All upcoming games
       </Link>
 
-      <Card className="mb-5 overflow-hidden">
+      <Card className="mb-5 overflow-visible">
         <div className="border-b border-slate-100 p-4">
           <div className="flex items-start gap-4">
             <DateChip value={b.play_date} />

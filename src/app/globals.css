@@ -51,6 +51,11 @@ button {
   -webkit-tap-highlight-color: rgba(5, 150, 105, 0.2);
 }
 
+.player-chip:hover .player-chip-tip,
+.player-chip:focus-within .player-chip-tip {
+  opacity: 1;
+}
+
 /* Better tap targets on mobile */
 @media (max-width: 640px) {
   input,

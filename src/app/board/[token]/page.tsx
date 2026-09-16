@@ -17,7 +17,7 @@ import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
   PublicPageHeader,
   PlayerAvatar,
-  VerifiedBadge,
+  PlayerChip,
   publicTapRowClass,
   publicChevronClass,
   publicPrimaryText,
@@ -48,7 +48,7 @@ function BalanceRow({
   amount: number;
   avatarUrl?: string | null;
   verified?: boolean;
-  avatars?: { name: string; src?: string | null }[];
+  avatars?: { name: string; src?: string | null; verified?: boolean }[];
 }) {
   const color =
     tone === "collect"
@@ -61,19 +61,28 @@ function BalanceRow({
       {avatars && avatars.length > 0 ? (
         <span className="flex shrink-0 -space-x-2">
           {avatars.slice(0, 3).map((a, i) => (
-            <PlayerAvatar key={`${a.name}-${i}`} name={a.name} src={a.src} size="sm" />
+            <PlayerChip
+              key={`${a.name}-${i}`}
+              name={a.name}
+              src={a.src}
+              size="sm"
+              verified={a.verified}
+              nested
+            />
           ))}
         </span>
       ) : (
-        <PlayerAvatar name={name} src={avatarUrl} size="sm" />
+        <PlayerAvatar
+          name={name}
+          src={avatarUrl}
+          size="sm"
+          verified={verified}
+        />
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className={`truncate text-[15px] ${publicPrimaryText}`}>
-            {name}
-          </span>
-          {verified ? <VerifiedBadge /> : null}
-        </div>
+        <span className={`block truncate text-[15px] ${publicPrimaryText}`}>
+          {name}
+        </span>
         {subtitle ? (
           <p className={`truncate text-xs ${publicHintText}`}>{subtitle}</p>
         ) : null}
@@ -233,6 +242,7 @@ export default async function TeamBoard({
           avatars={memberFaces.map((f) => ({
             name: f.name,
             src: f.avatarUrl,
+            verified: f.verified,
           }))}
         />
       ),

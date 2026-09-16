@@ -35,7 +35,6 @@ import {
   GoingNames,
   WaitlistQueue,
   PlayerAvatar,
-  VerifiedBadge,
 } from "@/components/public-ui";
 import { PaymentProofForm } from "@/components/PaymentProofForm";
 import { AppearanceToggle } from "@/components/AppearanceToggle";
@@ -455,6 +454,7 @@ export default async function PlayerPortal({
               name={face.name}
               src={face.avatarUrl}
               size="lg"
+              verified
             />
           </div>
         ) : (
@@ -466,7 +466,6 @@ export default async function PlayerPortal({
           className={`flex flex-wrap items-center justify-center gap-2 text-2xl ${publicPrimaryText}`}
         >
           {face.name}
-          {face.verified ? <VerifiedBadge /> : null}
         </h1>
         {invited ? (
           <p className={`mt-1 ${publicMetaText}`}>{invited}</p>
@@ -724,7 +723,7 @@ export default async function PlayerPortal({
                 a.bookings.start_time,
               );
               const node = (
-                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 overflow-hidden">
+                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 overflow-visible">
                   <div className="flex items-start gap-4 p-4">
                     <DateChip value={a.bookings.play_date} />
                     <div className="min-w-0 flex-1">

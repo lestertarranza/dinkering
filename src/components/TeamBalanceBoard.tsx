@@ -131,7 +131,7 @@ function BalanceColumn({
           {emptyLabel}
         </Card>
       ) : (
-        <Card className="divide-y divide-slate-100 overflow-hidden">
+        <Card className="divide-y divide-slate-100 overflow-visible">
           {items.map((i) => (
             <Fragment key={i.key}>{i.node}</Fragment>
           ))}

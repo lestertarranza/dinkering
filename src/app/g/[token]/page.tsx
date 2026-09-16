@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Card, Badge, EmptyState } from "@/components/ui";
+import { Card, EmptyState } from "@/components/ui";
 import { LedgerTable } from "@/components/LedgerTable";
 import { formatMoney, formatDate, describeBalance } from "@/lib/format";
 import {
@@ -12,8 +12,7 @@ import {
   publicMainClass,
   publicPrimaryText,
   publicHintText,
-  PlayerAvatar,
-  VerifiedBadge,
+  PlayerChip,
 } from "@/components/public-ui";
 import { loadLinkedIdentities } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
@@ -154,22 +153,13 @@ export default async function GroupPortal({
                 if (!m.players) return null;
                 const face = playerFace(m.players.id, m.players, identities);
                 return (
-                  <span
-                    key={m.players.id}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2"
-                  >
-                    <PlayerAvatar
+                  <span key={m.players.id} className="inline-flex items-center">
+                    <PlayerChip
                       name={face.name}
                       src={face.avatarUrl}
-                      size="xs"
+                      verified={face.verified}
+                      hint={m.is_primary ? "primary" : undefined}
                     />
-                    <span className="truncate text-sm font-medium text-slate-800">
-                      {face.name}
-                    </span>
-                    {face.verified ? <VerifiedBadge compact /> : null}
-                    {m.is_primary ? (
-                      <Badge tone="info">Primary</Badge>
-                    ) : null}
                   </span>
                 );
               })
