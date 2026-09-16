@@ -12,7 +12,11 @@ import {
   publicMainClass,
   publicPrimaryText,
   publicHintText,
+  PlayerAvatar,
+  VerifiedBadge,
 } from "@/components/public-ui";
+import { loadLinkedIdentities } from "@/lib/accounts";
+import { playerFace } from "@/lib/player-identity";
 import {
   PublicBottomNav,
   RememberPublicTokens,
@@ -51,12 +55,13 @@ export default async function GroupPortal({
     { data: eShares },
     { data: payments },
     { data: settings },
+    identities,
   ] = await Promise.all([
     db.from("group_balances").select("*").eq("player_group_id", g.id).single(),
     db.from("ledger_entries").select("*").eq("player_group_id", g.id).order("entry_date"),
     db
       .from("player_group_members")
-      .select("is_primary, players(name)")
+      .select("is_primary, players(id, name, display_name)")
       .eq("player_group_id", g.id)
       .is("end_date", null),
     db
@@ -75,6 +80,7 @@ export default async function GroupPortal({
       .eq("payer_group_id", g.id)
       .order("payment_date", { ascending: false }),
     db.from("app_settings").select("roster_token, roster_public").single(),
+    loadLinkedIdentities(),
   ]);
 
   const balance = Number(bal?.balance ?? 0);
@@ -135,15 +141,38 @@ export default async function GroupPortal({
             {(members ?? []).length === 0 ? (
               <span className="text-sm text-slate-400">No members</span>
             ) : (
-              (members as unknown as { is_primary: boolean; players: { name: string } }[]).map(
-                (m, i) => (
-                  <span key={i} className="inline-flex items-center gap-1">
-                    <Badge tone={m.is_primary ? "info" : "neutral"}>
-                      {m.players?.name}
-                    </Badge>
+              (
+                members as unknown as {
+                  is_primary: boolean;
+                  players: {
+                    id: string;
+                    name: string;
+                    display_name: string | null;
+                  } | null;
+                }[]
+              ).map((m) => {
+                if (!m.players) return null;
+                const face = playerFace(m.players.id, m.players, identities);
+                return (
+                  <span
+                    key={m.players.id}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2"
+                  >
+                    <PlayerAvatar
+                      name={face.name}
+                      src={face.avatarUrl}
+                      size="xs"
+                    />
+                    <span className="truncate text-sm font-medium text-slate-800">
+                      {face.name}
+                    </span>
+                    {face.verified ? <VerifiedBadge compact /> : null}
+                    {m.is_primary ? (
+                      <Badge tone="info">Primary</Badge>
+                    ) : null}
                   </span>
-                ),
-              )
+                );
+              })
             )}
           </div>
         </Card>

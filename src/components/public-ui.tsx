@@ -221,26 +221,142 @@ export function MapsLink({ venue }: { venue: string | null | undefined }) {
   );
 }
 
+export function PlayerAvatar({
+  name,
+  src,
+  size = "sm",
+}: {
+  name: string;
+  src?: string | null;
+  size?: "xs" | "sm" | "md" | "lg";
+}) {
+  const dim =
+    size === "lg"
+      ? "h-16 w-16 text-xl"
+      : size === "md"
+        ? "h-10 w-10 text-sm"
+        : size === "xs"
+          ? "h-6 w-6 text-[10px]"
+          : "h-8 w-8 text-xs";
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        className={`${dim} shrink-0 rounded-full object-cover ring-1 ring-slate-200`}
+      />
+    );
+  }
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <span
+      aria-hidden
+      className={`${dim} inline-flex shrink-0 items-center justify-center rounded-full bg-slate-200 font-semibold text-slate-600`}
+    >
+      {initial}
+    </span>
+  );
+}
+
+export function VerifiedBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-100 font-semibold text-emerald-800 ${
+        compact ? "px-1.5 py-px text-[10px]" : "px-2 py-0.5 text-[11px]"
+      }`}
+    >
+      <span aria-hidden>✓</span>
+      Verified
+    </span>
+  );
+}
+
+export function PlayerNameLine({
+  name,
+  verified,
+  avatarUrl,
+  size = "sm",
+  subtitle,
+}: {
+  name: string;
+  verified?: boolean;
+  avatarUrl?: string | null;
+  size?: "xs" | "sm" | "md" | "lg";
+  subtitle?: string;
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <PlayerAvatar name={name} src={avatarUrl} size={size} />
+      <span className="min-w-0">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="min-w-0 truncate font-semibold text-slate-900">
+            {name}
+          </span>
+          {verified ? <VerifiedBadge compact={size === "xs"} /> : null}
+        </span>
+        {subtitle ? (
+          <span className={`block truncate ${publicHintText}`}>{subtitle}</span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 export function GoingNames({
+  people,
   names,
   hiddenCount,
   total,
 }: {
-  names: string[];
+  people?: {
+    name: string;
+    verified?: boolean;
+    avatarUrl?: string | null;
+  }[];
+  names?: string[];
   hiddenCount: number;
   total: number;
 }) {
   if (total === 0) {
     return <p className={publicHintText}>Nobody going yet</p>;
   }
-  const extra = hiddenCount > 0 ? ` +${hiddenCount}` : "";
+  const list =
+    people ??
+    (names ?? []).map((name) => ({
+      name,
+      verified: false,
+      avatarUrl: null as string | null,
+    }));
   return (
-    <p className={publicHintText}>
-      <span className="font-semibold text-slate-700">Who&apos;s going ({total})</span>
-      {": "}
-      {names.length > 0 ? names.join(", ") : "hidden"}
-      {extra}
-    </p>
+    <div>
+      <p className={publicHintText}>
+        <span className="font-semibold text-slate-700">
+          Who&apos;s going ({total})
+        </span>
+      </p>
+      {list.length > 0 ? (
+        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+          {list.map((p, i) => (
+            <li
+              key={`${p.name}-${i}`}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-0.5 pr-2"
+            >
+              <PlayerAvatar name={p.name} src={p.avatarUrl} size="xs" />
+              <span className="truncate text-xs font-medium text-slate-800">
+                {p.name}
+              </span>
+              {p.verified ? <VerifiedBadge compact /> : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className={publicHintText}>hidden</p>
+      )}
+      {hiddenCount > 0 ? (
+        <p className={`mt-1 ${publicHintText}`}>+{hiddenCount} hidden</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -249,7 +365,13 @@ export function WaitlistQueue({
   people,
   viewerPlayerId,
 }: {
-  people: { position: number; playerId: string; name: string }[];
+  people: {
+    position: number;
+    playerId: string;
+    name: string;
+    verified?: boolean;
+    avatarUrl?: string | null;
+  }[];
   viewerPlayerId?: string | null;
 }) {
   if (people.length === 0) return null;
@@ -261,23 +383,25 @@ export function WaitlistQueue({
         </span>
         {": first come, first served. #1 goes in if a spot opens."}
       </p>
-      <ol className="mt-1.5 space-y-0.5">
+      <ol className="mt-1.5 space-y-1">
         {people.map((p) => {
           const you = Boolean(viewerPlayerId && p.playerId === viewerPlayerId);
           return (
             <li
               key={p.playerId}
-              className={`flex items-baseline gap-2 text-sm ${
+              className={`flex items-center gap-2 text-sm ${
                 you ? "font-semibold text-amber-950" : "text-slate-600"
               }`}
             >
               <span className="w-7 shrink-0 tabular-nums text-amber-700">
                 #{p.position}
               </span>
+              <PlayerAvatar name={p.name} src={p.avatarUrl} size="xs" />
               <span className="min-w-0 truncate">
                 {p.name}
                 {you ? " (you)" : ""}
               </span>
+              {p.verified ? <VerifiedBadge compact /> : null}
             </li>
           );
         })}

@@ -34,6 +34,8 @@ import {
   MapsLink,
   GoingNames,
   WaitlistQueue,
+  PlayerAvatar,
+  VerifiedBadge,
 } from "@/components/public-ui";
 import { PaymentProofForm } from "@/components/PaymentProofForm";
 import { AppearanceToggle } from "@/components/AppearanceToggle";
@@ -58,7 +60,8 @@ import {
   SaveAsMyPage,
 } from "@/components/PublicBottomNav";
 import { getAuthContext } from "@/lib/auth";
-import { getPlayerLink } from "@/lib/accounts";
+import { getPlayerLink, loadLinkedIdentities } from "@/lib/accounts";
+import { playerFace } from "@/lib/player-identity";
 
 const STATEMENT_LABELS: Record<string, string> = {
   booking_share: "Court",
@@ -376,12 +379,15 @@ export default async function PlayerPortal({
   }
 
   const d = describeBalance(balance);
-  const [ledgerContext, transferItemMap, auth, playerLink] = await Promise.all([
-    buildLedgerBookingContext(db, ledger),
-    buildTransferItemEnrichment(db, ledger),
-    getAuthContext(),
-    getPlayerLink(p.id),
-  ]);
+  const [ledgerContext, transferItemMap, auth, playerLink, identities] =
+    await Promise.all([
+      buildLedgerBookingContext(db, ledger),
+      buildTransferItemEnrichment(db, ledger),
+      getAuthContext(),
+      getPlayerLink(p.id),
+      loadLinkedIdentities(),
+    ]);
+  const face = playerFace(p.id, p, identities);
 
   const { data: settings } = await db
     .from("app_settings")
@@ -440,11 +446,24 @@ export default async function PlayerPortal({
         <AppearanceToggle />
       </div>
       <header className="mb-5 text-center">
-        <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
-          🏓
-        </div>
-        <h1 className={`text-2xl ${publicPrimaryText}`}>
-          {p.display_name || p.name}
+        {face.verified ? (
+          <div className="mb-2 flex justify-center">
+            <PlayerAvatar
+              name={face.name}
+              src={face.avatarUrl}
+              size="lg"
+            />
+          </div>
+        ) : (
+          <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl shadow-sm">
+            🏓
+          </div>
+        )}
+        <h1
+          className={`flex flex-wrap items-center justify-center gap-2 text-2xl ${publicPrimaryText}`}
+        >
+          {face.name}
+          {face.verified ? <VerifiedBadge /> : null}
         </h1>
         <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
         <div className="mt-3 flex justify-center">
@@ -789,11 +808,12 @@ export default async function PlayerPortal({
                       const going = goingNamesForBooking(
                         goingWaitRows,
                         a.booking_id,
+                        identities,
                       );
                       return (
                         <>
                           <GoingNames
-                            names={going.names}
+                            people={going.people}
                             hiddenCount={going.hiddenCount}
                             total={going.total}
                           />
@@ -802,6 +822,7 @@ export default async function PlayerPortal({
                               people={waitlistQueueForBooking(
                                 goingWaitRows,
                                 a.booking_id,
+                                identities,
                               )}
                               viewerPlayerId={p.id}
                             />

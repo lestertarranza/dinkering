@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/ui";
-import { validatePublicTeamToken, publicPlayerLabel } from "@/lib/public-links";
+import { validatePublicTeamToken } from "@/lib/public-links";
+import { loadLinkedIdentities } from "@/lib/accounts";
+import { playerFace } from "@/lib/player-identity";
 import {
   PublicPageHeader,
+  PlayerNameLine,
   publicTapRowClass,
   publicChevronClass,
-  publicPrimaryText,
   publicHintText,
   publicMainClass,
 } from "@/components/public-ui";
@@ -30,11 +32,14 @@ export default async function PublicPlayersPage({
   const db = createAdminClient();
   if (!(await validatePublicTeamToken(db, token))) notFound();
 
-  const { data: players } = await db
-    .from("players")
-    .select("id, name, display_name, public_token, active_status")
-    .eq("active_status", "active")
-    .order("name");
+  const [{ data: players }, identities] = await Promise.all([
+    db
+      .from("players")
+      .select("id, name, display_name, public_token, active_status")
+      .eq("active_status", "active")
+      .order("name"),
+    loadLinkedIdentities(),
+  ]);
 
   const list = (players ?? []) as Pick<
     Player,
@@ -59,22 +64,22 @@ export default async function PublicPlayersPage({
             emptyTitle="No player matches your search"
             minToShowSearch={8}
             items={list.map((p) => {
-              const label = publicPlayerLabel(p);
+              const face = playerFace(p.id, p, identities);
               return {
                 key: p.id,
-                search: label,
+                search: face.name,
                 node: (
                   <div className={`${publicTapRowClass}`}>
                     <Link
                       href={`/p/${p.public_token}`}
                       className="min-w-0 flex-1"
                     >
-                      <p className={`truncate text-[15px] ${publicPrimaryText}`}>
-                        {label}
-                      </p>
-                      <p className={`truncate text-xs ${publicHintText}`}>
-                        Open page
-                      </p>
+                      <PlayerNameLine
+                        name={face.name}
+                        verified={face.verified}
+                        avatarUrl={face.avatarUrl}
+                        subtitle="Open page"
+                      />
                     </Link>
                     <SaveAsMyPage
                       playerToken={p.public_token}

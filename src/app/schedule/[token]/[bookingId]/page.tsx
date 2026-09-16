@@ -11,10 +11,9 @@ import {
   overallCourtTimeRange,
   formatCourtTime,
 } from "@/lib/court-format";
-import {
-  publicPlayerLabel,
-  validatePublicTeamToken,
-} from "@/lib/public-links";
+import { validatePublicTeamToken } from "@/lib/public-links";
+import { loadLinkedIdentities } from "@/lib/accounts";
+import { playerFace } from "@/lib/player-identity";
 import {
   DateChip,
   CountPill,
@@ -27,6 +26,7 @@ import {
   publicHintText,
   MapsLink,
   WaitlistQueue,
+  PlayerNameLine,
 } from "@/components/public-ui";
 import {
   PublicBottomNav,
@@ -63,10 +63,21 @@ export default async function PublicBookingRoster({
   if (!booking) notFound();
   const b = booking as Booking;
 
-  const [{ data: attendance }, { data: courtsData }] = await Promise.all([
-    db.from("booking_attendance").select("*, players(id, name, display_name, public_token, active_status)").eq("booking_id", bookingId),
-    db.from("booking_courts").select("court_number, start_time, end_time, hours, max_players").eq("booking_id", bookingId).order("created_at"),
-  ]);
+  const [{ data: attendance }, { data: courtsData }, identities] =
+    await Promise.all([
+      db
+        .from("booking_attendance")
+        .select(
+          "*, players(id, name, display_name, public_token, active_status)",
+        )
+        .eq("booking_id", bookingId),
+      db
+        .from("booking_courts")
+        .select("court_number, start_time, end_time, hours, max_players")
+        .eq("booking_id", bookingId)
+        .order("created_at"),
+      loadLinkedIdentities(),
+    ]);
 
   type Row = BookingAttendance & {
     players: Pick<
@@ -80,8 +91,8 @@ export default async function PublicBookingRoster({
     const rb = RSVP_ORDER[b.response_status] ?? 9;
     if (ra !== rb) return ra - rb;
     if (a.response_status === "waitlist") return compareWaitlistOrder(a, b);
-    return publicPlayerLabel(a.players).localeCompare(
-      publicPlayerLabel(b.players),
+    return playerFace(a.player_id, a.players, identities).name.localeCompare(
+      playerFace(b.player_id, b.players, identities).name,
     );
   });
   const waitlistNumber = new Map(
@@ -91,11 +102,16 @@ export default async function PublicBookingRoster({
   );
   const waitlistPeople = roster
     .filter((r) => r.response_status === "waitlist")
-    .map((r, i) => ({
-      position: i + 1,
-      playerId: r.player_id,
-      name: publicPlayerLabel(r.players),
-    }));
+    .map((r, i) => {
+      const face = playerFace(r.player_id, r.players, identities);
+      return {
+        position: i + 1,
+        playerId: r.player_id,
+        name: face.name,
+        verified: face.verified,
+        avatarUrl: face.avatarUrl,
+      };
+    });
 
   const going = roster.filter((r) => r.response_status === "going").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
@@ -257,33 +273,38 @@ export default async function PublicBookingRoster({
         <PublicSearchList
           placeholder="Search a player…"
           emptyTitle="No player matches your search"
-          items={roster.map((r) => ({
-            key: r.id,
-            search: publicPlayerLabel(r.players),
-            node: (
-              <Link
-                key={r.id}
-                href={`/p/${r.players.public_token}#booking-${bookingId}`}
-                className={publicTapRowClass}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className={`text-base ${publicPrimaryText}`}>
-                    {publicPlayerLabel(r.players)}
-                  </p>
-                  <p className={publicHintText}>Tap to RSVP on your page</p>
-                </div>
-                <StatusBadge status={r.response_status} size="md" />
-                {r.response_status === "waitlist" && waitlistNumber.get(r.id) ? (
-                  <span className="ml-1 text-xs font-semibold text-amber-800">
-                    #{waitlistNumber.get(r.id)}
+          items={roster.map((r) => {
+            const face = playerFace(r.player_id, r.players, identities);
+            return {
+              key: r.id,
+              search: face.name,
+              node: (
+                <Link
+                  key={r.id}
+                  href={`/p/${r.players.public_token}#booking-${bookingId}`}
+                  className={publicTapRowClass}
+                >
+                  <div className="min-w-0 flex-1">
+                    <PlayerNameLine
+                      name={face.name}
+                      verified={face.verified}
+                      avatarUrl={face.avatarUrl}
+                      subtitle="Tap to RSVP on your page"
+                    />
+                  </div>
+                  <StatusBadge status={r.response_status} size="md" />
+                  {r.response_status === "waitlist" && waitlistNumber.get(r.id) ? (
+                    <span className="ml-1 text-xs font-semibold text-amber-800">
+                      #{waitlistNumber.get(r.id)}
+                    </span>
+                  ) : null}
+                  <span className={publicChevronClass} aria-hidden>
+                    ›
                   </span>
-                ) : null}
-                <span className={publicChevronClass} aria-hidden>
-                  ›
-                </span>
-              </Link>
-            ),
-          }))}
+                </Link>
+              ),
+            };
+          })}
         />
       )}
 

@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { goingChipLabel } from "@/lib/public-display";
+import {
+  goingChipLabel,
+  publicPlayerLabel,
+  type LinkedIdentity,
+} from "@/lib/player-identity";
 import {
   compareWaitlistOrder,
   waitlistPositionOf,
@@ -49,22 +53,45 @@ export async function fetchGoingAndWaitlist(
   return all;
 }
 
+export type GoingPerson = {
+  name: string;
+  verified: boolean;
+  avatarUrl: string | null;
+};
+
 export function goingNamesForBooking(
   rows: GoingWaitRow[],
   bookingId: string,
-): { names: string[]; hiddenCount: number; total: number } {
+  identities: Map<string, LinkedIdentity> = new Map(),
+): {
+  people: GoingPerson[];
+  names: string[];
+  hiddenCount: number;
+  total: number;
+} {
   const going = rows.filter(
     (r) => r.booking_id === bookingId && r.response_status === "going",
   );
-  const names: string[] = [];
+  const people: GoingPerson[] = [];
   let hiddenCount = 0;
   for (const r of going) {
     if (!r.players) continue;
-    const chip = goingChipLabel(r.players);
-    if (chip) names.push(chip);
-    else hiddenCount += 1;
+    const linked = identities.get(r.player_id) ?? null;
+    const chip = goingChipLabel(r.players, linked);
+    if (chip) {
+      people.push({
+        name: chip,
+        verified: !!linked,
+        avatarUrl: linked?.avatarUrl ?? null,
+      });
+    } else hiddenCount += 1;
   }
-  return { names, hiddenCount, total: going.length };
+  return {
+    people,
+    names: people.map((p) => p.name),
+    hiddenCount,
+    total: going.length,
+  };
 }
 
 export function waitlistPosition(
@@ -82,23 +109,31 @@ export type WaitlistQueuePerson = {
   position: number;
   playerId: string;
   name: string;
+  verified: boolean;
+  avatarUrl: string | null;
 };
 
 /** Numbered FCFS waitlist for a booking, for player-facing pages. */
 export function waitlistQueueForBooking(
   rows: GoingWaitRow[],
   bookingId: string,
+  identities: Map<string, LinkedIdentity> = new Map(),
 ): WaitlistQueuePerson[] {
   return rows
     .filter(
       (r) => r.booking_id === bookingId && r.response_status === "waitlist",
     )
     .sort(compareWaitlistOrder)
-    .map((r, i) => ({
-      position: i + 1,
-      playerId: r.player_id,
-      name: r.players
-        ? r.players.display_name?.trim() || r.players.name
-        : "Player",
-    }));
+    .map((r, i) => {
+      const linked = identities.get(r.player_id) ?? null;
+      return {
+        position: i + 1,
+        playerId: r.player_id,
+        name: r.players
+          ? publicPlayerLabel(r.players, linked)
+          : "Player",
+        verified: !!linked,
+        avatarUrl: linked?.avatarUrl ?? null,
+      };
+    });
 }

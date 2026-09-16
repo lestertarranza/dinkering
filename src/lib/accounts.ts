@@ -17,6 +17,7 @@ import {
   type ClaimSearchHit,
 } from "@/lib/account-fields";
 import type { User } from "@supabase/supabase-js";
+import type { LinkedIdentity } from "@/lib/player-identity";
 import type {
   AccountRequest,
   AccountRequestKind,
@@ -30,6 +31,38 @@ export type AccountFormResult =
 
 function uniqueViolation(error: { code?: string; message?: string } | null): boolean {
   return error?.code === "23505";
+}
+
+async function syncPlayerRosterName(
+  admin: ReturnType<typeof createAdminClient>,
+  playerId: string,
+  firstName: string,
+  lastName: string,
+) {
+  const name = playerFullName(firstName, lastName);
+  if (!name) return;
+  await admin.from("players").update({ name }).eq("id", playerId);
+}
+
+export async function loadLinkedIdentities(): Promise<
+  Map<string, LinkedIdentity>
+> {
+  const admin = createAdminClient();
+  const map = new Map<string, LinkedIdentity>();
+  const { data, error } = await admin
+    .from("user_profiles")
+    .select("player_id, avatar_url, first_name, last_name")
+    .not("player_id", "is", null);
+  if (error) return map;
+  for (const row of data ?? []) {
+    if (!row.player_id) continue;
+    map.set(row.player_id as string, {
+      avatarUrl: (row.avatar_url as string | null) ?? null,
+      firstName: (row.first_name as string) ?? "",
+      lastName: (row.last_name as string) ?? "",
+    });
+  }
+  return map;
 }
 
 export async function uploadAvatar(
@@ -202,6 +235,13 @@ export async function attachPlayerToExistingUser(opts: {
     }
     return { ok: false, error: "Could not link the login." };
   }
+
+  await syncPlayerRosterName(
+    admin,
+    opts.playerId,
+    opts.first_name || (profile.first_name as string) || "",
+    opts.last_name || (profile.last_name as string) || "",
+  );
 
   await admin.from("account_requests").insert({
     kind: "claim",
@@ -603,6 +643,10 @@ export async function approveAccountRequest(
     return { ok: false, error: "Could not link the login." };
   }
 
+  if (playerId) {
+    await syncPlayerRosterName(admin, playerId, req.first_name, req.last_name);
+  }
+
   await admin
     .from("account_requests")
     .update({
@@ -712,6 +756,12 @@ export async function updateOwnProfile(opts: {
     }
     return { ok: false, error: "Could not save your account." };
   }
+  await syncPlayerRosterName(
+    admin,
+    profile.player_id,
+    opts.first_name,
+    opts.last_name,
+  );
   revalidatePath("/account");
   return { ok: true };
 }

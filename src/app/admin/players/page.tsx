@@ -16,7 +16,8 @@ import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
 import { createPlayer, regenerateRosterToken } from "./actions";
-import { playerLinkMap } from "@/lib/accounts";
+import { playerLinkMap, loadLinkedIdentities } from "@/lib/accounts";
+import { PlayerAvatar, VerifiedBadge } from "@/components/public-ui";
 import { getAccountsReady } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,9 @@ export default async function PlayersPage({
   const links = accountsReady
     ? await playerLinkMap()
     : { linked: new Map<string, string>(), pendingClaims: new Set<string>() };
+  const identities = accountsReady
+    ? await loadLinkedIdentities()
+    : new Map();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const boardUrl = settings?.roster_token
     ? `${appUrl}/board/${settings.roster_token}`
@@ -206,15 +210,26 @@ export default async function PlayersPage({
                     href={`/admin/players/${p.id}`}
                     className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-300"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-slate-900">
-                        {p.name}
-                        {p.display_name ? (
-                          <span className="ml-2 text-sm font-normal text-slate-400">
-                            {p.display_name}
-                          </span>
-                        ) : null}
-                      </p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <PlayerAvatar
+                        name={p.name}
+                        src={identities.get(p.id)?.avatarUrl}
+                        size="md"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">
+                          {p.name}
+                          {links.linked.has(p.id) ? (
+                            <span className="ml-2 inline-flex align-middle">
+                              <VerifiedBadge />
+                            </span>
+                          ) : null}
+                          {p.display_name ? (
+                            <span className="ml-2 text-sm font-normal text-slate-400">
+                              {p.display_name}
+                            </span>
+                          ) : null}
+                        </p>
                       <div className="mt-1 flex items-center gap-2">
                         <StatusBadge status={p.active_status} />
                         {links.linked.has(p.id) ? (
@@ -230,6 +245,7 @@ export default async function PlayersPage({
                           </span>
                         ) : null}
                       </div>
+                    </div>
                     </div>
                     <div className="text-right">
                       <Badge tone={d.tone}>{d.label}</Badge>

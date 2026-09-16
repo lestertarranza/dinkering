@@ -15,10 +15,4 @@ export async function validatePublicTeamToken(
   );
 }
 
-/** Display label for a player on public pages. */
-export function publicPlayerLabel(p: {
-  name: string;
-  display_name: string | null;
-}): string {
-  return p.display_name?.trim() || p.name;
-}
+export { publicPlayerLabel } from "@/lib/player-identity";

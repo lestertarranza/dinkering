@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/ui";
@@ -10,8 +11,12 @@ import {
 import { formatMoney, describeBalance, formatDate } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
 import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
+import { loadLinkedIdentities } from "@/lib/accounts";
+import { playerFace } from "@/lib/player-identity";
 import {
   PublicPageHeader,
+  PlayerAvatar,
+  VerifiedBadge,
   publicTapRowClass,
   publicChevronClass,
   publicPrimaryText,
@@ -31,12 +36,18 @@ function BalanceRow({
   subtitle,
   tone,
   amount,
+  avatarUrl,
+  verified,
+  avatars,
 }: {
   href: string;
   name: string;
   subtitle?: string;
   tone: "collect" | "credit" | "settled";
   amount: number;
+  avatarUrl?: string | null;
+  verified?: boolean;
+  avatars?: { name: string; src?: string | null }[];
 }) {
   const color =
     tone === "collect"
@@ -46,8 +57,22 @@ function BalanceRow({
         : "text-slate-400";
   return (
     <Link href={href} className={publicTapRowClass}>
+      {avatars && avatars.length > 0 ? (
+        <span className="flex shrink-0 -space-x-2">
+          {avatars.slice(0, 3).map((a, i) => (
+            <PlayerAvatar key={`${a.name}-${i}`} name={a.name} src={a.src} size="sm" />
+          ))}
+        </span>
+      ) : (
+        <PlayerAvatar name={name} src={avatarUrl} size="sm" />
+      )}
       <div className="min-w-0 flex-1">
-        <p className={`truncate text-[15px] ${publicPrimaryText}`}>{name}</p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className={`truncate text-[15px] ${publicPrimaryText}`}>
+            {name}
+          </span>
+          {verified ? <VerifiedBadge /> : null}
+        </div>
         {subtitle ? (
           <p className={`truncate text-xs ${publicHintText}`}>{subtitle}</p>
         ) : null}
@@ -80,6 +105,7 @@ export default async function TeamBoard({
     { data: groupBalances },
     { data: pooledGroups },
     { data: memberships },
+    identities,
   ] = await Promise.all([
     db
       .from("players")
@@ -97,6 +123,7 @@ export default async function TeamBoard({
       .select("player_id, player_group_id, player_groups!inner(type)")
       .in("player_groups.type", ["couple", "family", "team_fund"])
       .is("end_date", null),
+    loadLinkedIdentities(),
   ]);
 
   const [{ data: clubFunds }, { byFund: clubCashByFund }, { data: clubPurchases }] =
@@ -134,8 +161,8 @@ export default async function TeamBoard({
     "id" | "name" | "display_name" | "public_token" | "hidden_on_board"
   >;
   const activePlayers = (players ?? []) as ActivePlayer[];
+  const faceOf = (p: ActivePlayer) => playerFace(p.id, p, identities);
   const playerById = new Map(activePlayers.map((p) => [p.id, p]));
-  const label = (p: ActivePlayer) => p.display_name?.trim() || p.name;
 
   const membersByGroup = new Map<string, string[]>();
   const pooledPlayerIds = new Set<string>();
@@ -155,7 +182,7 @@ export default async function TeamBoard({
     bucket: BalanceBucket;
     amount: number;
     name: string;
-    node: React.ReactNode;
+    node: ReactNode;
   };
   const entries: Entry[] = [];
 
@@ -176,9 +203,11 @@ export default async function TeamBoard({
       .filter((p): p is ActivePlayer => p !== undefined);
     // Skip groups with no active members at all (nothing meaningful to show).
     if (activeMembers.length === 0) continue;
-    const memberNames = activeMembers
+    const memberFaces = activeMembers
       .filter((p) => !p.hidden_on_board)
-      .map((p) => label(p))
+      .map((p) => faceOf(p));
+    const memberNames = memberFaces
+      .map((f) => f.name)
       .sort((a, b) => a.localeCompare(b));
 
     const groupBalance = groupBalMap.get(g.id) ?? 0;
@@ -198,6 +227,10 @@ export default async function TeamBoard({
           subtitle={subtitle}
           tone={d.tone}
           amount={d.amount}
+          avatars={memberFaces.map((f) => ({
+            name: f.name,
+            src: f.avatarUrl,
+          }))}
         />
       ),
     });
@@ -208,18 +241,21 @@ export default async function TeamBoard({
     if (pooledPlayerIds.has(p.id) || p.hidden_on_board) continue;
     const balance = playerBalMap.get(p.id) ?? 0;
     const d = describeBalance(balance);
+    const face = faceOf(p);
     entries.push({
       key: `p:${p.id}`,
-      search: label(p),
+      search: face.name,
       bucket: bucketOf(d.tone),
       amount: d.amount,
-      name: label(p),
+      name: face.name,
       node: (
         <BalanceRow
           href={`/p/${p.public_token}`}
-          name={label(p)}
+          name={face.name}
           tone={d.tone}
           amount={d.amount}
+          avatarUrl={face.avatarUrl}
+          verified={face.verified}
         />
       ),
     });

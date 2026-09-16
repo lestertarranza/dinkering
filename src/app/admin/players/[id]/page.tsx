@@ -28,6 +28,7 @@ import {
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import { linkedAccountForPlayer } from "@/lib/accounts";
+import { VerifiedBadge } from "@/components/public-ui";
 import { formatPhMobile } from "@/lib/phone";
 import {
   updatePlayer,
@@ -131,7 +132,12 @@ export default async function PlayerDetail({
   return (
     <div>
       <PageHeader
-        title={p.name}
+        title={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {p.name}
+            {linkedAccount ? <VerifiedBadge /> : null}
+          </span>
+        }
         description={p.display_name ?? undefined}
         action={
           <div className="flex gap-2">
