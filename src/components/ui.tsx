@@ -69,6 +69,11 @@ const statusToneMap: Record<string, Tone> = {
   inactive: "neutral",
   archived: "neutral",
   open: "info",
+  pending: "warning",
+  approved: "going",
+  rejected: "danger",
+  linked: "info",
+  unclaimed: "neutral",
 };
 
 const statusLabelMap: Record<string, string> = {
@@ -77,6 +82,11 @@ const statusLabelMap: Record<string, string> = {
   maybe: "No response",
   not_going: "Not going",
   late_cancel: "Late cancel",
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+  linked: "Linked",
+  unclaimed: "Unclaimed",
 };
 
 export function StatusBadge({

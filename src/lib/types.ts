@@ -224,3 +224,38 @@ export interface ClubFundShare {
   amount_owed: number;
   created_at: string;
 }
+
+export type UserRole = "admin" | "player";
+export type AccountRequestKind = "register" | "claim";
+export type AccountRequestStatus = "pending" | "approved" | "rejected";
+
+export interface UserProfile {
+  id: string;
+  role: UserRole;
+  player_id: string | null;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountRequest {
+  id: string;
+  kind: AccountRequestKind;
+  status: AccountRequestStatus;
+  auth_user_id: string;
+  email: string;
+  phone: string;
+  first_name: string;
+  last_name: string;
+  avatar_url: string | null;
+  claimed_player_id: string | null;
+  note: string | null;
+  reject_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

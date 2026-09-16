@@ -50,8 +50,8 @@ Ledger sources:
 - **Supabase** (Postgres + Auth)
 - **Tailwind CSS v4**
 - **xlsx** for the Google Sheets / Excel importer
-- Admin auth via Supabase Auth; players use **secure random share tokens**
-  (no registration required).
+- Admin auth via Supabase Auth with an `admin` role. Players can use **secure
+  random share tokens** and, after approval, an email/password login.
 
 ---
 
@@ -69,6 +69,8 @@ At [supabase.com](https://supabase.com), create a project. Then in the SQL
 editor, run the migration and (optionally) the demo seed:
 
 - `supabase/migrations/0001_init.sql`  ← schema, views, RLS
+- later files in `supabase/migrations/` in order, including
+  `0020_player_accounts.sql` for player logins
 - `supabase/seed.sql`                   ← optional demo data
 
 ### 3. Configure environment
@@ -90,7 +92,12 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ### 4. Create an admin user
 
 In Supabase → **Authentication → Users → Add user**, create an email/password
-admin. (Disable public sign-ups; this app intentionally has no signup screen.)
+admin. Disable public sign-ups in Auth settings (the app creates player logins
+itself after you approve them).
+
+**Before** opening `/register` or `/claim`, run `0020_player_accounts.sql`.
+That migration seeds every existing Auth user as an admin, then locks the
+database so only those admins can use `/admin`. Do not skip it.
 
 ### 5. Run
 
@@ -98,7 +105,7 @@ admin. (Disable public sign-ups; this app intentionally has no signup screen.)
 npm run dev
 ```
 
-Open <http://localhost:3000> → **Admin sign in**.
+Open <http://localhost:3000> → **Sign in**.
 
 ---
 
@@ -108,8 +115,10 @@ Open <http://localhost:3000> → **Admin sign in**.
 
 - **Dashboard** — outstanding collectible, credits, booking costs, payments,
   upcoming & unpaid bookings, who owes / who has credit, recent activity.
+- **Approvals** — register vs claim queue; approve creates/links a player.
 - **Players** — add/edit, activate/deactivate/archive, public link, group
-  assignment, per-player ledger, manual adjustments (with required reason).
+  assignment, per-player ledger, login status (unclaimed / pending / linked),
+  manual adjustments (with required reason).
 - **Groups / Pooled Funds** — couples/families/team funds sharing one wallet.
 - **Bookings** — live cost calc (courts × hours × rate + fees), status,
   roster & RSVP, confirm actual attendance, **generate booking shares** by
@@ -121,12 +130,16 @@ Open <http://localhost:3000> → **Admin sign in**.
   assigned vs. unassigned.
 - **Import** — upload your Google Sheet (`.xlsx`) and recreate ledger entries.
 
-### Player portal (`/p/<token>`, public, read-only)
+### Player portal (`/p/<token>`, public)
 
 Current balance ("You owe ₱X" / "You have ₱X credit"), upcoming games with
 **Going / Maybe / Not going** RSVP buttons, court shares, expense shares,
 payments, appearance history, and the full ledger with a plain-English
-explanation of the balance.
+explanation of the balance. Players can set up a login from this page.
+Approved logins open the same page after sign-in (`/me`).
+
+`/register` is for people not on the roster yet. `/claim` is search-only (no
+full public list). Pending requests keep using the private link.
 
 ### Group portal (`/g/<token>`, public, read-only)
 
@@ -157,7 +170,7 @@ Shared balance, members, charges by member, payments by member, shared ledger.
 - **Phase 2 ✅** — pooled funds/groups, team expenses & splitting, XLSX import,
   detailed player/group ledger pages.
 - **Phase 3 (next)** — richer reports, payment reminders, CSV/XLSX export, QR
-  codes for share links, optional member login, GCash/reference tracking.
+  codes for share links, GCash/reference tracking.
 
 ---
 
@@ -166,6 +179,11 @@ Shared balance, members, charges by member, payments by member, shared ledger.
 ```
 src/
   app/
+    login/            # sign-in (admin + player)
+    register/         # new player request
+    claim/            # claim existing name
+    pending/          # waiting for approval
+    account/          # player phone / photo
     admin/            # protected admin screens + server actions
     p/[token]/        # public player portal + RSVP action
     g/[token]/        # public group portal

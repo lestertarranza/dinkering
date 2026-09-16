@@ -1,6 +1,13 @@
 import Link from "next/link";
+import { getAuthContext } from "@/lib/auth";
+import { buttonClass } from "@/components/ui";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const ctx = await getAuthContext();
+  const signedInHref = ctx.user ? "/me" : "/login";
+
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">
       <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-600 text-3xl shadow-lg">
@@ -10,21 +17,23 @@ export default function Home() {
         Dinkering Pickleball Team Manager
       </h1>
       <p className="mt-4 max-w-md text-slate-600">
-        A ledger-based tracker for court bookings, attendance, payments, advance
-        credits, pooled family funds, and shared team expenses.
+        Court bookings, RSVP, payments, and shared expenses. Players can use a
+        private link, or set up a login so they can sign in on any phone.
       </p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <Link
-          href="/admin"
-          className="inline-flex items-center rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700"
-        >
-          Admin sign in
+        <Link href={signedInHref} className={buttonClass("primary")}>
+          {ctx.user ? "Open my page" : "Sign in"}
+        </Link>
+        <Link href="/register" className={buttonClass("secondary")}>
+          Register
+        </Link>
+        <Link href="/claim" className={buttonClass("secondary")}>
+          Claim my name
         </Link>
       </div>
       <p className="mt-10 max-w-md text-xs text-slate-400">
-        Players don&apos;t need an account — each player and pooled group gets a
-        private, read-only link to view their balance, schedule, and full ledger
-        history.
+        Private player links still work without a login. Registration is for
+        new people. If you are already on the team, claim your name.
       </p>
     </main>
   );

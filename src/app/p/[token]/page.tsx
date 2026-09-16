@@ -57,6 +57,8 @@ import {
   RememberPublicTokens,
   SaveAsMyPage,
 } from "@/components/PublicBottomNav";
+import { getAuthContext } from "@/lib/auth";
+import { getPlayerLink } from "@/lib/accounts";
 
 const STATEMENT_LABELS: Record<string, string> = {
   booking_share: "Court",
@@ -374,9 +376,11 @@ export default async function PlayerPortal({
   }
 
   const d = describeBalance(balance);
-  const [ledgerContext, transferItemMap] = await Promise.all([
+  const [ledgerContext, transferItemMap, auth, playerLink] = await Promise.all([
     buildLedgerBookingContext(db, ledger),
     buildTransferItemEnrichment(db, ledger),
+    getAuthContext(),
+    getPlayerLink(p.id),
   ]);
 
   const { data: settings } = await db
@@ -447,6 +451,31 @@ export default async function PlayerPortal({
           <SaveAsMyPage playerToken={token} teamToken={teamToken} />
         </div>
       </header>
+
+      {auth.profile?.player_id === p.id ? (
+        <p className="mb-4 text-center text-sm">
+          <Link href="/account" className="font-medium text-emerald-700">
+            Account settings
+          </Link>
+        </p>
+      ) : playerLink.pendingClaim ? (
+        <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+          A login request for this name is waiting for the admin. You can keep
+          using this private link.
+        </p>
+      ) : !playerLink.linked &&
+        auth.profile?.role !== "admin" &&
+        !auth.profile?.player_id &&
+        !auth.pendingRequest ? (
+        <p className="mb-4 text-center">
+          <Link
+            href={`/claim/${token}`}
+            className="inline-flex min-h-11 items-center rounded-lg bg-white px-4 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200"
+          >
+            Set up my login
+          </Link>
+        </p>
+      ) : null}
 
       {upcoming[0] ? (() => {
         const next = upcoming[0];

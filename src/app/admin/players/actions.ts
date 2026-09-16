@@ -9,6 +9,7 @@ import { formatMoney, SETTLE_TOLERANCE } from "@/lib/format";
 import { resolveWalletOwner, round2 } from "@/lib/ledger";
 import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
+import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -342,30 +343,8 @@ export async function createPlayer(formData: FormData) {
     .select("id")
     .single();
 
-  // Auto-enroll brand-new active players into every upcoming booking's roster
-  // (Booked and For Booking) so the admin no longer has to click
-  // "+ Add all active players" on each booking after adding someone.
   if (created?.id && active_status === "active") {
-    const { data: bookings } = await supabase
-      .from("bookings")
-      .select("id")
-      .in("status", ["booked", "for_booking"]);
-    const rows = (bookings ?? []).map((b) => ({
-      booking_id: b.id as string,
-      player_id: created.id as string,
-      response_status: "no_response" as const,
-    }));
-    if (rows.length > 0) {
-      await supabase
-        .from("booking_attendance")
-        .upsert(rows, {
-          onConflict: "booking_id,player_id",
-          ignoreDuplicates: true,
-        });
-      for (const b of bookings ?? [])
-        revalidatePath(`/admin/bookings/${b.id}`);
-      revalidatePath("/admin/bookings");
-    }
+    await enrollPlayerInUpcomingBookings(supabase, created.id);
   }
 
   revalidatePath("/admin/players");

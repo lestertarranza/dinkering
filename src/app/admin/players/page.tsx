@@ -16,6 +16,8 @@ import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
 import { createPlayer, regenerateRosterToken } from "./actions";
+import { playerLinkMap } from "@/lib/accounts";
+import { getAccountsReady } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,10 @@ export default async function PlayersPage({
     .from("app_settings")
     .select("roster_token")
     .single();
+  const accountsReady = await getAccountsReady();
+  const links = accountsReady
+    ? await playerLinkMap()
+    : { linked: new Map<string, string>(), pendingClaims: new Set<string>() };
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const boardUrl = settings?.roster_token
     ? `${appUrl}/board/${settings.roster_token}`
@@ -211,6 +217,13 @@ export default async function PlayersPage({
                       </p>
                       <div className="mt-1 flex items-center gap-2">
                         <StatusBadge status={p.active_status} />
+                        {links.linked.has(p.id) ? (
+                          <StatusBadge status="linked" />
+                        ) : links.pendingClaims.has(p.id) ? (
+                          <StatusBadge status="pending" />
+                        ) : (
+                          <StatusBadge status="unclaimed" />
+                        )}
                         {p.hidden_on_board ? (
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
                             Off board

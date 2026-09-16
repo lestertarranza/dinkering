@@ -27,6 +27,8 @@ import {
 } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
+import { linkedAccountForPlayer } from "@/lib/accounts";
+import { formatPhMobile } from "@/lib/phone";
 import {
   updatePlayer,
   setPlayerStatus,
@@ -72,6 +74,7 @@ export default async function PlayerDetail({
       supabase.from("player_groups").select("id, name, type").order("name"),
     ]);
   const activityRows = await fetchActivity(supabase, "player", id);
+  const linkedAccount = await linkedAccountForPlayer(id);
 
   const membershipList = (memberships ?? []) as {
     id: string;
@@ -334,6 +337,35 @@ export default async function PlayerDetail({
               change RSVP on a booking).
             </p>
             <ActivityLog rows={activityRows} />
+          </Card>
+          <Card className="p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+              Login
+            </h2>
+            {linkedAccount ? (
+              <div className="flex items-start gap-3">
+                {linkedAccount.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={linkedAccount.avatar_url}
+                    alt=""
+                    className="h-12 w-12 rounded-full object-cover"
+                  />
+                ) : null}
+                <div className="text-sm text-slate-600">
+                  <p>
+                    <StatusBadge status="linked" />
+                  </p>
+                  <p className="mt-1">{linkedAccount.email}</p>
+                  <p>{formatPhMobile(linkedAccount.phone)}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Unclaimed. The player can set up a login from their private page
+                or from /claim.
+              </p>
+            )}
           </Card>
           {/* Edit */}
           <Card className="p-4">

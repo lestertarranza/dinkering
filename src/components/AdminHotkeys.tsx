@@ -39,6 +39,7 @@ export function AdminHotkeys() {
           p: "/admin/players",
           e: "/admin/expenses",
           c: "/admin/collections",
+          a: "/admin/approvals",
           d: "/admin",
         };
         const href = map[e.key.toLowerCase()];

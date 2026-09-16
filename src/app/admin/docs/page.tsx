@@ -27,6 +27,7 @@ const sections = [
   { id: "collections", label: "Collections" },
   { id: "balances", label: "Understanding Balances" },
   { id: "public-pages", label: "Public Pages" },
+  { id: "player-accounts", label: "Player accounts" },
   { id: "faq", label: "FAQ" },
 ];
 
@@ -723,12 +724,53 @@ export default function DocsPage() {
             </p>
           </Card>
 
+          <Card className="p-6" id="player-accounts">
+            <h2 className={h2Class}>Player accounts</h2>
+            <p className={pClass}>
+              Players can keep using their private link, or set up an email and
+              password login. New sign-ups are never admins. You approve every
+              request on <code className={codeClass}>/admin/approvals</code>.
+            </p>
+            <h3 className={h3Class}>New registration</h3>
+            <p className={pClass}>
+              For people who are not on the roster yet. Required: first name, last
+              name, email, PH mobile, password. Photo is optional. On approve, an
+              Active player is created and added to upcoming games, same as Add
+              player.
+            </p>
+            <h3 className={h3Class}>Claim</h3>
+            <p className={pClass}>
+              For people already on the roster. Best path: open their private
+              player page, then Set up my login. If they lost the link, they can
+              search by name on <code className={codeClass}>/claim</code>. Do not
+              put Claim on the public Players list. On approve, the login is
+              attached to that existing player. Token, balance, and RSVP history
+              stay the same.
+            </p>
+            <h3 className={h3Class}>While a request is pending</h3>
+            <p className={pClass}>
+              They can still use the old private link for RSVP and balances. Sign-in
+              only shows a waiting screen until you approve.
+            </p>
+            <h3 className={h3Class}>Database</h3>
+            <p className={pClass}>
+              Run <code className={codeClass}>0020_player_accounts.sql</code> in
+              the Supabase SQL editor before opening registration. Every existing
+              Auth user is seeded as an admin. After that, new Auth users are
+              players only.
+            </p>
+          </Card>
+
           {/* ── FAQ ── */}
           <Card className="p-6" id="faq">
             <h2 className={h2Class}>FAQ</h2>
 
             <div className="space-y-5">
               {[
+                {
+                  q: "How do players get a login?",
+                  a: "They register if they are new, or claim their existing name from their private page or /claim. You approve each request. Pending players keep using the private link.",
+                },
                 {
                   q: "A player's balance shows ₱0 but they have an outstanding court share — why?",
                   a: "The player is likely in a pooled group. Their charges route to the group wallet. Check the group page (Groups / Funds) for the outstanding balance.",

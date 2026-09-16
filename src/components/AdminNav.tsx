@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 const links = [
   { href: "/admin", label: "Dashboard", icon: "📊" },
   { href: "/admin/collections", label: "Collections", icon: "💰" },
+  { href: "/admin/approvals", label: "Approvals", icon: "✅" },
   { href: "/admin/players", label: "Players", icon: "🧑" },
   { href: "/admin/groups", label: "Groups / Funds", icon: "👥" },
   { href: "/admin/bookings", label: "Bookings", icon: "📅" },
@@ -25,7 +26,13 @@ const mobileLinks = [
   { href: "/admin/payments", label: "Pay", icon: "💸" },
 ];
 
-export function AdminNav({ email }: { email: string | null }) {
+export function AdminNav({
+  email,
+  pendingCount = 0,
+}: {
+  email: string | null;
+  pendingCount?: number;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -73,6 +80,11 @@ export function AdminNav({ email }: { email: string | null }) {
             >
               <span>{l.icon}</span>
               {l.label}
+              {l.href === "/admin/approvals" && pendingCount > 0 ? (
+                <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  {pendingCount}
+                </span>
+              ) : null}
             </Link>
           ))}
           <button
@@ -105,6 +117,11 @@ export function AdminNav({ email }: { email: string | null }) {
             >
               <span>{l.icon}</span>
               {l.label}
+              {l.href === "/admin/approvals" && pendingCount > 0 ? (
+                <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  {pendingCount}
+                </span>
+              ) : null}
             </Link>
           ))}
         </nav>

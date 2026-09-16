@@ -1,9 +1,11 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buttonClass } from "@/components/ui";
+import { AuthShell } from "@/components/AuthShell";
 
 function LoginForm() {
   const router = useRouter();
@@ -29,73 +31,68 @@ function LoginForm() {
       setLoading(false);
       return;
     }
-    router.push(next);
+    const dest = `/auth/continue?next=${encodeURIComponent(next)}`;
+    router.push(dest);
     router.refresh();
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-2xl">
-            🏓
-          </div>
-          <h1 className="text-lg font-semibold text-slate-900">
-            Admin sign in
-          </h1>
-          <p className="text-sm text-slate-500">
-            Dinkering Pickleball Team Manager
-          </p>
+    <AuthShell title="Sign in" subtitle="Dinkering Pickleball Team Manager">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      >
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Email
+          </label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
         </div>
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Password
+          </label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            autoComplete="current-password"
+          />
+        </div>
+        {error ? (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={loading}
+          className={buttonClass("primary", "w-full")}
         >
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder="admin@example.com"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder="••••••••"
-            />
-          </div>
-          {error ? (
-            <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {error}
-            </p>
-          ) : null}
-          <button
-            type="submit"
-            disabled={loading}
-            className={buttonClass("primary", "w-full")}
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-        <p className="mt-4 text-center text-xs text-slate-400">
-          Create an admin user in your Supabase project&apos;s Authentication
-          tab.
-        </p>
-      </div>
-    </main>
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+      <p className="mt-4 text-center text-sm text-slate-500">
+        New here?{" "}
+        <Link href="/register" className="font-medium text-emerald-700">
+          Register
+        </Link>
+        {" · "}
+        <Link href="/claim" className="font-medium text-emerald-700">
+          Claim my name
+        </Link>
+      </p>
+    </AuthShell>
   );
 }
 
