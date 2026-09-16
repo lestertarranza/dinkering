@@ -4,14 +4,14 @@ import { getAuthContext } from "@/lib/auth";
 import { AuthShell } from "@/components/AuthShell";
 import { ClaimFlow } from "@/components/ClaimFlow";
 import { buttonClass } from "@/components/ui";
+import { SignedInAsAdminNotice } from "@/components/SignedInAsAdminNotice";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClaimPage() {
   const ctx = await getAuthContext();
-  if (ctx.profile?.role === "admin") redirect("/admin");
-  if (ctx.profile?.player_id) redirect("/me");
-  if (ctx.pendingRequest) redirect("/pending");
+  if (ctx.profile?.role !== "admin" && ctx.profile?.player_id) redirect("/me");
+  if (ctx.profile?.role !== "admin" && ctx.pendingRequest) redirect("/pending");
 
   return (
     <AuthShell
@@ -19,6 +19,9 @@ export default async function ClaimPage() {
       title="Claim your name"
       subtitle="Lost your private link? Search for yourself. The admin still has to approve it."
     >
+      {ctx.profile?.role === "admin" ? (
+        <SignedInAsAdminNotice stayHref="/claim" />
+      ) : null}
       {!ctx.accountsReady ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Player accounts are not enabled yet. Ask the admin to run the latest

@@ -5,14 +5,14 @@ import { AuthShell } from "@/components/AuthShell";
 import { AccountRequestForm } from "@/components/AccountRequestForm";
 import { submitRegister } from "@/app/auth/actions";
 import { buttonClass } from "@/components/ui";
+import { SignedInAsAdminNotice } from "@/components/SignedInAsAdminNotice";
 
 export const dynamic = "force-dynamic";
 
 export default async function RegisterPage() {
   const ctx = await getAuthContext();
-  if (ctx.profile?.role === "admin") redirect("/admin");
-  if (ctx.profile?.player_id) redirect("/me");
-  if (ctx.pendingRequest) redirect("/pending");
+  if (ctx.profile?.role !== "admin" && ctx.profile?.player_id) redirect("/me");
+  if (ctx.profile?.role !== "admin" && ctx.pendingRequest) redirect("/pending");
 
   return (
     <AuthShell
@@ -20,6 +20,9 @@ export default async function RegisterPage() {
       title="Register"
       subtitle="For people who are not on the team list yet. Already on the team? Claim your name instead."
     >
+      {ctx.profile?.role === "admin" ? (
+        <SignedInAsAdminNotice stayHref="/register" />
+      ) : null}
       {!ctx.accountsReady ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Player accounts are not enabled yet. Ask the admin to run the latest

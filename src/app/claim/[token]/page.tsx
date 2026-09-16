@@ -6,6 +6,7 @@ import { AuthShell } from "@/components/AuthShell";
 import { ClaimFlow } from "@/components/ClaimFlow";
 import { getPlayerLink } from "@/lib/accounts";
 import { buttonClass } from "@/components/ui";
+import { SignedInAsAdminNotice } from "@/components/SignedInAsAdminNotice";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,9 +18,8 @@ export default async function ClaimByTokenPage({
 }) {
   const { token } = await params;
   const ctx = await getAuthContext();
-  if (ctx.profile?.role === "admin") redirect("/admin");
-  if (ctx.profile?.player_id) redirect("/me");
-  if (ctx.pendingRequest) redirect("/pending");
+  if (ctx.profile?.role !== "admin" && ctx.profile?.player_id) redirect("/me");
+  if (ctx.profile?.role !== "admin" && ctx.pendingRequest) redirect("/pending");
 
   const db = createAdminClient();
   const { data: player } = await db
@@ -42,6 +42,9 @@ export default async function ClaimByTokenPage({
       title="Set up my login"
       subtitle={`Claim ${p.display_name?.trim() || p.name}. The admin will confirm it is you.`}
     >
+      {ctx.profile?.role === "admin" ? (
+        <SignedInAsAdminNotice stayHref={`/claim/${token}`} />
+      ) : null}
       {!ctx.accountsReady ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Player accounts are not enabled yet. Ask the admin to run the latest
