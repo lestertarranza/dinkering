@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
+import { inviteOptionsFromIndex } from "@/lib/player-invite";
 import { AuthShell } from "@/components/AuthShell";
 import { AccountRequestForm } from "@/components/AccountRequestForm";
 import { submitRegister } from "@/app/auth/actions";
@@ -13,6 +16,14 @@ export default async function RegisterPage() {
   const ctx = await getAuthContext();
   if (ctx.profile?.role !== "admin" && ctx.profile?.player_id) redirect("/me");
   if (ctx.profile?.role !== "admin" && ctx.pendingRequest) redirect("/pending");
+
+  const db = createAdminClient();
+  const [inviteIndex, identities] = ctx.accountsReady
+    ? await Promise.all([loadInviteIndex(db), loadLinkedIdentities()])
+    : [null, new Map()] as const;
+  const inviteOptions = inviteIndex
+    ? inviteOptionsFromIndex(inviteIndex, identities)
+    : [];
 
   return (
     <AuthShell
@@ -36,6 +47,7 @@ export default async function RegisterPage() {
             defaultEmail={ctx.user?.email ?? undefined}
             needPassword={!ctx.user}
             submitLabel="Submit registration"
+            inviteOptions={inviteOptions}
           />
         </div>
       )}

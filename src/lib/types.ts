@@ -26,6 +26,8 @@ export interface Player {
   notes: string | null;
   public_token: string;
   hidden_on_board: boolean;
+  is_founding_member?: boolean;
+  invited_by_player_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -252,6 +254,8 @@ export interface AccountRequest {
   last_name: string;
   avatar_url: string | null;
   claimed_player_id: string | null;
+  is_founding_member?: boolean;
+  invited_by_player_id?: string | null;
   note: string | null;
   reject_reason: string | null;
   reviewed_by: string | null;

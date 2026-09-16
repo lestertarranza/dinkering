@@ -16,8 +16,13 @@ import { CopyLink, ShareLink } from "@/components/CopyLink";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player } from "@/lib/types";
 import { createPlayer, regenerateRosterToken } from "./actions";
-import { playerLinkMap, loadLinkedIdentities } from "@/lib/accounts";
+import { playerLinkMap, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { PlayerAvatar, VerifiedBadge } from "@/components/public-ui";
+import { InviteSelect } from "@/components/InviteSelect";
+import {
+  inviteLineFromIndex,
+  inviteOptionsFromIndex,
+} from "@/lib/player-invite";
 import { getAccountsReady } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +55,8 @@ export default async function PlayersPage({
   const identities = accountsReady
     ? await loadLinkedIdentities()
     : new Map();
+  const inviteIndex = await loadInviteIndex(supabase);
+  const inviteOptions = inviteOptionsFromIndex(inviteIndex, identities);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const boardUrl = settings?.roster_token
     ? `${appUrl}/board/${settings.roster_token}`
@@ -58,9 +65,13 @@ export default async function PlayersPage({
     ? `${appUrl}/schedule/${settings.roster_token}`
     : null;
 
-  const list = ((players ?? []) as Player[]).filter((p) =>
-    q ? `${p.name} ${p.display_name ?? ""}`.toLowerCase().includes(q.toLowerCase()) : true,
-  );
+  const list = ((players ?? []) as Player[]).filter((p) => {
+    if (!q) return true;
+    const invited = inviteLineFromIndex(p.id, inviteIndex, identities) ?? "";
+    return `${p.name} ${p.display_name ?? ""} ${invited}`
+      .toLowerCase()
+      .includes(q.toLowerCase());
+  });
 
   return (
     <div>
@@ -155,6 +166,11 @@ export default async function PlayersPage({
               <Field label="Display name" hint="Optional short name / nickname">
                 <input name="display_name" className={inputClass} />
               </Field>
+              <InviteSelect
+                options={inviteOptions}
+                allowFounding
+                allowUnset
+              />
               <Field label="Notes">
                 <textarea name="notes" rows={2} className={inputClass} />
               </Field>
@@ -204,6 +220,7 @@ export default async function PlayersPage({
               {list.map((p) => {
                 const bal = balMap.get(p.id) ?? 0;
                 const d = describeBalance(bal);
+                const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
                 return (
                   <Link
                     key={p.id}
@@ -230,6 +247,11 @@ export default async function PlayersPage({
                             </span>
                           ) : null}
                         </p>
+                        {invited ? (
+                          <p className="mt-0.5 truncate text-xs text-slate-500">
+                            {invited}
+                          </p>
+                        ) : null}
                       <div className="mt-1 flex items-center gap-2">
                         <StatusBadge status={p.active_status} />
                         {links.linked.has(p.id) ? (

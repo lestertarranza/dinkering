@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/ui";
 import { validatePublicTeamToken } from "@/lib/public-links";
-import { loadLinkedIdentities } from "@/lib/accounts";
+import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
+import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
   PublicPageHeader,
   PlayerNameLine,
@@ -32,13 +33,14 @@ export default async function PublicPlayersPage({
   const db = createAdminClient();
   if (!(await validatePublicTeamToken(db, token))) notFound();
 
-  const [{ data: players }, identities] = await Promise.all([
+  const [{ data: players }, identities, inviteIndex] = await Promise.all([
     db
       .from("players")
       .select("id, name, display_name, public_token, active_status")
       .eq("active_status", "active")
       .order("name"),
     loadLinkedIdentities(),
+    loadInviteIndex(db),
   ]);
 
   const list = (players ?? []) as Pick<
@@ -65,9 +67,10 @@ export default async function PublicPlayersPage({
             minToShowSearch={8}
             items={list.map((p) => {
               const face = playerFace(p.id, p, identities);
+              const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
               return {
                 key: p.id,
-                search: face.name,
+                search: `${face.name} ${invited ?? ""}`,
                 node: (
                   <div className={`${publicTapRowClass}`}>
                     <Link
@@ -78,7 +81,7 @@ export default async function PublicPlayersPage({
                         name={face.name}
                         verified={face.verified}
                         avatarUrl={face.avatarUrl}
-                        subtitle="Open page"
+                        subtitle={invited ?? "Open page"}
                       />
                     </Link>
                     <SaveAsMyPage

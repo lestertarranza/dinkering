@@ -60,8 +60,9 @@ import {
   SaveAsMyPage,
 } from "@/components/PublicBottomNav";
 import { getAuthContext } from "@/lib/auth";
-import { getPlayerLink, loadLinkedIdentities } from "@/lib/accounts";
+import { getPlayerLink, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
+import { inviteLineFromIndex } from "@/lib/player-invite";
 
 const STATEMENT_LABELS: Record<string, string> = {
   booking_share: "Court",
@@ -379,15 +380,17 @@ export default async function PlayerPortal({
   }
 
   const d = describeBalance(balance);
-  const [ledgerContext, transferItemMap, auth, playerLink, identities] =
+  const [ledgerContext, transferItemMap, auth, playerLink, identities, inviteIndex] =
     await Promise.all([
       buildLedgerBookingContext(db, ledger),
       buildTransferItemEnrichment(db, ledger),
       getAuthContext(),
       getPlayerLink(p.id),
       loadLinkedIdentities(),
+      loadInviteIndex(db),
     ]);
   const face = playerFace(p.id, p, identities);
+  const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
 
   const { data: settings } = await db
     .from("app_settings")
@@ -465,6 +468,9 @@ export default async function PlayerPortal({
           {face.name}
           {face.verified ? <VerifiedBadge /> : null}
         </h1>
+        {invited ? (
+          <p className={`mt-1 ${publicMetaText}`}>{invited}</p>
+        ) : null}
         <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
         <div className="mt-3 flex justify-center">
           <SaveAsMyPage playerToken={token} teamToken={teamToken} />

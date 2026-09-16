@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
 import { Field, inputClass, buttonClass } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
+import { InviteSelect } from "@/components/InviteSelect";
 import type { FormAction } from "@/lib/action-state";
 import { MIN_PASSWORD_LENGTH } from "@/lib/account-fields";
 
@@ -15,6 +16,7 @@ export function AccountRequestForm({
   defaultEmail,
   needPassword,
   submitLabel,
+  inviteOptions,
 }: {
   action: FormAction;
   kind: "register" | "claim";
@@ -23,6 +25,7 @@ export function AccountRequestForm({
   defaultEmail?: string;
   needPassword: boolean;
   submitLabel: string;
+  inviteOptions?: { id: string; label: string }[];
 }) {
   return (
     <ActionForm action={action} className="space-y-4" pendingLabel="Submitting…">
@@ -65,6 +68,13 @@ export function AccountRequestForm({
           placeholder="0917 123 4567"
         />
       </Field>
+      {kind === "register" && inviteOptions ? (
+        <InviteSelect
+          options={inviteOptions}
+          required
+          allowUnset={false}
+        />
+      ) : null}
       {needPassword ? (
         <>
           <Field

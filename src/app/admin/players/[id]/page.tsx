@@ -27,8 +27,15 @@ import {
 } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
-import { linkedAccountForPlayer } from "@/lib/accounts";
+import { linkedAccountForPlayer, loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
 import { VerifiedBadge } from "@/components/public-ui";
+import { InviteSelect } from "@/components/InviteSelect";
+import {
+  inviteLineFromIndex,
+  inviteOptionsFromIndex,
+  inviteSelectValue,
+  recordFromRow,
+} from "@/lib/player-invite";
 import { formatPhMobile } from "@/lib/phone";
 import {
   updatePlayer,
@@ -77,6 +84,12 @@ export default async function PlayerDetail({
     ]);
   const activityRows = await fetchActivity(supabase, "player", id);
   const linkedAccount = await linkedAccountForPlayer(id);
+  const [inviteIndex, identities] = await Promise.all([
+    loadInviteIndex(supabase),
+    loadLinkedIdentities(),
+  ]);
+  const invited = inviteLineFromIndex(id, inviteIndex, identities);
+  const inviteOptions = inviteOptionsFromIndex(inviteIndex, identities, id);
 
   const membershipList = (memberships ?? []) as {
     id: string;
@@ -138,7 +151,9 @@ export default async function PlayerDetail({
             {linkedAccount ? <VerifiedBadge /> : null}
           </span>
         }
-        description={p.display_name ?? undefined}
+        description={
+          [p.display_name, invited].filter(Boolean).join(" · ") || undefined
+        }
         action={
           <div className="flex gap-2">
             <Link
@@ -414,6 +429,12 @@ export default async function PlayerDetail({
                   className={inputClass}
                 />
               </Field>
+              <InviteSelect
+                options={inviteOptions}
+                defaultValue={inviteSelectValue(recordFromRow(p))}
+                allowFounding
+                allowUnset
+              />
               <Field label="Status">
                 <select
                   name="active_status"

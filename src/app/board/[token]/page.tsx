@@ -11,8 +11,9 @@ import {
 import { formatMoney, describeBalance, formatDate } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
 import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
-import { loadLinkedIdentities } from "@/lib/accounts";
+import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
+import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
   PublicPageHeader,
   PlayerAvatar,
@@ -106,6 +107,7 @@ export default async function TeamBoard({
     { data: pooledGroups },
     { data: memberships },
     identities,
+    inviteIndex,
   ] = await Promise.all([
     db
       .from("players")
@@ -124,6 +126,7 @@ export default async function TeamBoard({
       .in("player_groups.type", ["couple", "family", "team_fund"])
       .is("end_date", null),
     loadLinkedIdentities(),
+    loadInviteIndex(db),
   ]);
 
   const [{ data: clubFunds }, { byFund: clubCashByFund }, { data: clubPurchases }] =
@@ -242,9 +245,10 @@ export default async function TeamBoard({
     const balance = playerBalMap.get(p.id) ?? 0;
     const d = describeBalance(balance);
     const face = faceOf(p);
+    const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
     entries.push({
       key: `p:${p.id}`,
-      search: face.name,
+      search: `${face.name} ${invited ?? ""}`,
       bucket: bucketOf(d.tone),
       amount: d.amount,
       name: face.name,
@@ -252,6 +256,7 @@ export default async function TeamBoard({
         <BalanceRow
           href={`/p/${p.public_token}`}
           name={face.name}
+          subtitle={invited ?? undefined}
           tone={d.tone}
           amount={d.amount}
           avatarUrl={face.avatarUrl}

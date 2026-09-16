@@ -16,8 +16,13 @@ import {
   sanitizeSearch,
   type ClaimSearchHit,
 } from "@/lib/account-fields";
-import type { User } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { LinkedIdentity } from "@/lib/player-identity";
+import {
+  emptyInviteIndex,
+  recordFromRow,
+  type InviteIndex,
+} from "@/lib/player-invite";
 import type {
   AccountRequest,
   AccountRequestKind,
@@ -63,6 +68,61 @@ export async function loadLinkedIdentities(): Promise<
     });
   }
   return map;
+}
+
+let inviteColumnsReady: boolean | undefined;
+
+export async function playerInviteColumnsExist(
+  db: SupabaseClient,
+): Promise<boolean> {
+  if (inviteColumnsReady === true) return true;
+  const { error } = await db
+    .from("players")
+    .select("is_founding_member, invited_by_player_id")
+    .limit(1);
+  inviteColumnsReady = !error;
+  return inviteColumnsReady;
+}
+
+export async function loadInviteIndex(
+  db: SupabaseClient,
+): Promise<InviteIndex> {
+  const ready = await playerInviteColumnsExist(db);
+  const cols = ready
+    ? "id, name, display_name, active_status, is_founding_member, invited_by_player_id"
+    : "id, name, display_name, active_status";
+  const { data, error } = (await db
+    .from("players")
+    .select(cols)
+    .order("name")) as unknown as {
+    data:
+      | {
+          id: string;
+          name: string;
+          display_name: string | null;
+          active_status: string;
+          is_founding_member?: boolean | null;
+          invited_by_player_id?: string | null;
+        }[]
+      | null;
+    error: { message: string } | null;
+  };
+  if (error) return emptyInviteIndex();
+  const index: InviteIndex = {
+    ready,
+    byId: new Map(),
+    players: new Map(),
+  };
+  for (const row of data ?? []) {
+    const id = row.id;
+    index.players.set(id, {
+      name: row.name ?? "",
+      display_name: row.display_name ?? null,
+      active_status: row.active_status ?? "active",
+    });
+    if (ready) index.byId.set(id, recordFromRow(row));
+  }
+  return index;
 }
 
 export async function uploadAvatar(
@@ -282,6 +342,8 @@ export async function submitAccountRequest(opts: {
   note: string;
   avatar_url: string | null;
   claimed_player_id: string | null;
+  is_founding_member?: boolean;
+  invited_by_player_id?: string | null;
 }): Promise<AccountFormResult> {
   const admin = createAdminClient();
 
@@ -379,6 +441,26 @@ export async function submitAccountRequest(opts: {
     return { ok: false, error: "Could not save your profile. Try again." };
   }
 
+  const inviteReady = await playerInviteColumnsExist(admin);
+  if (
+    opts.kind === "register" &&
+    inviteReady &&
+    !opts.is_founding_member &&
+    !opts.invited_by_player_id
+  ) {
+    return { ok: false, error: "Pick who invited you." };
+  }
+  if (opts.invited_by_player_id) {
+    const { data: host } = await admin
+      .from("players")
+      .select("id, active_status")
+      .eq("id", opts.invited_by_player_id)
+      .maybeSingle();
+    if (!host || host.active_status === "archived") {
+      return { ok: false, error: "Pick a current teammate who invited you." };
+    }
+  }
+
   const { error } = await admin.from("account_requests").insert({
     kind: opts.kind,
     status: "pending",
@@ -390,6 +472,8 @@ export async function submitAccountRequest(opts: {
     avatar_url: opts.avatar_url,
     claimed_player_id: opts.kind === "claim" ? opts.claimed_player_id : null,
     note: opts.note || null,
+    is_founding_member: !!opts.is_founding_member,
+    invited_by_player_id: opts.invited_by_player_id ?? null,
   });
   if (error) {
     if (uniqueViolation(error)) {
@@ -399,6 +483,30 @@ export async function submitAccountRequest(opts: {
       };
     }
     if (isMissingRelation(error)) {
+      if (opts.invited_by_player_id || opts.is_founding_member) {
+        return {
+          ok: false,
+          error:
+            "Ask the admin to run the latest database update so invites can be saved.",
+        };
+      }
+      const retry = await admin.from("account_requests").insert({
+        kind: opts.kind,
+        status: "pending",
+        auth_user_id: opts.userId,
+        email: opts.email,
+        phone: opts.phone,
+        first_name: opts.first_name,
+        last_name: opts.last_name,
+        avatar_url: opts.avatar_url,
+        claimed_player_id: opts.kind === "claim" ? opts.claimed_player_id : null,
+        note: opts.note || null,
+      });
+      if (!retry.error) {
+        revalidatePath("/admin/approvals");
+        revalidatePath("/pending");
+        return { ok: true };
+      }
       return {
         ok: false,
         error: "Player accounts are not enabled yet. Ask the admin to run the latest database update.",
@@ -497,7 +605,7 @@ export async function getPlayerLink(playerId: string): Promise<{
 }
 
 export async function listPendingRequests(): Promise<
-  (AccountRequest & { player_name: string | null })[]
+  (AccountRequest & { player_name: string | null; invited_by_name: string | null })[]
 > {
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -506,26 +614,27 @@ export async function listPendingRequests(): Promise<
     .order("created_at", { ascending: false });
   if (error) return [];
   const rows = (data ?? []) as AccountRequest[];
-  const claimIds = rows
-    .map((r) => r.claimed_player_id)
-    .filter((id): id is string => !!id);
+  const lookupIds = [
+    ...rows.map((r) => r.claimed_player_id),
+    ...rows.map((r) => r.invited_by_player_id),
+  ].filter((id): id is string => !!id);
   const names = new Map<string, string>();
-  if (claimIds.length > 0) {
+  if (lookupIds.length > 0) {
     const { data: players } = await admin
       .from("players")
       .select("id, name, display_name")
-      .in("id", claimIds);
+      .in("id", lookupIds);
     for (const p of players ?? []) {
-      names.set(
-        p.id as string,
-        ((p.display_name as string | null)?.trim() || (p.name as string)) ?? "",
-      );
+      names.set(p.id as string, (p.name as string) ?? "");
     }
   }
   return rows.map((r) => ({
     ...r,
     player_name: r.claimed_player_id
       ? names.get(r.claimed_player_id) ?? "Unknown player"
+      : null,
+    invited_by_name: r.invited_by_player_id
+      ? names.get(r.invited_by_player_id) ?? "a teammate"
       : null,
   }));
 }
@@ -596,16 +705,30 @@ export async function approveAccountRequest(
   let playerId = req.claimed_player_id;
   if (req.kind === "register") {
     const name = playerFullName(req.first_name, req.last_name);
-    const { data: created, error } = await admin
+    const insertRow: Record<string, unknown> = {
+      name,
+      display_name: req.first_name,
+      active_status: "active",
+      notes: `Registered by ${req.email}`,
+      is_founding_member: !!req.is_founding_member,
+      invited_by_player_id: req.invited_by_player_id ?? null,
+    };
+    let { data: created, error } = await admin
       .from("players")
-      .insert({
-        name,
-        display_name: req.first_name,
-        active_status: "active",
-        notes: `Registered by ${req.email}`,
-      })
+      .insert(insertRow)
       .select("id")
       .single();
+    if (error && isMissingRelation(error)) {
+      delete insertRow.is_founding_member;
+      delete insertRow.invited_by_player_id;
+      const retry = await admin
+        .from("players")
+        .insert(insertRow)
+        .select("id")
+        .single();
+      created = retry.data;
+      error = retry.error;
+    }
     if (error || !created) {
       return { ok: false, error: "Could not create the player." };
     }

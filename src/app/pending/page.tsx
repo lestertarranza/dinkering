@@ -6,6 +6,10 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { buttonClass } from "@/components/ui";
 import { formatPhMobile } from "@/lib/phone";
 import { playerFullName } from "@/lib/account-fields";
+import { loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
+import { inviteLine, recordFromRow } from "@/lib/player-invite";
+import { publicPlayerLabel } from "@/lib/player-identity";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +22,22 @@ export default async function PendingPage() {
   const pending = ctx.pendingRequest;
   const latest = ctx.latestRequest;
   const rejected = !pending && latest?.status === "rejected";
+  const hostId = pending?.invited_by_player_id ?? null;
+  const [inviteIndex, identities] = hostId
+    ? await Promise.all([
+        loadInviteIndex(createAdminClient()),
+        loadLinkedIdentities(),
+      ])
+    : [null, new Map()] as const;
+  const host = hostId ? inviteIndex?.players.get(hostId) : null;
+  const invited = pending
+    ? inviteLine(
+        recordFromRow(pending),
+        host && hostId
+          ? publicPlayerLabel(host, identities.get(hostId))
+          : null,
+      )
+    : null;
 
   return (
     <AuthShell
@@ -39,6 +59,7 @@ export default async function PendingPage() {
             </p>
             <p>{pending.email}</p>
             <p>{formatPhMobile(pending.phone)}</p>
+            {invited ? <p>{invited}</p> : null}
             {pending.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

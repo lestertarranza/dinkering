@@ -70,7 +70,8 @@ editor, run the migration and (optionally) the demo seed:
 
 - `supabase/migrations/0001_init.sql`  ← schema, views, RLS
 - later files in `supabase/migrations/` in order, including
-  `0020_player_accounts.sql` for player logins
+  `0020_player_accounts.sql` for player logins and
+  `0021_player_invite.sql` for who invited each player
 - `supabase/seed.sql`                   ← optional demo data
 
 ### 3. Configure environment
@@ -95,9 +96,10 @@ In Supabase → **Authentication → Users → Add user**, create an email/passw
 admin. Disable public sign-ups in Auth settings (the app creates player logins
 itself after you approve them).
 
-**Before** opening `/register` or `/claim`, run `0020_player_accounts.sql`.
-That migration seeds every existing Auth user as an admin, then locks the
-database so only those admins can use `/admin`. Do not skip it.
+**Before** opening `/register` or `/claim`, run `0020_player_accounts.sql`
+then `0021_player_invite.sql`. The first seeds every existing Auth user as an
+admin and locks `/admin` to those roles. The second stores who invited each
+player (or founding member). Do not skip them.
 
 ### 5. Run
 

@@ -13,6 +13,7 @@ import {
   validateIdentity,
 } from "@/lib/accounts";
 import { actionErr, type ActionState } from "@/lib/action-state";
+import { parseInviteChoice } from "@/lib/player-invite";
 
 export async function searchClaimPlayers(q: string) {
   return searchPlayers(q);
@@ -90,6 +91,10 @@ export async function submitRegister(
   const invalid = validateIdentity({ ...fields, needPassword });
   if (invalid) return actionErr(invalid);
   if (!fields.phone) return actionErr("Enter a valid PH mobile number.");
+  const invite = parseInviteChoice(String(formData.get("invited_by") || ""));
+  if (!invite.invitedByPlayerId) {
+    return actionErr("Pick who invited you.");
+  }
 
   const auth = await ensureUser({
     email: fields.email,
@@ -113,6 +118,7 @@ export async function submitRegister(
     note: fields.note,
     avatar_url: photo.url,
     claimed_player_id: null,
+    invited_by_player_id: invite.invitedByPlayerId,
   });
   if (!result.ok) return actionErr(result.error);
   redirect("/pending");

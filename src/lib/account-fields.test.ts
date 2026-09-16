@@ -30,6 +30,12 @@ describe("safeNextPath", () => {
 
 describe("isMissingRelation", () => {
   it("detects PostgREST missing-table errors", () => {
+    expect(isMissingRelation({ code: "42703", message: "column does not exist" })).toBe(
+      true,
+    );
+    expect(isMissingRelation({ code: "PGRST204", message: "column not found" })).toBe(
+      true,
+    );
     expect(isMissingRelation({ code: "PGRST205", message: "schema cache" })).toBe(
       true,
     );

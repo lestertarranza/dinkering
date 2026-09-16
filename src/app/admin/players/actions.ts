@@ -11,6 +11,8 @@ import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
 import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
 import { attachPlayerToExistingUser } from "@/lib/accounts";
+import { parseInviteChoice } from "@/lib/player-invite";
+import { isMissingRelation } from "@/lib/account-fields";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -336,13 +338,30 @@ export async function createPlayer(formData: FormData) {
       ? String(formData.get("active_status"))
       : "active"
   ) as ActiveStatus;
+  const invite = parseInviteChoice(String(formData.get("invited_by") || ""));
 
   const { supabase } = await requireAdmin();
-  const { data: created } = await supabase
+  const row: Record<string, unknown> = {
+    name,
+    display_name,
+    notes,
+    active_status,
+    is_founding_member: invite.isFoundingMember,
+    invited_by_player_id: invite.invitedByPlayerId,
+  };
+  let { data: created, error } = await supabase
     .from("players")
-    .insert({ name, display_name, notes, active_status })
+    .insert(row)
     .select("id")
     .single();
+  if (error && isMissingRelation(error)) {
+    delete row.is_founding_member;
+    delete row.invited_by_player_id;
+    const retry = await supabase.from("players").insert(row).select("id").single();
+    created = retry.data;
+    error = retry.error;
+  }
+  if (error) return;
 
   if (created?.id && active_status === "active") {
     await enrollPlayerInUpcomingBookings(supabase, created.id);
@@ -363,12 +382,29 @@ export async function updatePlayer(
   const active_status = String(
     formData.get("active_status") || "active",
   ) as ActiveStatus;
+  const invite = parseInviteChoice(String(formData.get("invited_by") || ""));
+  if (invite.invitedByPlayerId === id) {
+    return actionErr("A player cannot invite themselves.");
+  }
 
   const { supabase } = await requireAdmin();
-  await supabase
-    .from("players")
-    .update({ name, display_name, notes, active_status })
-    .eq("id", id);
+  const payload: Record<string, unknown> = {
+    name,
+    display_name,
+    notes,
+    active_status,
+    is_founding_member: invite.isFoundingMember,
+    invited_by_player_id: invite.invitedByPlayerId,
+  };
+  const { error } = await supabase.from("players").update(payload).eq("id", id);
+  if (error && isMissingRelation(error)) {
+    delete payload.is_founding_member;
+    delete payload.invited_by_player_id;
+    const retry = await supabase.from("players").update(payload).eq("id", id);
+    if (retry.error) return actionErr("Could not save the player.");
+  } else if (error) {
+    return actionErr("Could not save the player.");
+  }
   revalidatePath("/admin/players");
   revalidatePath(`/admin/players/${id}`);
   return actionOk("Player saved.");

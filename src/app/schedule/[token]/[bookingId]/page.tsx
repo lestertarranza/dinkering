@@ -12,8 +12,9 @@ import {
   formatCourtTime,
 } from "@/lib/court-format";
 import { validatePublicTeamToken } from "@/lib/public-links";
-import { loadLinkedIdentities } from "@/lib/accounts";
+import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
+import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
   DateChip,
   CountPill,
@@ -63,7 +64,7 @@ export default async function PublicBookingRoster({
   if (!booking) notFound();
   const b = booking as Booking;
 
-  const [{ data: attendance }, { data: courtsData }, identities] =
+  const [{ data: attendance }, { data: courtsData }, identities, inviteIndex] =
     await Promise.all([
       db
         .from("booking_attendance")
@@ -77,6 +78,7 @@ export default async function PublicBookingRoster({
         .eq("booking_id", bookingId)
         .order("created_at"),
       loadLinkedIdentities(),
+      loadInviteIndex(db),
     ]);
 
   type Row = BookingAttendance & {
@@ -275,9 +277,14 @@ export default async function PublicBookingRoster({
           emptyTitle="No player matches your search"
           items={roster.map((r) => {
             const face = playerFace(r.player_id, r.players, identities);
+            const invited = inviteLineFromIndex(
+              r.player_id,
+              inviteIndex,
+              identities,
+            );
             return {
               key: r.id,
-              search: face.name,
+              search: `${face.name} ${invited ?? ""}`,
               node: (
                 <Link
                   key={r.id}
@@ -289,7 +296,7 @@ export default async function PublicBookingRoster({
                       name={face.name}
                       verified={face.verified}
                       avatarUrl={face.avatarUrl}
-                      subtitle="Tap to RSVP on your page"
+                      subtitle={invited ?? "Tap to RSVP on your page"}
                     />
                   </div>
                   <StatusBadge status={r.response_status} size="md" />

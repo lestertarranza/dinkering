@@ -17,6 +17,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatPhMobile } from "@/lib/phone";
 import { playerFullName } from "@/lib/account-fields";
+import { inviteLine, recordFromRow } from "@/lib/player-invite";
 import { approveRequest, rejectRequest } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -121,6 +122,11 @@ export default async function ApprovalsPage({
                         upcoming games.
                       </p>
                     )}
+                    {inviteLine(recordFromRow(r), r.invited_by_name) ? (
+                      <p className="mt-1 text-sm text-slate-600">
+                        {inviteLine(recordFromRow(r), r.invited_by_name)}
+                      </p>
+                    ) : null}
                     {r.note ? (
                       <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
                         {r.note}
