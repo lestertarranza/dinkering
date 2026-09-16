@@ -1,7 +1,8 @@
 /**
  * One-off: retarget EXP-026..029 (Aug 14–Sep 5, 2026 pickleball Team Expenses)
- * onto the Pickleballs club item pot without voiding ledger rows, so FIFO
- * collected vs unpaid stays the same.
+ * onto the Pickleballs club item as fundraising. Player shares stay as
+ * collected vs unpaid. Does not record a pot purchase; those rows were a fund
+ * before Club items existed. Buyer wallet credits stay as they were.
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "fs";
@@ -120,35 +121,19 @@ for (const exp of expenses ?? []) {
     if (uErr) fail(`Ledger share ${old.id}`, uErr.message);
   }
 
-  const { data: spend, error: sErr } = await db
-    .from("club_fund_entries")
-    .insert({
-      fund_id: FUND_ID,
-      kind: "spend",
-      amount,
-      entry_date: exp.purchase_date,
-      description: desc,
-      paid_by_player_id: exp.paid_by_player_id,
-      paid_by_group_id: exp.paid_by_group_id,
-      team_expense_id: exp.id,
-    })
-    .select("id")
-    .single();
-  if (sErr || !spend) fail(`Spend ${code}`, sErr?.message);
-
   const { error: cErr } = await db
     .from("ledger_entries")
     .update({
       source_type: "club_fund_credit",
-      source_id: spend.id,
-      description: `Club purchase · ${desc} (Pickleballs)`,
+      source_id: allocate.id,
+      description: `Pickleballs reimbursement · ${desc} (${code})`,
     })
     .eq("source_type", "team_expense_credit")
     .eq("source_id", exp.id)
     .eq("voided", false);
   if (cErr) fail(`Ledger credit ${code}`, cErr.message);
 
-  const note = `Converted to Pickleballs club item ${new Date().toISOString().slice(0, 10)}.`;
+  const note = `Converted to Pickleballs club item (in pot) ${new Date().toISOString().slice(0, 10)}.`;
   const { error: rErr } = await db
     .from("team_expenses")
     .update({
