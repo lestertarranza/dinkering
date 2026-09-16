@@ -29,9 +29,11 @@ const mobileLinks = [
 export function AdminNav({
   email,
   pendingCount = 0,
+  playerToken = null,
 }: {
   email: string | null;
   pendingCount?: number;
+  playerToken?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -87,6 +89,24 @@ export function AdminNav({
               ) : null}
             </Link>
           ))}
+          {playerToken ? (
+            <>
+              <Link
+                href={`/p/${playerToken}`}
+                onClick={() => setOpen(false)}
+                className="flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                <span>🏓</span> My player page
+              </Link>
+              <Link
+                href="/account"
+                onClick={() => setOpen(false)}
+                className="flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                <span>👤</span> Account
+              </Link>
+            </>
+          ) : null}
           <button
             onClick={signOut}
             className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
@@ -127,6 +147,22 @@ export function AdminNav({
         </nav>
         <div className="border-t border-slate-200 p-3">
           <p className="truncate px-3 pb-2 text-xs text-slate-400">{email}</p>
+          {playerToken ? (
+            <div className="mb-1 space-y-1">
+              <Link
+                href={`/p/${playerToken}`}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                <span>🏓</span> My player page
+              </Link>
+              <Link
+                href="/account"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                <span>👤</span> Account
+              </Link>
+            </div>
+          ) : null}
           <button
             onClick={signOut}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"

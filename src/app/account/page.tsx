@@ -13,18 +13,20 @@ export const dynamic = "force-dynamic";
 export default async function AccountPage() {
   const ctx = await getAuthContext();
   if (!ctx.user) redirect("/login?next=/account");
-  if (ctx.profile?.role === "admin") redirect("/admin");
-  if (ctx.pendingRequest) redirect("/pending");
-  if (!ctx.profile?.player_id || !ctx.playerToken) redirect("/register");
+  if (ctx.pendingRequest && !ctx.profile?.player_id) redirect("/pending");
+  if (!ctx.profile?.player_id || !ctx.playerToken || !ctx.user) {
+    redirect(ctx.profile?.role === "admin" ? "/admin" : "/register");
+  }
 
   const p = ctx.profile;
+  const isAdmin = p.role === "admin";
 
   return (
     <main className="mx-auto max-w-md px-4 py-10">
       <div className="mb-6 text-center">
         <h1 className="text-xl font-semibold text-slate-900">My account</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Phone and photo are used so the admin can recognize you.
+          Phone and photo on this login.
         </p>
       </div>
       <Card className="p-6">
@@ -86,6 +88,11 @@ export default async function AccountPage() {
         <Link href={`/p/${ctx.playerToken}`} className={buttonClass("secondary")}>
           My player page
         </Link>
+        {isAdmin ? (
+          <Link href="/admin" className={buttonClass("secondary")}>
+            Dashboard
+          </Link>
+        ) : null}
         <SignOutButton />
       </div>
     </main>

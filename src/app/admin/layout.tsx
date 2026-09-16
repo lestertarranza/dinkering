@@ -22,7 +22,11 @@ export default async function AdminLayout({
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <AdminNav email={ctx.user.email ?? null} pendingCount={pendingCount} />
+      <AdminNav
+        email={ctx.user.email ?? null}
+        pendingCount={pendingCount}
+        playerToken={ctx.playerToken}
+      />
       <AdminHotkeys />
       <main className="flex-1 overflow-x-hidden px-4 py-5 pb-24 sm:px-6 lg:px-8 md:pb-5">
         <div className="mx-auto max-w-6xl">{children}</div>

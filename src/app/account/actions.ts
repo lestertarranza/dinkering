@@ -10,8 +10,8 @@ export async function saveAccount(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getAuthContext();
-  if (!ctx.user || ctx.profile?.role !== "player" || !ctx.profile.player_id) {
-    return actionErr("Sign in with an approved player account to edit this.");
+  if (!ctx.user || !ctx.profile?.player_id) {
+    return actionErr("Sign in with a linked player account to edit this.");
   }
   const first_name = String(formData.get("first_name") || "").trim();
   const last_name = String(formData.get("last_name") || "").trim();
