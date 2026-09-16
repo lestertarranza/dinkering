@@ -18,7 +18,7 @@ export default async function ClaimByTokenPage({
 }) {
   const { token } = await params;
   const ctx = await getAuthContext();
-  if (ctx.profile?.role !== "admin" && ctx.profile?.player_id) redirect("/me");
+  if (ctx.profile?.player_id) redirect("/me");
   if (ctx.profile?.role !== "admin" && ctx.pendingRequest) redirect("/pending");
 
   const db = createAdminClient();
@@ -43,7 +43,7 @@ export default async function ClaimByTokenPage({
       subtitle={`Claim ${p.display_name?.trim() || p.name}. The admin will confirm it is you.`}
     >
       {ctx.profile?.role === "admin" ? (
-        <SignedInAsAdminNotice stayHref={`/claim/${token}`} />
+        <SignedInAsAdminNotice stayHref={`/claim/${token}`} mode="claim" />
       ) : null}
       {!ctx.accountsReady ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -71,6 +71,11 @@ export default async function ClaimByTokenPage({
             }}
             defaultEmail={ctx.user?.email ?? undefined}
             needPassword={!ctx.user}
+            submitLabel={
+              ctx.profile?.role === "admin"
+                ? "Link this name to my login"
+                : "Submit claim"
+            }
           />
         </div>
       )}

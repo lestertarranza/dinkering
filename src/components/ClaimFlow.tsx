@@ -12,10 +12,12 @@ export function ClaimFlow({
   preset,
   defaultEmail,
   needPassword,
+  submitLabel = "Submit claim",
 }: {
   preset?: { id: string; name: string; display_name: string | null };
   defaultEmail?: string;
   needPassword: boolean;
+  submitLabel?: string;
 }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<ClaimSearchHit[]>([]);
@@ -51,7 +53,7 @@ export function ClaimFlow({
           playerLabel={publicPlayerLabel(selected)}
           defaultEmail={defaultEmail}
           needPassword={needPassword}
-          submitLabel="Submit claim"
+          submitLabel={submitLabel}
         />
       </div>
     );

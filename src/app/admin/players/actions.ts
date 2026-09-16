@@ -10,6 +10,7 @@ import { resolveWalletOwner, round2 } from "@/lib/ledger";
 import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
 import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
+import { attachPlayerToExistingUser } from "@/lib/accounts";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -531,4 +532,27 @@ export async function deletePlayer(
   await supabase.from("players").delete().eq("id", id);
   revalidatePath("/admin/players");
   redirect("/admin/players");
+}
+
+export async function linkPlayerToMyLogin(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = String(formData.get("id") || "");
+  if (!id) return actionErr("Missing player.");
+  const { user } = await requireAdmin();
+  const result = await attachPlayerToExistingUser({
+    userId: user.id,
+    playerId: id,
+    email: user.email ?? "",
+    first_name: String(formData.get("first_name") || "").trim(),
+    last_name: String(formData.get("last_name") || "").trim(),
+    phone: null,
+    avatar_url: null,
+    reviewer: user,
+    note: "Linked from admin player page",
+  });
+  if (!result.ok) return actionErr(result.error);
+  revalidatePath(`/admin/players/${id}`);
+  return actionOk("This player is now linked to your login. You are still an admin.");
 }

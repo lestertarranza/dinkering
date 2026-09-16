@@ -38,6 +38,7 @@ import {
   removeFromGroup,
   addManualAdjustment,
   deletePlayer,
+  linkPlayerToMyLogin,
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -361,10 +362,28 @@ export default async function PlayerDetail({
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-500">
-                Unclaimed. The player can set up a login from their private page
-                or from /claim.
-              </p>
+              <div className="space-y-3">
+                <p className="text-sm text-slate-500">
+                  Unclaimed. The player can set up a login from their private page
+                  or from /claim. You can also attach this name to your admin
+                  login.
+                </p>
+                <ConfirmButton
+                  action={linkPlayerToMyLogin}
+                  message="Link this player to your admin login? You keep admin access. Same email, no second account."
+                  variant="secondary"
+                  hidden={{
+                    id: p.id,
+                    first_name: (p.name.trim().split(/\s+/)[0] ?? p.name).slice(
+                      0,
+                      80,
+                    ),
+                    last_name: p.name.trim().split(/\s+/).slice(1).join(" "),
+                  }}
+                >
+                  Link to my login
+                </ConfirmButton>
+              </div>
             )}
           </Card>
           {/* Edit */}

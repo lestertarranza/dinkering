@@ -24,7 +24,9 @@ import type {
   UserProfile,
 } from "@/lib/types";
 
-export type AccountFormResult = { ok: true } | { ok: false; error: string };
+export type AccountFormResult =
+  | { ok: true; playerToken?: string }
+  | { ok: false; error: string };
 
 function uniqueViolation(error: { code?: string; message?: string } | null): boolean {
   return error?.code === "23505";
@@ -132,6 +134,104 @@ export function validateIdentity(opts: {
   return null;
 }
 
+export async function attachPlayerToExistingUser(opts: {
+  userId: string;
+  playerId: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  avatar_url: string | null;
+  reviewer: User;
+  note?: string;
+}): Promise<AccountFormResult> {
+  const admin = createAdminClient();
+  const { data: player } = await admin
+    .from("players")
+    .select("id, public_token, active_status")
+    .eq("id", opts.playerId)
+    .maybeSingle();
+  if (!player || player.active_status === "archived") {
+    return { ok: false, error: "That player name is not available." };
+  }
+
+  const { data: linked } = await admin
+    .from("user_profiles")
+    .select("id")
+    .eq("player_id", opts.playerId)
+    .maybeSingle();
+  if (linked && linked.id !== opts.userId) {
+    return { ok: false, error: "That name already has a login." };
+  }
+
+  const { data: profile } = await admin
+    .from("user_profiles")
+    .select("id, role, player_id, phone, avatar_url, first_name, last_name")
+    .eq("id", opts.userId)
+    .maybeSingle();
+  if (!profile) {
+    return { ok: false, error: "Could not find this login." };
+  }
+  if (profile.player_id && profile.player_id !== opts.playerId) {
+    return { ok: false, error: "This login is already linked to a different player." };
+  }
+
+  if (opts.phone && (await phoneInUse(opts.phone, opts.userId))) {
+    return {
+      ok: false,
+      error: "This mobile number is already in use on another account.",
+    };
+  }
+
+  const { error: linkErr } = await admin
+    .from("user_profiles")
+    .update({
+      player_id: opts.playerId,
+      first_name: opts.first_name || profile.first_name,
+      last_name: opts.last_name || profile.last_name,
+      phone: opts.phone || profile.phone,
+      avatar_url: opts.avatar_url || profile.avatar_url,
+    })
+    .eq("id", opts.userId);
+  if (linkErr) {
+    if (uniqueViolation(linkErr)) {
+      return {
+        ok: false,
+        error: "Phone or player is already linked to another login.",
+      };
+    }
+    return { ok: false, error: "Could not link the login." };
+  }
+
+  await admin.from("account_requests").insert({
+    kind: "claim",
+    status: "approved",
+    auth_user_id: opts.userId,
+    email: opts.email,
+    phone: opts.phone || profile.phone || "-",
+    first_name: opts.first_name || profile.first_name || "",
+    last_name: opts.last_name || profile.last_name || "",
+    avatar_url: opts.avatar_url || profile.avatar_url,
+    claimed_player_id: opts.playerId,
+    note: opts.note || "Linked existing login",
+    reviewed_by: opts.reviewer.id,
+    reviewed_at: new Date().toISOString(),
+  });
+
+  await logAdminAction(admin, opts.reviewer, {
+    entityType: "player",
+    entityId: opts.playerId,
+    action: `Linked login to player: ${opts.email}`,
+    details: opts.phone ? formatPhMobile(opts.phone) : null,
+  });
+
+  revalidatePath("/admin/approvals");
+  revalidatePath("/admin/players");
+  revalidatePath(`/admin/players/${opts.playerId}`);
+  revalidatePath("/claim");
+  return { ok: true, playerToken: player.public_token as string };
+}
+
 export async function submitAccountRequest(opts: {
   kind: AccountRequestKind;
   userId: string;
@@ -208,7 +308,11 @@ export async function submitAccountRequest(opts: {
     .eq("id", opts.userId)
     .maybeSingle();
   if (profile?.role === "admin") {
-    return { ok: false, error: "Admins already have a login." };
+    return {
+      ok: false,
+      error:
+        "This admin login can claim a name immediately. Stay signed in and use Claim, or link it from the player page in admin.",
+    };
   }
   if (profile?.player_id) {
     return { ok: false, error: "This login is already linked to a player." };
@@ -482,7 +586,6 @@ export async function approveAccountRequest(
   const { error: linkErr } = await admin
     .from("user_profiles")
     .update({
-      role: "player",
       player_id: playerId,
       first_name: req.first_name,
       last_name: req.last_name,

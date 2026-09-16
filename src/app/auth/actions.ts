@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext } from "@/lib/auth";
 import {
+  attachPlayerToExistingUser,
   parseIdentityFields,
   searchClaimPlayers as searchPlayers,
   submitAccountRequest,
@@ -48,7 +49,8 @@ async function ensureUser(opts: {
     const msg = (error?.message ?? "").toLowerCase();
     if (msg.includes("already")) {
       return {
-        error: "This email already has an account. Sign in, then try again.",
+        error:
+          "This email already has an account. Sign in with it, then claim your name. Do not create a second login.",
       };
     }
     return { error: "Could not create the login. Try again." };
@@ -121,13 +123,10 @@ export async function submitClaim(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await getAuthContext();
-  if (ctx.profile?.role === "admin") {
-    return actionErr("Admins already have a login.");
-  }
   if (ctx.profile?.player_id) {
     redirect("/me");
   }
-  if (ctx.pendingRequest) {
+  if (ctx.profile?.role !== "admin" && ctx.pendingRequest) {
     redirect("/pending");
   }
   if (!ctx.accountsReady) {
@@ -144,6 +143,24 @@ export async function submitClaim(
   if (!fields.phone) return actionErr("Enter a valid PH mobile number.");
   if (!claimed_player_id) {
     return actionErr("Pick the player name you want to claim.");
+  }
+
+  if (ctx.user && ctx.profile?.role === "admin") {
+    const photo = await uploadAvatar(ctx.user.id, fields.photo);
+    if (photo.error) return actionErr(photo.error);
+    const result = await attachPlayerToExistingUser({
+      userId: ctx.user.id,
+      playerId: claimed_player_id,
+      email: ctx.user.email ?? fields.email,
+      first_name: fields.first_name,
+      last_name: fields.last_name,
+      phone: fields.phone,
+      avatar_url: photo.url,
+      reviewer: ctx.user,
+      note: fields.note,
+    });
+    if (!result.ok) return actionErr(result.error);
+    redirect(result.playerToken ? `/p/${result.playerToken}` : "/admin");
   }
 
   const auth = await ensureUser({
