@@ -564,14 +564,16 @@ export async function searchClaimPlayers(raw: string): Promise<{
       .filter(Boolean),
   );
   return {
-    players: rows
-      .filter((r) => !linkedIds.has(r.id))
-      .map((r) => ({
+    players: rows.map((r) => {
+      const verified = linkedIds.has(r.id);
+      return {
         id: r.id,
         name: r.name,
-        display_name: r.display_name,
+        display_name: verified ? null : r.display_name,
         pending: pendingIds.has(r.id),
-      })),
+        verified,
+      };
+    }),
   };
 }
 

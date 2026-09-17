@@ -47,6 +47,8 @@ export default async function PublicPlayersPage({
     Player,
     "id" | "name" | "display_name" | "public_token"
   >[];
+  const verifiedCount = list.filter((p) => identities.has(p.id)).length;
+  const unverifiedCount = list.length - verifiedCount;
 
   return (
     <>
@@ -55,8 +57,22 @@ export default async function PublicPlayersPage({
         <PublicPageHeader
           icon="🧑"
           title="Players"
-          subtitle="Find your name, tap This is me, and that becomes My page on the bottom bar."
+          subtitle="Find your name. If it is not verified yet, tap This is me to save it as My page."
         />
+
+        {list.length > 0 ? (
+          <p className="mb-4 flex flex-wrap items-center justify-center gap-1.5 text-xs font-medium">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700">
+              {`${list.length} player${list.length === 1 ? "" : "s"}`}
+            </span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">
+              {verifiedCount} verified
+            </span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+              {unverifiedCount} not verified
+            </span>
+          </p>
+        ) : null}
 
         {list.length === 0 ? (
           <EmptyState title="No players yet" />
@@ -89,6 +105,7 @@ export default async function PublicPlayersPage({
                       teamToken={token}
                       goHome
                       compact
+                      verified={face.verified}
                     />
                     <Link
                       href={`/p/${p.public_token}`}
@@ -105,8 +122,9 @@ export default async function PublicPlayersPage({
         )}
 
         <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-          This is me saves your page on this phone. It does not change anyone
-          else&apos;s.
+          This is me is for names that are not verified yet. It saves your page
+          on this phone. Verified names already have a login. Sign in there
+          instead.
         </p>
         <footer className="mt-6 text-center text-sm text-slate-400">
         Shared player list · please don&apos;t post this page publicly

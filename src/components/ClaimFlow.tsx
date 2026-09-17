@@ -29,6 +29,7 @@ export function ClaimFlow({
           name: preset.name,
           display_name: preset.display_name,
           pending: false,
+          verified: false,
         }
       : null,
   );
@@ -95,32 +96,39 @@ export function ClaimFlow({
       ) : null}
       {q.trim().length >= MIN_CLAIM_SEARCH && !pending && hits.length === 0 && !error ? (
         <p className="text-sm text-slate-500">
-          No unclaimed names matched. If you are new, register instead.
+          No names matched. If you are new, register instead.
         </p>
       ) : null}
       <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {hits.map((h) => (
-          <li key={h.id}>
-            <button
-              type="button"
-              disabled={h.pending}
-              onClick={() => {
-                if (h.pending) return;
-                setSelected(h);
-              }}
-              className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <span className="font-medium text-slate-900">
-                {publicPlayerLabel(h)}
-              </span>
-              {h.pending ? (
-                <span className="text-xs text-amber-700">Claim pending</span>
-              ) : (
-                <span className="text-xs text-emerald-700">This is me</span>
-              )}
-            </button>
-          </li>
-        ))}
+        {hits.map((h) => {
+          const taken = h.pending || h.verified;
+          return (
+            <li key={h.id}>
+              <button
+                type="button"
+                disabled={taken}
+                onClick={() => {
+                  if (taken) return;
+                  setSelected(h);
+                }}
+                className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="font-medium text-slate-900">
+                  {publicPlayerLabel(h)}
+                </span>
+                {h.verified ? (
+                  <span className="text-xs font-semibold text-emerald-700">
+                    Verified
+                  </span>
+                ) : h.pending ? (
+                  <span className="text-xs text-amber-700">Claim pending</span>
+                ) : (
+                  <span className="text-xs text-emerald-700">This is me</span>
+                )}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

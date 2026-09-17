@@ -62,11 +62,14 @@ export function SaveAsMyPage({
   teamToken,
   goHome = false,
   compact = false,
+  verified = false,
 }: {
   playerToken: string;
   teamToken?: string | null;
   goHome?: boolean;
   compact?: boolean;
+  /** Claimed names cannot be saved as My page from the shared list. */
+  verified?: boolean;
 }) {
   const router = useRouter();
   const hydrated = useSyncExternalStore(
@@ -76,20 +79,16 @@ export function SaveAsMyPage({
   );
   const saved = useSyncExternalStore(subscribeHome, readPlayerToken, () => null);
   const state = !saved ? "none" : saved === playerToken ? "mine" : "other";
+  const labelClass = compact
+    ? "text-xs font-semibold text-emerald-700"
+    : "text-sm font-semibold text-emerald-700";
 
   if (!hydrated) return null;
   if (state === "mine") {
-    return (
-      <p
-        className={
-          compact
-            ? "text-xs font-semibold text-emerald-700"
-            : "text-sm font-semibold text-emerald-700"
-        }
-      >
-        Saved as My page
-      </p>
-    );
+    return <p className={labelClass}>Saved as My page</p>;
+  }
+  if (verified) {
+    return <p className={labelClass}>Verified</p>;
   }
 
   return (

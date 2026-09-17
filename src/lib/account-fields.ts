@@ -71,4 +71,5 @@ export type ClaimSearchHit = {
   name: string;
   display_name: string | null;
   pending: boolean;
+  verified: boolean;
 };
