@@ -105,15 +105,19 @@ export async function confirmPaymentProof(
     : player_id
       ? await resolveWalletOwner(supabase, player_id, payment_date)
       : null;
-  if (!wallet) return actionErr("Could not resolve wallet.");
+  if (!wallet || (!wallet.player_id && !wallet.player_group_id)) {
+    return actionErr("Could not resolve wallet.");
+  }
   const code = await nextCode(supabase, "payments", "payment_code", "PAY");
+  // Proofs keep both the submitting player and a pooled group. Payments may
+  // have only one payer, so credit the resolved wallet.
   const { data: pay, error: payErr } = await supabase
     .from("payments")
     .insert({
       payment_code: code,
       payment_date,
-      payer_player_id: player_id,
-      payer_group_id: group_id,
+      payer_player_id: wallet.player_id,
+      payer_group_id: wallet.player_group_id,
       amount,
       payment_method: "transfer",
       reference_number: proof.reference_number,
@@ -121,7 +125,14 @@ export async function confirmPaymentProof(
     })
     .select("id")
     .single();
-  if (payErr || !pay?.id) return actionErr(payErr?.message ?? "Could not record payment.");
+  if (payErr || !pay?.id) {
+    const constraint = payErr?.message?.includes("payment_exactly_one_payer");
+    return actionErr(
+      constraint
+        ? "Could not record that payment. The payer must be a player or a group, not both."
+        : (payErr?.message ?? "Could not record payment."),
+    );
+  }
   await supabase.from("ledger_entries").insert({
     entry_date: payment_date,
     player_id: wallet.player_id,
