@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { SignOutButton } from "@/components/SignOutButton";
 import { saveAccount } from "./actions";
 import { formatPhMobile } from "@/lib/phone";
+import { prepareAvatarField } from "@/lib/image-compress";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,12 @@ export default async function AccountPage() {
             className="mx-auto mb-4 h-24 w-24 rounded-full object-cover"
           />
         ) : null}
-        <ActionForm action={saveAccount} className="space-y-4" pendingLabel="Saving…">
+        <ActionForm
+          action={saveAccount}
+          className="space-y-4"
+          pendingLabel="Saving…"
+          prepare={prepareAvatarField}
+        >
           <Field label="First name">
             <input
               name="first_name"
@@ -71,11 +77,11 @@ export default async function AccountPage() {
               className={inputClass}
             />
           </Field>
-          <Field label="Photo (optional)" hint="JPG, PNG, or WebP, up to 2 MB.">
+          <Field label="Photo (optional)" hint="We shrink it on your phone. Skip it if you hit an error.">
             <input
               name="photo"
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
               className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-emerald-800"
             />
           </Field>

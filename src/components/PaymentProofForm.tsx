@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef, useState, type FormEvent } from "react";
 import { submitPaymentProof, type ProofState } from "@/app/p/[token]/proof-actions";
+import { prepareProofField } from "@/lib/image-compress";
 
 export function PaymentProofForm({
   token,
@@ -11,9 +12,40 @@ export function PaymentProofForm({
   owed: number;
 }) {
   const [state, action, pending] = useActionState(submitPaymentProof, null as ProofState);
+  const [prepError, setPrepError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const skipPrepare = useRef(false);
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    if (skipPrepare.current) {
+      skipPrepare.current = false;
+      return;
+    }
+    e.preventDefault();
+    setPrepError(null);
+    setPreparing(true);
+    try {
+      const err = await prepareProofField(e.currentTarget);
+      if (err) {
+        setPrepError(err);
+        return;
+      }
+      skipPrepare.current = true;
+      e.currentTarget.requestSubmit();
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  const busy = pending || preparing;
 
   return (
-    <form action={action} className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+    <form
+      action={action}
+      onSubmit={onSubmit}
+      className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-white p-3"
+      aria-busy={busy}
+    >
       <input type="hidden" name="token" value={token} />
       <p className="text-sm font-semibold text-slate-800">Send payment proof</p>
       <p className="text-xs text-slate-500">
@@ -49,11 +81,16 @@ export function PaymentProofForm({
       </div>
       <button
         type="submit"
-        disabled={pending}
+        disabled={busy}
         className="min-h-11 w-full rounded-lg bg-emerald-600 text-sm font-semibold text-white disabled:opacity-60"
       >
-        {pending ? "Uploading…" : "Upload proof"}
+        {preparing ? "Preparing photo…" : pending ? "Uploading…" : "Upload proof"}
       </button>
+      {prepError ? (
+        <p className="text-sm text-rose-700" role="status">
+          {prepError}
+        </p>
+      ) : null}
       {state ? (
         <p
           className={`text-sm ${state.ok ? "text-emerald-700" : "text-rose-700"}`}

@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { InviteSelect } from "@/components/InviteSelect";
 import type { FormAction } from "@/lib/action-state";
 import { MIN_PASSWORD_LENGTH } from "@/lib/account-fields";
+import { prepareAvatarField } from "@/lib/image-compress";
 
 export function AccountRequestForm({
   action,
@@ -28,7 +29,12 @@ export function AccountRequestForm({
   inviteOptions?: { id: string; label: string }[];
 }) {
   return (
-    <ActionForm action={action} className="space-y-4" pendingLabel="Submitting…">
+    <ActionForm
+      action={action}
+      className="space-y-4"
+      pendingLabel="Submitting…"
+      prepare={prepareAvatarField}
+    >
       {playerId ? <input type="hidden" name="player_id" value={playerId} /> : null}
       {kind === "claim" && playerLabel ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -108,12 +114,12 @@ export function AccountRequestForm({
       )}
       <Field
         label="Photo (optional)"
-        hint="JPG, PNG, or WebP, up to 2 MB."
+        hint="We shrink it on your phone. Skip it if you hit an error."
       >
         <input
           name="photo"
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
           className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-emerald-800"
         />
       </Field>
