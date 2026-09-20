@@ -13,9 +13,28 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dinkering Pickleball Team Manager",
+  metadataBase: new URL("https://dinkering.lestertarranza.com"),
+  title: {
+    default: "Dinkering Pickleball",
+    template: "%s · Dinkering",
+  },
   description:
-    "Ledger-based team manager for pickleball court bookings, attendance, payments, and shared expenses.",
+    "Court bookings, RSVP, payments, and shared expenses for the Dinkering pickleball team.",
+  applicationName: "Dinkering",
+  openGraph: {
+    type: "website",
+    locale: "en_PH",
+    siteName: "Dinkering Pickleball",
+    title: "Dinkering Pickleball",
+    description:
+      "Court bookings, RSVP, payments, and shared expenses for the Dinkering pickleball team.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Dinkering Pickleball",
+    description:
+      "Court bookings, RSVP, payments, and shared expenses for the Dinkering pickleball team.",
+  },
 };
 
 export default function RootLayout({

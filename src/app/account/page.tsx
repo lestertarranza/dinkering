@@ -1,13 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthContext } from "@/lib/auth";
-import { ActionForm } from "@/components/ActionForm";
-import { Field, inputClass, buttonClass, Card } from "@/components/ui";
-import { SubmitButton } from "@/components/SubmitButton";
+import { buttonClass, Card } from "@/components/ui";
 import { SignOutButton } from "@/components/SignOutButton";
-import { saveAccount } from "./actions";
 import { formatPhMobile } from "@/lib/phone";
-import { prepareAvatarField } from "@/lib/image-compress";
+import { AccountSettingsForm } from "./AccountSettingsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -31,64 +28,13 @@ export default async function AccountPage() {
         </p>
       </div>
       <Card className="p-6">
-        {p.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={p.avatar_url}
-            alt=""
-            className="mx-auto mb-4 h-24 w-24 rounded-full object-cover"
-          />
-        ) : null}
-        <ActionForm
-          action={saveAccount}
-          className="space-y-4"
-          pendingLabel="Saving…"
-          prepare={prepareAvatarField}
-        >
-          <Field label="First name">
-            <input
-              name="first_name"
-              required
-              defaultValue={p.first_name}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Last name">
-            <input
-              name="last_name"
-              required
-              defaultValue={p.last_name}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Email">
-            <input
-              value={ctx.user.email ?? ""}
-              readOnly
-              className={`${inputClass} bg-slate-50 text-slate-500`}
-            />
-          </Field>
-          <Field label="Mobile number" hint="PH mobile, like 0917 123 4567.">
-            <input
-              name="phone"
-              type="tel"
-              required
-              defaultValue={formatPhMobile(p.phone)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Photo (optional)" hint="We shrink it on your phone. Skip it if you hit an error.">
-            <input
-              name="photo"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-emerald-800"
-            />
-          </Field>
-          <SubmitButton className="w-full" pendingLabel="Saving…">
-            Save
-          </SubmitButton>
-        </ActionForm>
+        <AccountSettingsForm
+          firstName={p.first_name}
+          lastName={p.last_name}
+          email={ctx.user.email ?? ""}
+          phone={formatPhMobile(p.phone)}
+          avatarUrl={p.avatar_url}
+        />
       </Card>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <Link href={`/p/${ctx.playerToken}`} className={buttonClass("secondary")}>
