@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/ui";
 import { validatePublicTeamToken } from "@/lib/public-links";
 import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
+import { getAuthContext } from "@/lib/auth";
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
@@ -33,7 +34,7 @@ export default async function PublicPlayersPage({
   const db = createAdminClient();
   if (!(await validatePublicTeamToken(db, token))) notFound();
 
-  const [{ data: players }, identities, inviteIndex] = await Promise.all([
+  const [{ data: players }, identities, inviteIndex, auth] = await Promise.all([
     db
       .from("players")
       .select("id, name, display_name, public_token, active_status")
@@ -41,6 +42,7 @@ export default async function PublicPlayersPage({
       .order("name"),
     loadLinkedIdentities(),
     loadInviteIndex(db),
+    getAuthContext(),
   ]);
 
   const list = (players ?? []) as Pick<
@@ -106,6 +108,7 @@ export default async function PublicPlayersPage({
                       goHome
                       compact
                       verified={face.verified}
+                      owned={auth.profile?.player_id === p.id}
                     />
                     <Link
                       href={`/p/${p.public_token}`}
@@ -123,8 +126,8 @@ export default async function PublicPlayersPage({
 
         <p className={`mt-4 px-1 text-center ${publicHintText}`}>
           This is me is for names that are not verified yet. It saves your page
-          on this phone. Verified names already have a login. Sign in there
-          instead.
+          on this phone. Verified names already have a login. If that name is
+          yours, tap Go to My Profile.
         </p>
         <footer className="mt-6 text-center text-sm text-slate-400">
         Shared player list · please don&apos;t post this page publicly

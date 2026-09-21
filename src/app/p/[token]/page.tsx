@@ -441,7 +441,12 @@ export default async function PlayerPortal({
 
   return (
     <>
-    <RememberPublicTokens playerToken={token} teamToken={teamToken} />
+    <RememberPublicTokens
+      playerToken={token}
+      teamToken={teamToken}
+      claimPlayer={auth.profile?.player_id === p.id}
+      skipPlayer={face.verified && auth.profile?.player_id !== p.id}
+    />
     <main className={publicMainClass}>
       <ScrollToHash />
       <div className="mb-3 flex justify-end">
@@ -471,9 +476,11 @@ export default async function PlayerPortal({
           <p className={`mt-1 ${publicMetaText}`}>{invited}</p>
         ) : null}
         <p className={`mt-0.5 ${publicMetaText}`}>Dinkering Pickleball</p>
-        <div className="mt-3 flex justify-center">
-          <SaveAsMyPage playerToken={token} teamToken={teamToken} />
-        </div>
+        {face.verified ? null : (
+          <div className="mt-3 flex justify-center">
+            <SaveAsMyPage playerToken={token} teamToken={teamToken} />
+          </div>
+        )}
       </header>
 
       {auth.profile?.player_id === p.id ? (

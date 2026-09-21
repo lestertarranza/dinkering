@@ -29,15 +29,16 @@ export function rememberPublicTokens(opts: {
   teamToken?: string | null;
   /** Overwrite an already-saved My page. */
   claimPlayer?: boolean;
+  /** Do not bookmark this player (claimed names that are not yours). */
+  skipPlayer?: boolean;
 }) {
   if (typeof window === "undefined") return;
   if (opts.teamToken) localStorage.setItem(TEAM_TOKEN_KEY, opts.teamToken);
-  if (opts.playerToken) {
-    const existing = localStorage.getItem(PLAYER_TOKEN_KEY);
-    if (opts.claimPlayer || !existing) {
-      localStorage.setItem(PLAYER_TOKEN_KEY, opts.playerToken);
-      window.dispatchEvent(new Event("dinkering-home"));
-    }
+  if (opts.skipPlayer || !opts.playerToken) return;
+  const existing = localStorage.getItem(PLAYER_TOKEN_KEY);
+  if (opts.claimPlayer || !existing) {
+    localStorage.setItem(PLAYER_TOKEN_KEY, opts.playerToken);
+    window.dispatchEvent(new Event("dinkering-home"));
   }
 }
 
@@ -45,14 +46,16 @@ export function RememberPublicTokens({
   playerToken,
   teamToken,
   claimPlayer = false,
+  skipPlayer = false,
 }: {
   playerToken?: string | null;
   teamToken?: string | null;
   claimPlayer?: boolean;
+  skipPlayer?: boolean;
 }) {
   useEffect(() => {
-    rememberPublicTokens({ playerToken, teamToken, claimPlayer });
-  }, [playerToken, teamToken, claimPlayer]);
+    rememberPublicTokens({ playerToken, teamToken, claimPlayer, skipPlayer });
+  }, [playerToken, teamToken, claimPlayer, skipPlayer]);
   return null;
 }
 
@@ -63,6 +66,7 @@ export function SaveAsMyPage({
   goHome = false,
   compact = false,
   verified = false,
+  owned = false,
 }: {
   playerToken: string;
   teamToken?: string | null;
@@ -70,6 +74,8 @@ export function SaveAsMyPage({
   compact?: boolean;
   /** Claimed names cannot be saved as My page from the shared list. */
   verified?: boolean;
+  /** Signed-in player who already claimed this name. */
+  owned?: boolean;
 }) {
   const router = useRouter();
   const hydrated = useSyncExternalStore(
@@ -78,17 +84,32 @@ export function SaveAsMyPage({
     () => false,
   );
   const saved = useSyncExternalStore(subscribeHome, readPlayerToken, () => null);
-  const state = !saved ? "none" : saved === playerToken ? "mine" : "other";
+  const mine = owned || saved === playerToken;
   const labelClass = compact
     ? "text-xs font-semibold text-emerald-700"
     : "text-sm font-semibold text-emerald-700";
+  const profileHref = `/p/${playerToken}`;
 
   if (!hydrated) return null;
-  if (state === "mine") {
-    return <p className={labelClass}>Saved as My page</p>;
-  }
   if (verified) {
+    if (mine) {
+      return (
+        <Link
+          href={profileHref}
+          className={
+            compact
+              ? "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
+              : "inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+          }
+        >
+          Go to My Profile
+        </Link>
+      );
+    }
     return <p className={labelClass}>Verified</p>;
+  }
+  if (mine) {
+    return <p className={labelClass}>Saved as My page</p>;
   }
 
   return (
@@ -100,7 +121,7 @@ export function SaveAsMyPage({
           teamToken,
           claimPlayer: true,
         });
-        if (goHome) router.push(`/p/${playerToken}`);
+        if (goHome) router.push(profileHref);
       }}
       className={
         compact
