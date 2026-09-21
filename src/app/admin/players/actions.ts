@@ -13,6 +13,7 @@ import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
 import { attachPlayerToExistingUser } from "@/lib/accounts";
 import { parseInviteChoice } from "@/lib/player-invite";
 import { isMissingRelation } from "@/lib/account-fields";
+import { revalidateClubFundCash } from "@/lib/cache-tags";
 import type { ActiveStatus, AdjustmentType } from "@/lib/types";
 
 /**
@@ -63,6 +64,7 @@ export async function addManualAdjustment(
     debit_amount: type === "charge" ? amount : 0,
     credit_amount: type === "credit" ? amount : 0,
   });
+  revalidateClubFundCash();
 
   if (player_id) revalidatePath(`/admin/players/${player_id}`);
   if (player_group_id) revalidatePath(`/admin/groups/${player_group_id}`);
@@ -200,6 +202,7 @@ async function executeTransfer(
     credit_amount: 0,
   });
 
+  revalidateClubFundCash();
   revalidatePath(`/admin/players/${sourcePlayerId}`);
   revalidatePath(`/admin/players/${targetPlayerId}`);
   revalidatePath(`/admin/players/${sourcePlayerId}/transfer`);

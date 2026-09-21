@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PendingLink } from "@/components/PendingLink";
 
 const links = [
   { href: "/admin", label: "Dashboard", icon: "📊" },
@@ -70,9 +71,10 @@ export function AdminNav({
       {open ? (
         <nav className="border-b border-slate-200 bg-white px-2 py-2 md:hidden">
           {links.map((l) => (
-            <Link
+            <PendingLink
               key={l.href}
               href={l.href}
+              busyLabel="Loading…"
               onClick={() => setOpen(false)}
               className={`flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
                 isActive(l.href)
@@ -87,24 +89,26 @@ export function AdminNav({
                   {pendingCount}
                 </span>
               ) : null}
-            </Link>
+            </PendingLink>
           ))}
           {playerToken ? (
             <>
-              <Link
+              <PendingLink
                 href={`/p/${playerToken}`}
+                busyLabel="Opening your page…"
                 onClick={() => setOpen(false)}
                 className="flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
                 <span>🏓</span> My player page
-              </Link>
-              <Link
+              </PendingLink>
+              <PendingLink
                 href="/account"
+                busyLabel="Loading…"
                 onClick={() => setOpen(false)}
                 className="flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
                 <span>👤</span> Account
-              </Link>
+              </PendingLink>
             </>
           ) : null}
           <button
@@ -126,9 +130,10 @@ export function AdminNav({
         </Link>
         <nav className="flex-1 space-y-1 px-3">
           {links.map((l) => (
-            <Link
+            <PendingLink
               key={l.href}
               href={l.href}
+              busyLabel="Loading…"
               className={`flex min-h-11 touch-manipulation items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
                 isActive(l.href)
                   ? "bg-emerald-50 text-emerald-700"
@@ -142,25 +147,27 @@ export function AdminNav({
                   {pendingCount}
                 </span>
               ) : null}
-            </Link>
+            </PendingLink>
           ))}
         </nav>
         <div className="border-t border-slate-200 p-3">
           <p className="truncate px-3 pb-2 text-xs text-slate-400">{email}</p>
           {playerToken ? (
             <div className="mb-1 space-y-1">
-              <Link
+              <PendingLink
                 href={`/p/${playerToken}`}
+                busyLabel="Opening your page…"
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
                 <span>🏓</span> My player page
-              </Link>
-              <Link
+              </PendingLink>
+              <PendingLink
                 href="/account"
+                busyLabel="Loading…"
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
               >
                 <span>👤</span> Account
-              </Link>
+              </PendingLink>
             </div>
           ) : null}
           <button
@@ -177,9 +184,10 @@ export function AdminNav({
         aria-label="Admin"
       >
         {mobileLinks.map((l) => (
-          <Link
+          <PendingLink
             key={l.href}
             href={l.href}
+            busyLabel="Loading…"
             className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${
               isActive(l.href) ? "text-emerald-700" : "text-slate-500"
             }`}
@@ -188,7 +196,7 @@ export function AdminNav({
               {l.icon}
             </span>
             {l.label}
-          </Link>
+          </PendingLink>
         ))}
         <button
           type="button"

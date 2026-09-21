@@ -7,6 +7,7 @@ import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { round2 } from "@/lib/ledger";
 import { SETTLE_TOLERANCE } from "@/lib/format";
 import type { GroupType } from "@/lib/types";
+import { revalidateClubFundCash } from "@/lib/cache-tags";
 
 export async function createGroup(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
@@ -243,6 +244,7 @@ export async function pullMemberBalances(
 
   revalidatePath(`/admin/groups/${player_group_id}`);
   revalidatePath("/admin");
+  revalidateClubFundCash();
   if (pulled === 0) {
     return actionOk("No individual balances to pull — members are already at zero.");
   }

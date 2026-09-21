@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/ui";
@@ -9,18 +8,14 @@ import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
   PublicPageHeader,
-  PlayerNameLine,
-  publicTapRowClass,
-  publicChevronClass,
   publicHintText,
   publicMainClass,
 } from "@/components/public-ui";
 import {
   PublicBottomNav,
   RememberPublicTokens,
-  SaveAsMyPage,
 } from "@/components/PublicBottomNav";
-import { PublicSearchList } from "@/components/PublicSearchList";
+import { PlayerDirectory } from "@/components/PlayerDirectory";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -79,46 +74,20 @@ export default async function PublicPlayersPage({
         {list.length === 0 ? (
           <EmptyState title="No players yet" />
         ) : (
-          <PublicSearchList
-            placeholder="Search your name…"
-            emptyTitle="No player matches your search"
-            minToShowSearch={8}
-            items={list.map((p) => {
+          <PlayerDirectory
+            teamToken={token}
+            rows={list.map((p) => {
               const face = playerFace(p.id, p, identities);
               const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
               return {
-                key: p.id,
-                search: `${face.name} ${invited ?? ""}`,
-                node: (
-                  <div className={`${publicTapRowClass}`}>
-                    <Link
-                      href={`/p/${p.public_token}`}
-                      className="min-w-0 flex-1"
-                    >
-                      <PlayerNameLine
-                        name={face.name}
-                        verified={face.verified}
-                        avatarUrl={face.avatarUrl}
-                        subtitle={invited ?? "Open page"}
-                      />
-                    </Link>
-                    <SaveAsMyPage
-                      playerToken={p.public_token}
-                      teamToken={token}
-                      goHome
-                      compact
-                      verified={face.verified}
-                      owned={auth.profile?.player_id === p.id}
-                    />
-                    <Link
-                      href={`/p/${p.public_token}`}
-                      className={publicChevronClass}
-                      aria-hidden
-                    >
-                      ›
-                    </Link>
-                  </div>
-                ),
+                id: p.id,
+                name: face.name,
+                subtitle: invited ?? "Open page",
+                href: `/p/${p.public_token}`,
+                playerToken: p.public_token,
+                verified: face.verified,
+                owned: auth.profile?.player_id === p.id,
+                avatarUrl: face.avatarUrl,
               };
             })}
           />

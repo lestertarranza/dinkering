@@ -1,5 +1,3 @@
-import Link from "next/link";
-import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/ui";
@@ -10,16 +8,12 @@ import {
 } from "@/components/TeamBalanceBoard";
 import { formatMoney, describeBalance, formatDate } from "@/lib/format";
 import { validatePublicTeamToken } from "@/lib/public-links";
-import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
+import { loadCachedClubFundCashSummaries } from "@/lib/club-fund-cash";
 import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import {
   PublicPageHeader,
-  PlayerAvatar,
-  PlayerChip,
-  publicTapRowClass,
-  publicChevronClass,
   publicPrimaryText,
   publicHintText,
 } from "@/components/public-ui";
@@ -30,74 +24,6 @@ import {
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-function BalanceRow({
-  href,
-  name,
-  subtitle,
-  tone,
-  amount,
-  avatarUrl,
-  verified,
-  avatars,
-}: {
-  href: string;
-  name: string;
-  subtitle?: string;
-  tone: "collect" | "credit" | "settled";
-  amount: number;
-  avatarUrl?: string | null;
-  verified?: boolean;
-  avatars?: { name: string; src?: string | null; verified?: boolean }[];
-}) {
-  const color =
-    tone === "collect"
-      ? "text-rose-700"
-      : tone === "credit"
-        ? "text-emerald-700"
-        : "text-slate-400";
-  return (
-    <Link href={href} className={publicTapRowClass}>
-      {avatars && avatars.length > 0 ? (
-        <span className="flex shrink-0 -space-x-2">
-          {avatars.slice(0, 3).map((a, i) => (
-            <PlayerChip
-              key={`${a.name}-${i}`}
-              name={a.name}
-              src={a.src}
-              size="sm"
-              verified={a.verified}
-              nested
-            />
-          ))}
-        </span>
-      ) : (
-        <PlayerAvatar
-          name={name}
-          src={avatarUrl}
-          size="sm"
-          verified={verified}
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <span className={`block truncate text-[15px] ${publicPrimaryText}`}>
-          {name}
-        </span>
-        {subtitle ? (
-          <p className={`truncate text-xs ${publicHintText}`}>{subtitle}</p>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5 text-right">
-        <p className={`text-base font-bold ${color}`}>
-          {tone === "settled" ? "—" : formatMoney(amount)}
-        </p>
-        <span className={publicChevronClass} aria-hidden>
-          ›
-        </span>
-      </div>
-    </Link>
-  );
-}
 
 export default async function TeamBoard({
   params,
@@ -117,6 +43,9 @@ export default async function TeamBoard({
     { data: memberships },
     identities,
     inviteIndex,
+    { byFund: clubCashByFund },
+    { data: clubFunds },
+    { data: clubPurchases },
   ] = await Promise.all([
     db
       .from("players")
@@ -136,16 +65,12 @@ export default async function TeamBoard({
       .is("end_date", null),
     loadLinkedIdentities(),
     loadInviteIndex(db),
-  ]);
-
-  const [{ data: clubFunds }, { byFund: clubCashByFund }, { data: clubPurchases }] =
-    await Promise.all([
+    loadCachedClubFundCashSummaries(),
     db
       .from("club_item_funds")
       .select("id, name, status")
       .eq("status", "active")
       .order("name"),
-    loadClubFundCashSummaries(db),
     db
       .from("club_fund_entries")
       .select(
@@ -188,15 +113,7 @@ export default async function TeamBoard({
     membersByGroup.set(m.player_group_id, list);
   }
 
-  type Entry = {
-    key: string;
-    search: string;
-    bucket: BalanceBucket;
-    amount: number;
-    name: string;
-    node: ReactNode;
-  };
-  const entries: Entry[] = [];
+  const entries: BalanceItem[] = [];
 
   const bucketOf = (tone: "collect" | "credit" | "settled"): BalanceBucket =>
     tone === "collect" ? "owe" : tone === "credit" ? "credit" : "settled";
@@ -230,22 +147,16 @@ export default async function TeamBoard({
       key: `g:${g.id}`,
       search: `${g.name} ${memberNames.join(" ")}`,
       bucket: bucketOf(d.tone),
-      amount: d.amount,
+      href: `/g/${g.public_token}`,
       name: g.name,
-      node: (
-        <BalanceRow
-          href={`/g/${g.public_token}`}
-          name={g.name}
-          subtitle={subtitle}
-          tone={d.tone}
-          amount={d.amount}
-          avatars={memberFaces.map((f) => ({
-            name: f.name,
-            src: f.avatarUrl,
-            verified: f.verified,
-          }))}
-        />
-      ),
+      subtitle,
+      tone: d.tone,
+      amount: d.amount,
+      avatars: memberFaces.map((f) => ({
+        name: f.name,
+        src: f.avatarUrl,
+        verified: f.verified,
+      })),
     });
   }
 
@@ -260,24 +171,18 @@ export default async function TeamBoard({
       key: `p:${p.id}`,
       search: `${face.name} ${invited ?? ""}`,
       bucket: bucketOf(d.tone),
-      amount: d.amount,
+      href: `/p/${p.public_token}`,
       name: face.name,
-      node: (
-        <BalanceRow
-          href={`/p/${p.public_token}`}
-          name={face.name}
-          subtitle={invited ?? undefined}
-          tone={d.tone}
-          amount={d.amount}
-          avatarUrl={face.avatarUrl}
-          verified={face.verified}
-        />
-      ),
+      subtitle: invited ?? undefined,
+      tone: d.tone,
+      amount: d.amount,
+      avatarUrl: face.avatarUrl,
+      verified: face.verified,
     });
   }
 
   // Within each column, biggest balances first; settled alphabetical.
-  const bucketRank = (e: Entry) =>
+  const bucketRank = (e: BalanceItem) =>
     e.bucket === "owe" ? 0 : e.bucket === "credit" ? 1 : 2;
   entries.sort((a, b) => {
     if (a.bucket !== b.bucket) return bucketRank(a) - bucketRank(b);
@@ -285,12 +190,7 @@ export default async function TeamBoard({
     return b.amount - a.amount;
   });
 
-  const items: BalanceItem[] = entries.map((e) => ({
-    key: e.key,
-    search: e.search,
-    bucket: e.bucket,
-    node: e.node,
-  }));
+  const items = entries;
 
   const totals = {
     owed: entries

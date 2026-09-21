@@ -12,6 +12,7 @@ import {
   resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
+import { revalidateClubFundCash } from "@/lib/cache-tags";
 import { inEqualCourtSplit, lateCancelPlayerIds } from "@/lib/attendance";
 import {
   admitWaitlistedPlayers,
@@ -661,6 +662,7 @@ export async function markBookingSharePaid(
     debit_amount: 0,
     credit_amount: amount,
   });
+  revalidateClubFundCash();
 
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin/payments");

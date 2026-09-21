@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, EmptyState } from "@/components/ui";
@@ -24,6 +23,7 @@ import {
   PublicBottomNav,
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
+import { PendingLink } from "@/components/PendingLink";
 import type { Booking } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -149,8 +149,9 @@ export default async function PublicSchedule({
                 key={b.id}
                 className="overflow-hidden transition-all duration-150 hover:border-emerald-300 hover:shadow-md"
               >
-                <Link
+                <PendingLink
                   href={`/schedule/${token}/${b.id}`}
+                  busyLabel="Opening game…"
                   className="block touch-manipulation p-4 transition-colors active:bg-emerald-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-500"
                 >
                   <div className="flex items-start gap-4">
@@ -235,7 +236,7 @@ export default async function PublicSchedule({
                       <CapacityBar going={going} totalMax={totalMax} />
                     </div>
                   ) : null}
-                </Link>
+                </PendingLink>
 
                 {/* Confirmation links rendered OUTSIDE the tappable Link */}
                 {urls.length > 0 ? (

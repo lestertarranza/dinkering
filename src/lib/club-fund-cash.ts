@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { unstable_cache } from "next/cache";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { round2 } from "@/lib/ledger";
 import { fetchAllRows, chunk } from "@/lib/paginate";
 import { computeClubFundShareRemaining } from "@/lib/payment-allocation";
@@ -6,6 +8,9 @@ import {
   withFundCashAvailable,
   type ClubFundCashParts,
 } from "@/lib/club-funds";
+import { CLUB_FUND_CASH_TAG, revalidateClubFundCash } from "@/lib/cache-tags";
+
+export { revalidateClubFundCash };
 
 export type ClubFundCashSummary = ClubFundCashParts & { available: number };
 
@@ -268,4 +273,29 @@ export async function remainingCashForFund(
 ): Promise<number> {
   const { byFund } = await loadClubFundCashSummaries(db, [fundId]);
   return byFund.get(fundId)?.available ?? 0;
+}
+
+const readCachedClubFundCash = unstable_cache(
+  async () => {
+    const db = createAdminClient();
+    const { byFund, byEntry } = await loadClubFundCashSummaries(db);
+    return {
+      funds: Array.from(byFund.entries()),
+      entries: Array.from(byEntry.entries()),
+    };
+  },
+  ["club-fund-cash-summaries-v1"],
+  { revalidate: 60, tags: [CLUB_FUND_CASH_TAG] },
+);
+
+/** Public board / dashboard: reuse a 60s snapshot instead of FIFO-scanning every visit. */
+export async function loadCachedClubFundCashSummaries(): Promise<{
+  byFund: Map<string, ClubFundCashSummary>;
+  byEntry: Map<string, ClubFundEntryCash>;
+}> {
+  const data = await readCachedClubFundCash();
+  return {
+    byFund: new Map(data.funds),
+    byEntry: new Map(data.entries),
+  };
 }

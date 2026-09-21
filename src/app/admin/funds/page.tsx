@@ -10,7 +10,7 @@ import {
 } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatMoney, SETTLE_TOLERANCE } from "@/lib/format";
-import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
+import { loadCachedClubFundCashSummaries } from "@/lib/club-fund-cash";
 import type { ClubItemFund } from "@/lib/types";
 import { createFund } from "./actions";
 
@@ -20,7 +20,7 @@ export default async function ClubFundsPage() {
   const supabase = await createClient();
   const [{ data: funds }, { byFund }] = await Promise.all([
     supabase.from("club_item_funds").select("*").order("name"),
-    loadClubFundCashSummaries(supabase),
+    loadCachedClubFundCashSummaries(),
   ]);
 
   const list = ((funds ?? []) as ClubItemFund[]).map((f) => ({

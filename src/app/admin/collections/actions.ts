@@ -6,6 +6,7 @@ import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { nextCode, resolveWalletOwner } from "@/lib/ledger";
 import { formatMoney } from "@/lib/format";
 import { logAdminAction } from "@/lib/activity-log";
+import { revalidateClubFundCash } from "@/lib/club-fund-cash";
 
 export async function updateGcashNumber(
   _prev: ActionState,
@@ -153,6 +154,7 @@ export async function confirmPaymentProof(
     action: `Confirmed payment proof ${code}`,
     details: formatMoney(amount),
   });
+  revalidateClubFundCash();
   revalidatePath("/admin/collections");
   revalidatePath("/admin/payments");
   revalidatePath("/admin");

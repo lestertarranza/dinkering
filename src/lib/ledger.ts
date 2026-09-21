@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SourceType } from "./types";
+import { revalidateClubFundCash } from "@/lib/cache-tags";
 
 type DB = SupabaseClient;
 
@@ -127,6 +128,7 @@ export async function voidLedgerForSource(
     .eq("source_type", sourceType)
     .eq("source_id", sourceId)
     .eq("voided", false);
+  revalidateClubFundCash();
 }
 
 export interface LedgerEntryInput {
@@ -154,6 +156,7 @@ export async function postLedgerEntries(db: DB, entries: LedgerEntryInput[]) {
   }));
   const { error } = await db.from("ledger_entries").insert(rows);
   if (error) throw error;
+  revalidateClubFundCash();
 }
 
 /** Round to 2 decimal places to avoid floating point drift in money math. */

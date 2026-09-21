@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
-import Link from "next/link";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { PageBusyOverlay, PendingLink } from "@/components/PendingLink";
 
 export const PLAYER_TOKEN_KEY = "dinkering-player-token";
 const TEAM_TOKEN_KEY = "dinkering-team-token";
@@ -78,6 +78,7 @@ export function SaveAsMyPage({
   owned?: boolean;
 }) {
   const router = useRouter();
+  const [opening, setOpening] = useState(false);
   const hydrated = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -94,8 +95,9 @@ export function SaveAsMyPage({
   if (verified) {
     if (mine) {
       return (
-        <Link
+        <PendingLink
           href={profileHref}
+          busyLabel="Opening your page…"
           className={
             compact
               ? "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
@@ -103,7 +105,7 @@ export function SaveAsMyPage({
           }
         >
           Go to My Profile
-        </Link>
+        </PendingLink>
       );
     }
     return <p className={labelClass}>Verified</p>;
@@ -113,6 +115,7 @@ export function SaveAsMyPage({
   }
 
   return (
+    <>
     <button
       type="button"
       onClick={() => {
@@ -121,7 +124,10 @@ export function SaveAsMyPage({
           teamToken,
           claimPlayer: true,
         });
-        if (goHome) router.push(profileHref);
+        if (goHome) {
+          setOpening(true);
+          router.push(profileHref);
+        }
       }}
       className={
         compact
@@ -131,6 +137,8 @@ export function SaveAsMyPage({
     >
       This is me
     </button>
+    <PageBusyOverlay show={opening} label="Opening your page…" />
+    </>
   );
 }
 
@@ -169,8 +177,9 @@ export function PublicBottomNav({
             pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <li key={item.href} className="flex-1">
-              <Link
+              <PendingLink
                 href={item.href}
+                busyLabel={`Opening ${item.label}…`}
                 className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs font-semibold ${
                   active ? "text-emerald-700" : "text-slate-500"
                 }`}
@@ -179,7 +188,7 @@ export function PublicBottomNav({
                   {item.icon}
                 </span>
                 {item.label}
-              </Link>
+              </PendingLink>
             </li>
           );
         })}

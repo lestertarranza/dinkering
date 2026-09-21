@@ -1,27 +1,33 @@
 "use client";
 
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
+import { PlayerAvatar, PlayerChip } from "@/components/PlayerChip";
+import {
+  publicChevronClass,
+  publicHintText,
+  publicPrimaryText,
+  publicTapRowClass,
+} from "@/components/public-ui";
+import { PendingLink } from "@/components/PendingLink";
 
 export type BalanceBucket = "owe" | "credit" | "settled";
 
 export type BalanceItem = {
-  /** Stable React key. */
   key: string;
-  /** Lowercased-on-compare text this row matches against (name + members). */
   search: string;
-  /** Which column this entry belongs in. */
   bucket: BalanceBucket;
-  /** The already-rendered row (a Link element). */
-  node: ReactNode;
+  href: string;
+  name: string;
+  subtitle?: string;
+  tone: "collect" | "credit" | "settled";
+  amount: number;
+  avatarUrl?: string | null;
+  verified?: boolean;
+  avatars?: { name: string; src?: string | null; verified?: boolean }[];
 };
 
-/**
- * Two-column team balances board with a name filter. Credits on the left, folks
- * who owe on the right (they stack into a single column on mobile). Settled
- * entries fall into a full-width section beneath so everyone stays findable.
- */
 export function TeamBalanceBoard({
   items,
   minToShowSearch = 8,
@@ -47,7 +53,7 @@ export function TeamBalanceBoard({
 
   return (
     <>
-        {items.length >= minToShowSearch ? (
+      {items.length >= minToShowSearch ? (
         <div className="mb-3">
           <input
             type="search"
@@ -63,10 +69,10 @@ export function TeamBalanceBoard({
 
       {totals ? (
         <div className="mb-3 flex flex-wrap justify-center gap-1.5">
-          <span className="inline-flex items-center rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-800 ring-1 ring-rose-200">
+          <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-800 ring-1 ring-rose-200">
             Total owed {formatMoney(totals.owed)}
           </span>
-          <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
             {formatMoney(totals.credit)} in credit
           </span>
         </div>
@@ -133,10 +139,66 @@ function BalanceColumn({
       ) : (
         <Card className="divide-y divide-slate-100 overflow-visible">
           {items.map((i) => (
-            <Fragment key={i.key}>{i.node}</Fragment>
+            <Fragment key={i.key}>
+              <BalanceRow item={i} />
+            </Fragment>
           ))}
         </Card>
       )}
     </section>
+  );
+}
+
+function BalanceRow({ item }: { item: BalanceItem }) {
+  const color =
+    item.tone === "collect"
+      ? "text-rose-700"
+      : item.tone === "credit"
+        ? "text-emerald-700"
+        : "text-slate-400";
+  return (
+    <PendingLink
+      href={item.href}
+      busyLabel="Opening page…"
+      className={publicTapRowClass}
+    >
+      {item.avatars && item.avatars.length > 0 ? (
+        <span className="flex shrink-0 -space-x-2">
+          {item.avatars.slice(0, 3).map((a, i) => (
+            <PlayerChip
+              key={`${a.name}-${i}`}
+              name={a.name}
+              src={a.src}
+              size="sm"
+              verified={a.verified}
+              nested
+            />
+          ))}
+        </span>
+      ) : (
+        <PlayerAvatar
+          name={item.name}
+          src={item.avatarUrl}
+          size="sm"
+          verified={item.verified}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <span className={`block truncate text-[15px] ${publicPrimaryText}`}>
+          {item.name}
+        </span>
+        {item.subtitle ? (
+          <p className={`truncate text-xs ${publicHintText}`}>{item.subtitle}</p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5 text-right">
+        <p className={`text-base font-bold ${color}`}>
+          {item.tone === "settled" ? "—" : formatMoney(item.amount)}
+        </p>
+        <span className={publicChevronClass} aria-hidden>
+          ›
+        </span>
+      </div>
+    </PendingLink>
   );
 }

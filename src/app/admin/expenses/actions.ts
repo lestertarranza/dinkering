@@ -12,6 +12,7 @@ import {
   resolveWalletOwner,
 } from "@/lib/ledger";
 import { rebuildExpenseSharesAtomic } from "@/lib/ledger-rpc";
+import { revalidateClubFundCash } from "@/lib/cache-tags";
 import type { SplitMethod, TeamExpense } from "@/lib/types";
 
 const chargeable = new Set(["attended", "late_cancel", "guest"]);
@@ -359,6 +360,7 @@ export async function markExpenseSharePaid(
     debit_amount: 0,
     credit_amount: amount,
   });
+  revalidateClubFundCash();
 
   revalidatePath(`/admin/expenses/${expense_id}`);
   revalidatePath("/admin/payments");

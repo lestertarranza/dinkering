@@ -13,9 +13,10 @@ import {
   voidLedgerForSource,
   type LedgerEntryInput,
 } from "@/lib/ledger";
-import { remainingCashForFund } from "@/lib/club-fund-cash";
+import { remainingCashForFund, revalidateClubFundCash } from "@/lib/club-fund-cash";
 
 function revalidateFunds(id?: string, bookingId?: string | null) {
+  revalidateClubFundCash();
   revalidatePath("/admin/funds");
   revalidatePath("/admin");
   revalidatePath("/admin/collections");

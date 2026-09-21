@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink } from "@/components/PendingLink";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, StatusBadge, EmptyState } from "@/components/ui";
@@ -19,7 +19,7 @@ import {
 } from "@/lib/court-format";
 import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
 import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
-import { getOpenCharges } from "@/lib/payment-allocation";
+import { openChargesFromLedger, type LedgerRow } from "@/lib/payment-allocation";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { HowToPay, BalancePlainSummary } from "@/components/HowToPay";
 import { AddToCalendar } from "@/components/AddToCalendar";
@@ -47,9 +47,10 @@ import {
 import { fetchActivity } from "@/lib/activity-log";
 import type {
   Booking,
-  BookingAttendance,
   LedgerEntry,
   Player,
+  ResponseStatus,
+  ActualStatus,
 } from "@/lib/types";
 import { RsvpForm } from "./RsvpForm";
 import { ScrollToHash } from "@/components/ScrollToHash";
@@ -58,6 +59,7 @@ import {
   RememberPublicTokens,
   SaveAsMyPage,
 } from "@/components/PublicBottomNav";
+import { fetchAllRows } from "@/lib/paginate";
 import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
@@ -76,6 +78,9 @@ const STATEMENT_LABELS: Record<string, string> = {
 export const dynamic = "force-dynamic";
 
 const LEDGER_PAGE_SIZE = 10;
+const HISTORY_KEEP = 15;
+const LEDGER_COLS =
+  "id, entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, voided, player_id, player_group_id";
 
 export default async function PlayerPortal({
   params,
@@ -118,16 +123,27 @@ export default async function PlayerPortal({
   let groupWalletBalance: number | null = null; // null = player not in a pooled group
   let personalWalletBalance = 0;
   let ledger: LedgerEntry[] = [];
+  let groupLedgerRows: LedgerEntry[] = [];
+  let personalLedgerRows: LedgerEntry[] = [];
+
+  const loadWalletLedger = (column: "player_id" | "player_group_id", id: string) =>
+    fetchAllRows<LedgerEntry>((from, to) =>
+      db
+        .from("ledger_entries")
+        .select(LEDGER_COLS)
+        .eq(column, id)
+        .order("entry_date")
+        .order("created_at")
+        .order("id")
+        .range(from, to),
+    );
 
   if (pooled) {
-    // Fetch balances, both ledgers, and this player's source-record IDs in parallel.
-    // The source IDs let us filter the group ledger to only entries that belong to
-    // this specific player (not the whole group).
     const [
       { data: gb },
       { data: pb },
-      { data: gl },
-      { data: pl },
+      gl,
+      pl,
       { data: myBookingShares },
       { data: myExpenseShares },
       { data: myPayments },
@@ -146,16 +162,8 @@ export default async function PlayerPortal({
         .select("balance")
         .eq("player_id", p.id)
         .single(),
-      db
-        .from("ledger_entries")
-        .select("*")
-        .eq("player_group_id", pooled.player_group_id)
-        .order("entry_date"),
-      db
-        .from("ledger_entries")
-        .select("*")
-        .eq("player_id", p.id)
-        .order("entry_date"),
+      loadWalletLedger("player_group_id", pooled.player_group_id),
+      loadWalletLedger("player_id", p.id),
       db.from("booking_shares").select("id").eq("player_id", p.id),
       db.from("team_expense_shares").select("id").eq("player_id", p.id),
       db.from("payments").select("id").eq("payer_player_id", p.id),
@@ -165,12 +173,12 @@ export default async function PlayerPortal({
       db.from("club_fund_entries").select("id").eq("paid_by_player_id", p.id).eq("kind", "spend"),
     ]);
 
-    // Keep wallets separate for display; combine for ledger running-balance math.
     groupWalletBalance = Number(gb?.balance ?? 0);
     personalWalletBalance = Number(pb?.balance ?? 0);
     balance = groupWalletBalance + personalWalletBalance;
+    groupLedgerRows = gl;
+    personalLedgerRows = pl;
 
-    // Build lookup sets per source type
     const bookingShareIds = new Set(
       (myBookingShares ?? []).map((r) => r.id as string),
     );
@@ -193,8 +201,7 @@ export default async function PlayerPortal({
       (myFundPurchases ?? []).map((r) => r.id as string),
     );
 
-    // Keep only group entries that belong to this player
-    const playerGroupEntries = ((gl ?? []) as LedgerEntry[]).filter((e) => {
+    const playerGroupEntries = gl.filter((e) => {
       if (!e.source_id) return false;
       switch (e.source_type) {
         case "booking_share":
@@ -216,13 +223,9 @@ export default async function PlayerPortal({
       }
     });
 
-    // Merge with personal ledger (pre-group history), dedup by id
     const seen = new Set<string>();
     const merged: LedgerEntry[] = [];
-    for (const row of [
-      ...playerGroupEntries,
-      ...((pl ?? []) as LedgerEntry[]),
-    ]) {
+    for (const row of [...playerGroupEntries, ...pl]) {
       if (!seen.has(row.id)) {
         seen.add(row.id);
         merged.push(row);
@@ -230,107 +233,154 @@ export default async function PlayerPortal({
     }
     ledger = merged;
   } else {
-    const [{ data: pb }, { data: pl }] = await Promise.all([
+    const [{ data: pb }, pl] = await Promise.all([
       db
         .from("player_balances")
         .select("balance")
         .eq("player_id", p.id)
         .single(),
-      db
-        .from("ledger_entries")
-        .select("*")
-        .eq("player_id", p.id)
-        .order("entry_date"),
+      loadWalletLedger("player_id", p.id),
     ]);
     personalWalletBalance = Number(pb?.balance ?? 0);
     balance = personalWalletBalance;
-    ledger = (pl ?? []) as LedgerEntry[];
+    personalLedgerRows = pl;
+    ledger = pl;
   }
 
-  // Enrich expense-share entries with expense description + who paid —
-  // applies for both pooled and non-pooled players.
   type ExpShareMeta = {
     expenseCode: string | null;
     expenseDesc: string;
     paidByName: string | null;
   };
   const expShareMeta = new Map<string, ExpShareMeta>();
-  const expShareIds = ledger
-    .filter((e) => e.source_type === "team_expense_share" && e.source_id)
-    .map((e) => e.source_id as string);
-  if (expShareIds.length > 0) {
-    const { data: ess } = await db
-      .from("team_expense_shares")
+
+  const [
+    { data: attendance },
+    playerActivity,
+    auth,
+    playerLink,
+    identities,
+    inviteIndex,
+    { data: settings },
+    appUrl,
+  ] = await Promise.all([
+    db
+      .from("booking_attendance")
       .select(
-        "id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
+        "id, booking_id, player_id, response_status, actual_status, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, confirmation_urls)",
       )
-      .in("id", expShareIds);
-    for (const s of (ess ?? []) as unknown as {
-      id: string;
-      team_expenses: {
-        expense_code: string | null;
-        description: string;
-        players: { name: string } | null;
-        player_groups: { name: string } | null;
-      } | null;
-    }[]) {
-      expShareMeta.set(s.id, {
-        expenseCode: s.team_expenses?.expense_code ?? null,
-        expenseDesc: s.team_expenses?.description ?? "Team expense",
-        paidByName:
-          s.team_expenses?.players?.name ??
-          s.team_expenses?.player_groups?.name ??
-          null,
-      });
-    }
-  }
+      .eq("player_id", p.id),
+    fetchActivity(db, "player", p.id, 25),
+    getAuthContext(),
+    getPlayerLink(p.id),
+    loadLinkedIdentities(),
+    loadInviteIndex(db),
+    db
+      .from("app_settings")
+      .select("roster_token, roster_public, gcash_number, bank_transfer_details")
+      .single(),
+    getAppBaseUrl(),
+  ]);
 
-  const { data: attendance } = await db
-    .from("booking_attendance")
-    .select(
-      "*, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, confirmation_urls)",
-    )
-    .eq("player_id", p.id);
-
-  type AttRow = BookingAttendance & { bookings: Booking };
-  const att = (attendance ?? []) as AttRow[];
+  type AttRow = {
+    id: string;
+    booking_id: string;
+    player_id: string;
+    response_status: ResponseStatus;
+    actual_status: ActualStatus | null;
+    bookings: Booking;
+  };
+  const att = (attendance ?? []) as unknown as AttRow[];
   const upcoming = att
     .filter((a) => a.bookings && a.bookings.play_date >= today &&
       (a.bookings.status === "booked" || a.bookings.status === "for_booking"))
     .sort((a, b) => a.bookings.play_date.localeCompare(b.bookings.play_date));
-  const history = att
+  const historyAll = att
     .filter((a) => a.bookings && !(a.bookings.play_date >= today &&
       (a.bookings.status === "booked" || a.bookings.status === "for_booking")))
     .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
+  const history = historyAll.slice(0, HISTORY_KEEP);
 
-  // Fetch booking notes + capacity + court data separately (avoids field-name clash).
   const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
   const bookingNotesMap = new Map<string, string>();
-  // bookingId → { totalCap, goingCount } (0 cap = unlimited)
   const bookingCapMap = new Map<string, { totalCap: number; goingCount: number }>();
-  // bookingId → raw court rows (for merged display)
   type DisplayCourt = { court_number: string | null; start_time: string | null; end_time: string | null; max_players: number };
   const bookingCourtsMap = new Map<string, DisplayCourt[]>();
   let goingWaitRows: Awaited<ReturnType<typeof fetchGoingAndWaitlist>> = [];
 
-  if (upcomingBookingIds.length > 0) {
-    const [{ data: notesRows }, { data: courtRows }, gw] = await Promise.all([
-      db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
-      db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
-      fetchGoingAndWaitlist(db, upcomingBookingIds),
-    ]);
-    goingWaitRows = gw;
+  const orderedLedger = [...ledger].sort((a, b) => {
+    const byDate = a.entry_date.localeCompare(b.entry_date);
+    return byDate !== 0 ? byDate : a.created_at.localeCompare(b.created_at);
+  });
+  let runningBalance = 0;
+  const fullStatement: { entry: LedgerEntry; running: number }[] = [];
+  for (const e of orderedLedger) {
+    if (!e.voided)
+      runningBalance += Number(e.debit_amount) - Number(e.credit_amount);
+    fullStatement.push({ entry: e, running: runningBalance });
+  }
+  fullStatement.reverse();
 
-    // Build notes map
-    for (const row of (notesRows ?? []) as { id: string; notes: string | null }[]) {
+  const totalLedger = fullStatement.length;
+  const totalLedgerPages = Math.max(1, Math.ceil(totalLedger / LEDGER_PAGE_SIZE));
+  const ledgerFrom = (lpage - 1) * LEDGER_PAGE_SIZE;
+  const statement = fullStatement.slice(ledgerFrom, ledgerFrom + LEDGER_PAGE_SIZE);
+  const statementEntries = statement.map((s) => s.entry);
+
+  const historyIds = history.map((h) => h.booking_id);
+  const expShareIds = statementEntries
+    .filter((e) => e.source_type === "team_expense_share" && e.source_id)
+    .map((e) => e.source_id as string);
+
+  const [notesCourtsGoing, histShareRes, ledgerContext, transferItemMap, ess] =
+    await Promise.all([
+      upcomingBookingIds.length > 0
+        ? Promise.all([
+            db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
+            db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
+            fetchGoingAndWaitlist(db, upcomingBookingIds),
+          ])
+        : Promise.resolve([
+            { data: [] as { id: string; notes: string | null }[] },
+            { data: [] as DisplayCourt[] },
+            [] as Awaited<ReturnType<typeof fetchGoingAndWaitlist>>,
+          ] as const),
+      historyIds.length > 0
+        ? db
+            .from("booking_shares")
+            .select("booking_id, amount_owed, player_id, player_group_id")
+            .in("booking_id", historyIds)
+        : Promise.resolve({ data: [] as { booking_id: string; amount_owed: number; player_id: string | null; player_group_id: string | null }[] }),
+      buildLedgerBookingContext(db, statementEntries),
+      buildTransferItemEnrichment(db, statementEntries),
+      expShareIds.length > 0
+        ? db
+            .from("team_expense_shares")
+            .select(
+              "id, team_expenses(expense_code, description, players:paid_by_player_id(name), player_groups:paid_by_group_id(name))",
+            )
+            .in("id", expShareIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+  if (upcomingBookingIds.length > 0) {
+    const [{ data: notesRows }, { data: courtRows }, gw] = notesCourtsGoing as [
+      { data: { id: string; notes: string | null }[] | null },
+      { data: (DisplayCourt & { booking_id: string })[] | null },
+      Awaited<ReturnType<typeof fetchGoingAndWaitlist>>,
+    ];
+    goingWaitRows = gw;
+    for (const row of notesRows ?? []) {
       if (row.notes) bookingNotesMap.set(row.id, row.notes);
     }
-
-    // Build capacity + courts map
-    type CourtRow = DisplayCourt & { booking_id: string };
-    for (const c of (courtRows ?? []) as CourtRow[]) {
+    for (const c of courtRows ?? []) {
       const list = bookingCourtsMap.get(c.booking_id) ?? [];
-      list.push({ court_number: c.court_number, start_time: c.start_time, end_time: c.end_time, max_players: c.max_players });
+      list.push({
+        court_number: c.court_number,
+        start_time: c.start_time,
+        end_time: c.end_time,
+        max_players: c.max_players,
+      });
       bookingCourtsMap.set(c.booking_id, list);
     }
     const goingByBooking = new Map<string, number>();
@@ -346,16 +396,25 @@ export default async function PlayerPortal({
     }
   }
 
-  const historyIds = history.map((h) => h.booking_id);
-  const [playerActivity, histShareRes] = await Promise.all([
-    fetchActivity(db, "player", p.id, 25),
-    historyIds.length > 0
-      ? db
-          .from("booking_shares")
-          .select("booking_id, amount_owed, player_id, player_group_id")
-          .in("booking_id", historyIds)
-      : Promise.resolve({ data: [] as { booking_id: string; amount_owed: number; player_id: string | null; player_group_id: string | null }[] }),
-  ]);
+  for (const s of (ess.data ?? []) as unknown as {
+    id: string;
+    team_expenses: {
+      expense_code: string | null;
+      description: string;
+      players: { name: string } | null;
+      player_groups: { name: string } | null;
+    } | null;
+  }[]) {
+    expShareMeta.set(s.id, {
+      expenseCode: s.team_expenses?.expense_code ?? null,
+      expenseDesc: s.team_expenses?.description ?? "Team expense",
+      paidByName:
+        s.team_expenses?.players?.name ??
+        s.team_expenses?.player_groups?.name ??
+        null,
+    });
+  }
+
   const promotedCodes = new Set(
     playerActivity
       .filter((row) => row.action.includes("Waitlist → Going"))
@@ -379,63 +438,37 @@ export default async function PlayerPortal({
   }
 
   const d = describeBalance(balance);
-  const [ledgerContext, transferItemMap, auth, playerLink, identities, inviteIndex] =
-    await Promise.all([
-      buildLedgerBookingContext(db, ledger),
-      buildTransferItemEnrichment(db, ledger),
-      getAuthContext(),
-      getPlayerLink(p.id),
-      loadLinkedIdentities(),
-      loadInviteIndex(db),
-    ]);
   const face = playerFace(p.id, p, identities);
   const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
-
-  const { data: settings } = await db
-    .from("app_settings")
-    .select("roster_token, roster_public, gcash_number, bank_transfer_details")
-    .single();
   const teamToken =
     settings?.roster_public && settings.roster_token
       ? settings.roster_token
       : null;
-  const appUrl = await getAppBaseUrl();
   const payBank = (settings?.bank_transfer_details as string | null) ?? null;
   const payGcash = (settings?.gcash_number as string | null) ?? null;
 
+  const toChargeRows = (rows: LedgerEntry[]): LedgerRow[] =>
+    rows
+      .filter((e) => !e.voided)
+      .map((e) => ({
+        entry_date: e.entry_date,
+        created_at: e.created_at,
+        source_type: e.source_type,
+        source_id: e.source_id,
+        description: e.description,
+        debit_amount: Number(e.debit_amount),
+        credit_amount: Number(e.credit_amount),
+      }));
   const openCharges = pooled
     ? [
-        ...(await getOpenCharges(db, {
-          player_id: null,
-          player_group_id: pooled.player_group_id,
-        })),
-        ...(await getOpenCharges(db, {
-          player_id: p.id,
-          player_group_id: null,
-        })),
+        ...openChargesFromLedger(toChargeRows(groupLedgerRows)),
+        ...openChargesFromLedger(toChargeRows(personalLedgerRows)),
       ]
-    : await getOpenCharges(db, { player_id: p.id, player_group_id: null });
+    : openChargesFromLedger(toChargeRows(personalLedgerRows));
   const openGameCount = openCharges.filter(
     (c) => c.source_type === "booking_share",
   ).length;
 
-  const orderedLedger = [...ledger].sort((a, b) => {
-    const byDate = a.entry_date.localeCompare(b.entry_date);
-    return byDate !== 0 ? byDate : a.created_at.localeCompare(b.created_at);
-  });
-  let runningBalance = 0;
-  const fullStatement: { entry: LedgerEntry; running: number }[] = [];
-  for (const e of orderedLedger) {
-    if (!e.voided)
-      runningBalance += Number(e.debit_amount) - Number(e.credit_amount);
-    fullStatement.push({ entry: e, running: runningBalance });
-  }
-  fullStatement.reverse();
-
-  const totalLedger = fullStatement.length;
-  const totalLedgerPages = Math.max(1, Math.ceil(totalLedger / LEDGER_PAGE_SIZE));
-  const ledgerFrom = (lpage - 1) * LEDGER_PAGE_SIZE;
-  const statement = fullStatement.slice(ledgerFrom, ledgerFrom + LEDGER_PAGE_SIZE);
   const ledgerPageUrl = (n: number) =>
     `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
 
@@ -485,9 +518,9 @@ export default async function PlayerPortal({
 
       {auth.profile?.player_id === p.id ? (
         <p className="mb-4 text-center text-sm">
-          <Link href="/account" className="font-medium text-emerald-700">
+          <PendingLink href="/account" busyLabel="Opening account…" className="font-medium text-emerald-700">
             Account settings
-          </Link>
+          </PendingLink>
         </p>
       ) : playerLink.pendingClaim ? (
         <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
@@ -499,12 +532,13 @@ export default async function PlayerPortal({
         !auth.profile?.player_id &&
         !auth.pendingRequest ? (
         <p className="mb-4 text-center">
-          <Link
+          <PendingLink
             href={`/claim/${token}`}
+            busyLabel="Opening claim…"
             className="inline-flex min-h-11 items-center rounded-lg bg-white px-4 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200"
           >
             Set up my login
-          </Link>
+          </PendingLink>
         </p>
       ) : null}
 
@@ -571,12 +605,13 @@ export default async function PlayerPortal({
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Shared wallet
                 </p>
-                <Link
+                <PendingLink
                   href={`/g/${pooled.player_groups.public_token}`}
+                  busyLabel="Opening group page…"
                   className="mt-0.5 block text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 active:text-emerald-900"
                 >
                   {pooled.player_groups.name}
-                </Link>
+                </PendingLink>
                 <p
                   className={`mt-2 text-2xl font-bold ${
                     dg.tone === "collect"
@@ -1035,23 +1070,25 @@ export default async function PlayerPortal({
               {totalLedgerPages > 1 ? (
                 <div className="flex items-center gap-2 text-sm font-medium">
                   {lpage > 1 ? (
-                    <Link
+                    <PendingLink
                       href={ledgerPageUrl(lpage - 1)}
+                      busyLabel="Loading statement…"
                       className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
                     >
                       ← Newer
-                    </Link>
+                    </PendingLink>
                   ) : null}
                   <span className={publicHintText}>
                     {lpage} / {totalLedgerPages}
                   </span>
                   {lpage < totalLedgerPages ? (
-                    <Link
+                    <PendingLink
                       href={ledgerPageUrl(lpage + 1)}
+                      busyLabel="Loading statement…"
                       className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
                     >
                       Older →
-                    </Link>
+                    </PendingLink>
                   ) : null}
                 </div>
               ) : null}
@@ -1115,6 +1152,11 @@ export default async function PlayerPortal({
             })}
           </Card>
         )}
+        {historyAll.length > HISTORY_KEEP ? (
+          <p className={`mt-2 px-1 text-center ${publicHintText}`}>
+            Showing the latest {HISTORY_KEEP} games ({historyAll.length} total).
+          </p>
+        ) : null}
       </PublicSection>
 
       <footer className="mt-8 text-center text-sm text-slate-400">

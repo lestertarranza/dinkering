@@ -15,7 +15,7 @@ import {
   type LedgerRow,
 } from "@/lib/payment-allocation";
 import { fetchAllRows } from "@/lib/paginate";
-import { loadClubFundCashSummaries } from "@/lib/club-fund-cash";
+import { loadCachedClubFundCashSummaries } from "@/lib/club-fund-cash";
 import type { Payment, Player, PlayerGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -134,7 +134,7 @@ export default async function Dashboard({
       .select("id, name, target_amount, status")
       .eq("status", "active")
       .order("name"),
-    loadClubFundCashSummaries(supabase),
+    loadCachedClubFundCashSummaries(),
   ]);
 
   const playerNameMap = new Map(

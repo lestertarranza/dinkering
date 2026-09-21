@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink } from "@/components/PendingLink";
 import { getAuthContext } from "@/lib/auth";
 import { buttonClass } from "@/components/ui";
 
@@ -21,15 +21,27 @@ export default async function Home() {
         private link, or set up a login so they can sign in on any phone.
       </p>
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-        <Link href={signedInHref} className={buttonClass("primary")}>
+        <PendingLink
+          href={signedInHref}
+          busyLabel={ctx.user ? "Opening your page…" : "Opening sign in…"}
+          className={buttonClass("primary")}
+        >
           {ctx.user ? "Open my page" : "Sign in"}
-        </Link>
-        <Link href="/register" className={buttonClass("secondary")}>
+        </PendingLink>
+        <PendingLink
+          href="/register"
+          busyLabel="Opening register…"
+          className={buttonClass("secondary")}
+        >
           Register
-        </Link>
-        <Link href="/claim" className={buttonClass("secondary")}>
+        </PendingLink>
+        <PendingLink
+          href="/claim"
+          busyLabel="Opening claim…"
+          className={buttonClass("secondary")}
+        >
           Claim my name
-        </Link>
+        </PendingLink>
       </div>
       <p className="mt-10 max-w-md text-xs text-slate-400">
         Private player links still work without a login. Registration is for

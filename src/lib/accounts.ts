@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
@@ -49,9 +50,9 @@ async function syncPlayerRosterName(
   await admin.from("players").update({ name }).eq("id", playerId);
 }
 
-export async function loadLinkedIdentities(): Promise<
+export const loadLinkedIdentities = cache(async (): Promise<
   Map<string, LinkedIdentity>
-> {
+> => {
   const admin = createAdminClient();
   const map = new Map<string, LinkedIdentity>();
   const { data, error } = await admin
@@ -68,7 +69,7 @@ export async function loadLinkedIdentities(): Promise<
     });
   }
   return map;
-}
+});
 
 let inviteColumnsReady: boolean | undefined;
 
@@ -87,27 +88,35 @@ export async function playerInviteColumnsExist(
 export async function loadInviteIndex(
   db: SupabaseClient,
 ): Promise<InviteIndex> {
-  const ready = await playerInviteColumnsExist(db);
-  const cols = ready
-    ? "id, name, display_name, active_status, is_founding_member, invited_by_player_id"
-    : "id, name, display_name, active_status";
-  const { data, error } = (await db
+  const full = await db
     .from("players")
-    .select(cols)
-    .order("name")) as unknown as {
-    data:
-      | {
-          id: string;
-          name: string;
-          display_name: string | null;
-          active_status: string;
-          is_founding_member?: boolean | null;
-          invited_by_player_id?: string | null;
-        }[]
-      | null;
-    error: { message: string } | null;
-  };
-  if (error) return emptyInviteIndex();
+    .select(
+      "id, name, display_name, active_status, is_founding_member, invited_by_player_id",
+    )
+    .order("name");
+  let ready = !full.error;
+  let data = full.data as
+    | {
+        id: string;
+        name: string;
+        display_name: string | null;
+        active_status: string;
+        is_founding_member?: boolean | null;
+        invited_by_player_id?: string | null;
+      }[]
+    | null;
+  if (full.error) {
+    inviteColumnsReady = false;
+    const basic = await db
+      .from("players")
+      .select("id, name, display_name, active_status")
+      .order("name");
+    if (basic.error) return emptyInviteIndex();
+    data = basic.data as typeof data;
+    ready = false;
+  } else {
+    inviteColumnsReady = true;
+  }
   const index: InviteIndex = {
     ready,
     byId: new Map(),

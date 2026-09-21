@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, type ActionState } from "@/lib/action-state";
 import { logAdminAction } from "@/lib/activity-log";
+import { revalidateClubFundCash } from "@/lib/club-fund-cash";
 import {
   nextCode,
   resolveWalletOwner,
@@ -182,6 +183,7 @@ export async function createPayment(
     return { ok: false, message: result.message };
   }
 
+  revalidateClubFundCash();
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
   revalidatePath("/admin/funds");
@@ -274,6 +276,7 @@ export async function createBulkPayment(
       expenseIds.add(line.charge.team_expense_id);
   }
 
+  revalidateClubFundCash();
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
   revalidatePath("/admin/funds");
@@ -315,6 +318,7 @@ export async function reversePayment(
       }`.trim(),
     })
     .eq("id", id);
+  revalidateClubFundCash();
   revalidatePath("/admin/payments");
   revalidatePath("/admin");
   revalidatePath("/admin/funds");

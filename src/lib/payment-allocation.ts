@@ -521,56 +521,10 @@ async function computeShareRemainingForSourceType(
   const remainingByShare = new Map<string, number>();
   if (shareIds.length === 0) return remainingByShare;
 
-  const chargeRows: { player_id: string | null; player_group_id: string | null }[] =
-    [];
-  for (const ids2 of chunk(shareIds, 200)) {
-    const rows = await fetchAllRows<{
-      player_id: string | null;
-      player_group_id: string | null;
-    }>((from, to) =>
-      db
-        .from("ledger_entries")
-        .select("player_id, player_group_id, id")
-        .eq("source_type", sourceType)
-        .eq("voided", false)
-        .gt("debit_amount", 0)
-        .in("source_id", ids2)
-        .order("id")
-        .range(from, to),
-    );
-    chargeRows.push(...rows);
-  }
-
-  const walletPIds = new Set<string>();
-  const walletGIds = new Set<string>();
-  for (const r of chargeRows) {
-    if (r.player_group_id) walletGIds.add(r.player_group_id);
-    else if (r.player_id) walletPIds.add(r.player_id);
-  }
-  if (walletPIds.size === 0 && walletGIds.size === 0) return remainingByShare;
-
-  const [pLedger, gLedger] = await Promise.all([
-    fetchLedgerByOwners(db, "player_id", [...walletPIds]),
-    fetchLedgerByOwners(db, "player_group_id", [...walletGIds]),
-  ]);
-
-  const walletEntries = new Map<string, LedgerRow[]>();
-  for (const row of pLedger as (LedgerRow & { player_id: string })[]) {
-    const key = `p:${row.player_id}`;
-    const list = walletEntries.get(key) ?? [];
-    list.push(row);
-    walletEntries.set(key, list);
-  }
-  for (const row of gLedger as (LedgerRow & {
-    player_group_id: string;
-  })[]) {
-    const key = `g:${row.player_group_id}`;
-    const list = walletEntries.get(key) ?? [];
-    list.push(row);
-    walletEntries.set(key, list);
-  }
-
+  // One paged scan of the whole ledger is cheaper than looking up each
+  // share's wallet and then paging that wallet's history.
   const wanted = new Set(shareIds);
+  const walletEntries = await fetchActiveLedgerByWallet(db);
   const chargesByWallet = batchComputePlayerOpenCharges(walletEntries);
   for (const charges of chargesByWallet.values()) {
     for (const c of charges) {
