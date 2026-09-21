@@ -486,6 +486,7 @@ export async function generateShares(
     );
   }
 
+  revalidateClubFundCash();
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
   const penaltyCount = rows.filter(
@@ -565,6 +566,7 @@ export async function chargeAttendees(
     );
   }
 
+  revalidateClubFundCash();
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
   return actionOk(

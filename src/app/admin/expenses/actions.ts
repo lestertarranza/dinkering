@@ -64,6 +64,7 @@ async function rebuildExpenseShares(
   rows: ShareRow[],
 ) {
   await rebuildExpenseSharesAtomic(db, expense, rows);
+  revalidateClubFundCash();
 }
 
 export async function createExpense(formData: FormData) {
@@ -270,6 +271,7 @@ export async function reverseExpense(
     await voidLedgerForSource(supabase, "team_expense_share", s.id as string);
   }
   await voidLedgerForSource(supabase, "team_expense_credit", id);
+  revalidateClubFundCash();
   await supabase
     .from("team_expenses")
     .update({ status: "reversed" })

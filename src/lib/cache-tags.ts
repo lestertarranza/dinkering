@@ -1,3 +1,4 @@
+import "server-only";
 import { revalidateTag } from "next/cache";
 
 /** Club-item In pot snapshot used by Balances / dashboard. */
