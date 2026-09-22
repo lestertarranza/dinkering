@@ -1,29 +1,24 @@
 import { PendingLink } from "@/components/PendingLink";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Card, StatusBadge, EmptyState } from "@/components/ui";
+import { Card, EmptyState } from "@/components/ui";
 import {
   formatMoney,
   formatDate,
   describeBalance,
-  SETTLE_TOLERANCE,
 } from "@/lib/format";
-import {
-  buildLedgerBookingContext,
-  formatBookingContext,
-} from "@/lib/booking-context";
+import { formatBookingContext, buildLedgerBookingContext } from "@/lib/booking-context";
 import {
   mergeCourts,
   overallCourtTimeRange,
   formatCourtTime,
 } from "@/lib/court-format";
 import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
-import { buildTransferItemEnrichment } from "@/lib/ledger-attribution";
 import { openChargesFromLedger, type LedgerRow } from "@/lib/payment-allocation";
-import { getAppBaseUrl } from "@/lib/app-url";
 import { HowToPay, BalancePlainSummary } from "@/components/HowToPay";
-import { AddToCalendar } from "@/components/AddToCalendar";
 import { UpcomingGamesFilter } from "@/components/UpcomingGamesFilter";
+import { PlayerActivityList } from "@/components/PlayerActivityList";
+import { activityTitle } from "@/lib/player-ledger-copy";
 import {
   PublicSection,
   DateChip,
@@ -31,18 +26,13 @@ import {
   publicPrimaryText,
   publicMetaText,
   publicHintText,
-  MapsLink,
-  GoingNames,
-  WaitlistQueue,
   PlayerAvatar,
 } from "@/components/public-ui";
 import { PaymentProofForm } from "@/components/PaymentProofForm";
 import { AppearanceToggle } from "@/components/AppearanceToggle";
 import {
   fetchGoingAndWaitlist,
-  goingNamesForBooking,
   waitlistPosition,
-  waitlistQueueForBooking,
 } from "@/lib/public-roster";
 import { fetchActivity } from "@/lib/activity-log";
 import type {
@@ -65,20 +55,9 @@ import { getPlayerLink, loadLinkedIdentities, loadInviteIndex } from "@/lib/acco
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 
-const STATEMENT_LABELS: Record<string, string> = {
-  booking_share: "Court",
-  payment: "Payment",
-  team_expense_share: "Team expense",
-  team_expense_credit: "Reimbursement",
-  club_fund_share: "Club item",
-  club_fund_credit: "Club purchase reimbursement",
-  manual_adjustment: "Adjustment",
-};
-
 export const dynamic = "force-dynamic";
 
 const LEDGER_PAGE_SIZE = 10;
-const HISTORY_KEEP = 15;
 const LEDGER_COLS =
   "id, entry_date, created_at, source_type, source_id, description, debit_amount, credit_amount, voided, player_id, player_group_id";
 
@@ -132,6 +111,7 @@ export default async function PlayerPortal({
         .from("ledger_entries")
         .select(LEDGER_COLS)
         .eq(column, id)
+        .eq("voided", false)
         .order("entry_date")
         .order("created_at")
         .order("id")
@@ -262,12 +242,11 @@ export default async function PlayerPortal({
     identities,
     inviteIndex,
     { data: settings },
-    appUrl,
   ] = await Promise.all([
     db
       .from("booking_attendance")
       .select(
-        "id, booking_id, player_id, response_status, actual_status, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status, confirmation_url, confirmation_urls)",
+        "id, booking_id, player_id, response_status, actual_status, bookings(id, booking_code, play_date, start_time, end_time, venue, court_number, status)",
       )
       .eq("player_id", p.id),
     fetchActivity(db, "player", p.id, 25),
@@ -279,7 +258,6 @@ export default async function PlayerPortal({
       .from("app_settings")
       .select("roster_token, roster_public, gcash_number, bank_transfer_details")
       .single(),
-    getAppBaseUrl(),
   ]);
 
   type AttRow = {
@@ -295,14 +273,8 @@ export default async function PlayerPortal({
     .filter((a) => a.bookings && a.bookings.play_date >= today &&
       (a.bookings.status === "booked" || a.bookings.status === "for_booking"))
     .sort((a, b) => a.bookings.play_date.localeCompare(b.bookings.play_date));
-  const historyAll = att
-    .filter((a) => a.bookings && !(a.bookings.play_date >= today &&
-      (a.bookings.status === "booked" || a.bookings.status === "for_booking")))
-    .sort((a, b) => b.bookings.play_date.localeCompare(a.bookings.play_date));
-  const history = historyAll.slice(0, HISTORY_KEEP);
 
   const upcomingBookingIds = upcoming.map((a) => a.booking_id).filter(Boolean);
-  const bookingNotesMap = new Map<string, string>();
   const bookingCapMap = new Map<string, { totalCap: number; goingCount: number }>();
   type DisplayCourt = { court_number: string | null; start_time: string | null; end_time: string | null; max_players: number };
   const bookingCourtsMap = new Map<string, DisplayCourt[]>();
@@ -327,32 +299,22 @@ export default async function PlayerPortal({
   const statement = fullStatement.slice(ledgerFrom, ledgerFrom + LEDGER_PAGE_SIZE);
   const statementEntries = statement.map((s) => s.entry);
 
-  const historyIds = history.map((h) => h.booking_id);
   const expShareIds = statementEntries
     .filter((e) => e.source_type === "team_expense_share" && e.source_id)
     .map((e) => e.source_id as string);
 
-  const [notesCourtsGoing, histShareRes, ledgerContext, transferItemMap, ess] =
+  const [courtsGoing, ledgerContext, ess] =
     await Promise.all([
       upcomingBookingIds.length > 0
         ? Promise.all([
-            db.from("bookings").select("id, notes").in("id", upcomingBookingIds),
             db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
             fetchGoingAndWaitlist(db, upcomingBookingIds),
           ])
         : Promise.resolve([
-            { data: [] as { id: string; notes: string | null }[] },
-            { data: [] as DisplayCourt[] },
+            { data: [] as (DisplayCourt & { booking_id: string })[] },
             [] as Awaited<ReturnType<typeof fetchGoingAndWaitlist>>,
           ] as const),
-      historyIds.length > 0
-        ? db
-            .from("booking_shares")
-            .select("booking_id, amount_owed, player_id, player_group_id")
-            .in("booking_id", historyIds)
-        : Promise.resolve({ data: [] as { booking_id: string; amount_owed: number; player_id: string | null; player_group_id: string | null }[] }),
       buildLedgerBookingContext(db, statementEntries),
-      buildTransferItemEnrichment(db, statementEntries),
       expShareIds.length > 0
         ? db
             .from("team_expense_shares")
@@ -364,15 +326,11 @@ export default async function PlayerPortal({
     ]);
 
   if (upcomingBookingIds.length > 0) {
-    const [{ data: notesRows }, { data: courtRows }, gw] = notesCourtsGoing as [
-      { data: { id: string; notes: string | null }[] | null },
+    const [{ data: courtRows }, gw] = courtsGoing as [
       { data: (DisplayCourt & { booking_id: string })[] | null },
       Awaited<ReturnType<typeof fetchGoingAndWaitlist>>,
     ];
     goingWaitRows = gw;
-    for (const row of notesRows ?? []) {
-      if (row.notes) bookingNotesMap.set(row.id, row.notes);
-    }
     for (const c of courtRows ?? []) {
       const list = bookingCourtsMap.get(c.booking_id) ?? [];
       list.push({
@@ -424,18 +382,6 @@ export default async function PlayerPortal({
       })
       .filter(Boolean),
   );
-  const recapByBooking = new Map<string, number>();
-  for (const s of (histShareRes.data ?? []) as {
-    booking_id: string;
-    amount_owed: number;
-    player_id: string | null;
-    player_group_id: string | null;
-  }[]) {
-    const mine =
-      s.player_id === p.id ||
-      (pooled && s.player_group_id === pooled.player_group_id);
-    if (mine) recapByBooking.set(s.booking_id, Number(s.amount_owed));
-  }
 
   const d = describeBalance(balance);
   const face = playerFace(p.id, p, identities);
@@ -625,7 +571,7 @@ export default async function PlayerPortal({
                 </p>
                 <p className={`mt-1 text-xs ${publicHintText}`}>
                   {dg.tone === "collect"
-                    ? "shared — owes the team"
+                    ? "shared, owes the team"
                     : dg.tone === "credit"
                       ? "shared credit"
                       : "all paid up"}
@@ -664,7 +610,7 @@ export default async function PlayerPortal({
                 </p>
                 <p className={`mt-1 text-xs ${publicHintText}`}>
                   {dp.tone === "collect"
-                    ? "personal — owes the team"
+                    ? "personal, owes the team"
                     : dp.tone === "credit"
                       ? "personal credit"
                       : "all paid up"}
@@ -747,13 +693,6 @@ export default async function PlayerPortal({
               const cts = bookingCourtsMap.get(a.booking_id) ?? [];
               const merged = mergeCourts(cts);
               const overall = overallCourtTimeRange(cts);
-              const venueLine = [
-                a.bookings.venue ? `Venue: ${a.bookings.venue}` : null,
-                overall || null,
-              ].filter(Boolean).join(" · ");
-              const cap = bookingCapMap.get(a.booking_id);
-              const slotsLeft =
-                cap && cap.totalCap > 0 ? Math.max(0, cap.totalCap - cap.goingCount) : null;
               const lockAt = getRsvpLockAt(
                 a.bookings.play_date,
                 cts,
@@ -764,146 +703,73 @@ export default async function PlayerPortal({
                 cts,
                 a.bookings.start_time,
               );
+              const detailsHref = teamToken
+                ? `/schedule/${teamToken}/${a.bookings.id}`
+                : null;
               const node = (
-                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 overflow-visible">
-                  <div className="flex items-start gap-4 p-4">
+                <Card id={`booking-${a.bookings.id}`} className="scroll-mt-6 overflow-visible p-4">
+                  <div className="flex items-start gap-3">
                     <DateChip value={a.bookings.play_date} />
                     <div className="min-w-0 flex-1">
-                    <p className={`text-lg ${publicPrimaryText}`}>
-                      {formatDate(a.bookings.play_date)}
-                    </p>
-                    {a.bookings.booking_code ? (
-                      <p className={`mt-0.5 text-sm font-medium text-emerald-800`}>
-                        {a.bookings.booking_code}
+                      <p className={`text-base ${publicPrimaryText}`}>
+                        {formatDate(a.bookings.play_date)}
                       </p>
-                    ) : null}
-                    {venueLine ? (
-                      <p className={`mt-1 ${publicHintText}`}>{venueLine}</p>
-                    ) : null}
-                    <div className="mt-1">
-                      <MapsLink venue={a.bookings.venue} />
-                    </div>
-                    {merged.length > 0 ? (
-                      <div className="mt-1 space-y-0.5">
-                        {merged.map((m, i) => (
-                          <p key={i} className={publicHintText}>
-                            {m.label}: {formatCourtTime(m) || "—"}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
+                      {a.bookings.venue || overall ? (
+                        <p className={`mt-0.5 ${publicHintText}`}>
+                          {[a.bookings.venue, overall].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                      {merged.filter((m) => formatCourtTime(m) || m.label !== "Court").length >
+                      0 ? (
+                        <div className="mt-1 space-y-0.5">
+                          {merged
+                            .filter(
+                              (m) => formatCourtTime(m) || m.label !== "Court",
+                            )
+                            .map((m, i) => (
+                              <p key={i} className={publicHintText}>
+                                {m.label}
+                                {formatCourtTime(m)
+                                  ? `: ${formatCourtTime(m)}`
+                                  : ""}
+                              </p>
+                            ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                  <div className="px-4 pb-4">
-                  {/* Total capacity + slots remaining */}
-                  {cap && cap.totalCap > 0 ? (
-                    <p className={`mb-3 text-sm font-medium ${slotsLeft === 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                      {cap.totalCap} max ·{" "}
-                      {slotsLeft === 0
-                        ? "Full. Join waitlist"
-                        : `${slotsLeft} slot${slotsLeft === 1 ? "" : "s"} remaining`}
-                    </p>
-                  ) : null}
-                  {/* Booking notes — loaded separately to avoid clash with booking_attendance.notes */}
-                  {bookingNotesMap.get(a.booking_id) ? (
-                    <p className={`mb-3 whitespace-pre-wrap text-sm ${publicHintText}`}>
-                      <span className="font-medium">Notes: </span>
-                      {bookingNotesMap.get(a.booking_id)}
-                    </p>
-                  ) : null}
-                  {/* Booking confirmation links (supports multiple) */}
-                  {(() => {
-                    const urls =
-                      a.bookings.confirmation_urls && a.bookings.confirmation_urls.length > 0
-                        ? a.bookings.confirmation_urls
-                        : a.bookings.confirmation_url
-                          ? [a.bookings.confirmation_url]
-                          : [];
-                    if (urls.length === 0) return null;
-                    return (
-                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1">
-                        {urls.map((url, i) => (
-                          <a
-                            key={i}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-medium text-emerald-700 hover:underline"
-                          >
-                            📋 {urls.length > 1 ? `Confirmation ${i + 1}` : "View booking confirmation"} ↗
-                          </a>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                  <div className="mb-3">
-                    <AddToCalendar
-                      filename={`${a.bookings.booking_code ?? "open-play"}.ics`}
-                      event={{
-                        uid: a.bookings.id,
-                        title: `${a.bookings.booking_code ?? "Open play"} · Dinkering`,
-                        playDate: a.bookings.play_date,
-                        startTime: cts[0]?.start_time ?? a.bookings.start_time,
-                        endTime: cts[0]?.end_time ?? a.bookings.end_time,
-                        venue: a.bookings.venue,
-                        url: `${appUrl}/p/${token}#booking-${a.bookings.id}`,
-                      }}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    {(() => {
-                      const going = goingNamesForBooking(
+                  <div className="mt-3">
+                    <RsvpForm
+                      token={token}
+                      bookingId={a.bookings.id}
+                      currentStatus={a.response_status}
+                      locked={locked}
+                      lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
+                      waitlistPosition={waitlistPosition(
                         goingWaitRows,
                         a.booking_id,
-                        identities,
-                      );
-                      return (
-                        <>
-                          <GoingNames
-                            people={going.people}
-                            hiddenCount={going.hiddenCount}
-                            total={going.total}
-                          />
-                          <div className="mt-3">
-                            <WaitlistQueue
-                              people={waitlistQueueForBooking(
-                                goingWaitRows,
-                                a.booking_id,
-                                identities,
-                              )}
-                              viewerPlayerId={p.id}
-                            />
-                          </div>
-                        </>
-                      );
-                    })()}
+                        p.id,
+                      )}
+                      promoted={
+                        a.response_status === "going" &&
+                        !!a.bookings.booking_code &&
+                        promotedCodes.has(a.bookings.booking_code)
+                      }
+                      isFull={(() => {
+                        const cap = bookingCapMap.get(a.booking_id);
+                        return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
+                      })()}
+                    />
                   </div>
-                  <div className="mb-2 flex items-center gap-2">
-                    <span className={`text-sm ${publicHintText}`}>Your RSVP</span>
-                    <StatusBadge status={a.response_status} size="md" />
-                  </div>
-                  <RsvpForm
-                    token={token}
-                    bookingId={a.bookings.id}
-                    currentStatus={a.response_status}
-                    locked={locked}
-                    lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
-                    waitlistPosition={waitlistPosition(
-                      goingWaitRows,
-                      a.booking_id,
-                      p.id,
-                    )}
-                    promoted={
-                      a.response_status === "going" &&
-                      !!a.bookings.booking_code &&
-                      promotedCodes.has(a.bookings.booking_code)
-                    }
-                    isFull={(() => {
-                      const cap = bookingCapMap.get(a.booking_id);
-                      return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
-                    })()}
-                  />
-                  </div>
+                  {detailsHref ? (
+                    <PendingLink
+                      href={detailsHref}
+                      busyLabel="Opening game…"
+                      className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2"
+                    >
+                      See more details of booking
+                    </PendingLink>
+                  ) : null}
                 </Card>
               );
               return { key: a.id, status: a.response_status, node };
@@ -913,250 +779,50 @@ export default async function PlayerPortal({
       </PublicSection>
 
       <PublicSection title="Charges & payments">
-        {fullStatement.length === 0 ? (
-          <EmptyState
-            title="No charges or payments yet"
-            description="When games are split and payments come in, they'll show up here."
-          />
-        ) : (
-          <>
-            <Card className="divide-y divide-slate-100 overflow-hidden">
-              {statement.map(({ entry, running }) => {
-                const bookingCtx = formatBookingContext(
-                  ledgerContext.get(entry.id),
-                );
-                const charge = Number(entry.debit_amount);
-                const credit = Number(entry.credit_amount);
-                const isCharge = charge > 0;
-                const balLabel =
-                  Math.abs(running) < SETTLE_TOLERANCE
-                    ? "Settled"
-                    : running > 0
-                      ? `${formatMoney(running)} owed`
-                      : `${formatMoney(-running)} credit`;
-
-                // Expense share enrichment — augment label and add sub-context
-                const playerDisplayName =
-                  p.display_name?.trim() || p.name;
-                const isGroupEntry = entry.player_group_id !== null;
-                const eMeta =
-                  entry.source_type === "team_expense_share" &&
-                  entry.source_id
-                    ? expShareMeta.get(entry.source_id)
-                    : null;
-
-                // Description: append "(PlayerName)" for shares in a group wallet
-                let displayDesc =
-                  entry.description ||
-                  STATEMENT_LABELS[entry.source_type] ||
-                  "Entry";
-                if (
-                  isGroupEntry &&
-                  (entry.source_type === "team_expense_share" ||
-                    entry.source_type === "booking_share" ||
-                    entry.source_type === "club_fund_share")
-                ) {
-                  const groupName = pooled?.player_groups.name;
-                  displayDesc = groupName
-                    ? `${displayDesc} (${playerDisplayName} · ${groupName})`
-                    : `${displayDesc} (${playerDisplayName})`;
-                }
-
-                // Sub-context line (date + venue/time + expense detail)
-                const expenseSubCtx = eMeta
-                  ? [
-                      eMeta.expenseCode
-                        ? `${eMeta.expenseCode} · ${eMeta.expenseDesc}`
-                        : eMeta.expenseDesc,
-                      eMeta.paidByName
-                        ? `Paid by ${eMeta.paidByName}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-                  : null;
-
-                // Detect balance-transfer entries — use DB-enriched items when
-                // available (resolves expense details for old & new format).
-                const transferParts = (() => {
-                  const d = entry.description;
-                  if (!d?.startsWith("Transfer ")) return null;
-                  const dashIdx = d.indexOf(" — ");
-                  if (dashIdx === -1) return null;
-                  const header = d.slice(0, dashIdx).trim();
-                  const enriched = transferItemMap.get(entry.id);
-                  if (enriched) return { header, items: enriched.map((e) => e.text) };
-                  const rest = d.slice(dashIdx + 3).trim();
-                  const items = rest.length > 0
-                    ? rest.split(";").map((s) => s.trim()).filter(Boolean)
-                    : [];
-                  return { header, items };
-                })();
-
-                return (
-                  <div
-                    key={entry.id}
-                    className={`flex items-start justify-between gap-3 px-4 py-3.5 ${
-                      entry.voided ? "text-slate-400 line-through" : ""
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      {transferParts ? (
-                        <>
-                          <p className={`text-base ${publicPrimaryText}`}>
-                            {transferParts.header}
-                          </p>
-                          {transferParts.items.length > 0 && (
-                            <ul className="mt-1 space-y-0.5">
-                              {transferParts.items.map((item, i) => (
-                                <li
-                                  key={i}
-                                  className={`flex items-baseline gap-1 ${publicHintText}`}
-                                >
-                                  <span className="shrink-0 text-slate-300">↳</span>
-                                  {item}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </>
-                      ) : (
-                        <p className={`text-base ${publicPrimaryText}`}>
-                          {displayDesc}
-                        </p>
-                      )}
-                      <p className={`mt-0.5 ${publicHintText}`}>
-                        {formatDate(entry.entry_date)}
-                        {bookingCtx ? ` · ${bookingCtx}` : ""}
-                      </p>
-                      {expenseSubCtx ? (
-                        <p className={`mt-0.5 ${publicHintText}`}>
-                          {expenseSubCtx}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p
-                        className={`text-base font-bold ${
-                          isCharge ? "text-rose-700" : "text-emerald-700"
-                        }`}
-                      >
-                        {isCharge
-                          ? formatMoney(charge)
-                          : `− ${formatMoney(credit)}`}
-                      </p>
-                      {!entry.voided ? (
-                        <p className={`mt-0.5 text-sm font-medium ${
-                          Math.abs(running) < SETTLE_TOLERANCE
-                            ? "text-slate-500"
-                            : running > 0
-                              ? "text-rose-600"
-                              : "text-emerald-600"
-                        }`}>
-                          {balLabel}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
-            {/* Pagination */}
-            <div className="mt-3 flex items-center justify-between gap-3 px-1">
-              <p className={publicHintText}>
-                {ledgerFrom + 1}–{Math.min(ledgerFrom + LEDGER_PAGE_SIZE, totalLedger)}{" "}
-                of {totalLedger} entr{totalLedger === 1 ? "y" : "ies"}
-              </p>
-              {totalLedgerPages > 1 ? (
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  {lpage > 1 ? (
-                    <PendingLink
-                      href={ledgerPageUrl(lpage - 1)}
-                      busyLabel="Loading statement…"
-                      className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
-                    >
-                      ← Newer
-                    </PendingLink>
-                  ) : null}
-                  <span className={publicHintText}>
-                    {lpage} / {totalLedgerPages}
-                  </span>
-                  {lpage < totalLedgerPages ? (
-                    <PendingLink
-                      href={ledgerPageUrl(lpage + 1)}
-                      busyLabel="Loading statement…"
-                      className="rounded-lg px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-200 active:bg-emerald-50"
-                    >
-                      Older →
-                    </PendingLink>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <p className={`mt-1.5 px-1 ${publicHintText}`}>
-              Charges in <span className="font-semibold text-rose-700">red</span>,
-              payments in{" "}
-              <span className="font-semibold text-emerald-700">green</span>.
-            </p>
-          </>
-        )}
-      </PublicSection>
-
-      <PublicSection title="Appearance history">
-        {history.length === 0 ? (
-          <EmptyState
-            title="No past games yet"
-            description="Games you've been invited to will collect here after they wrap."
-          />
-        ) : (
-          <Card className="divide-y divide-slate-100 overflow-hidden">
-            {history.map((a) => {
-              const share = recapByBooking.get(a.booking_id);
-              const played = a.bookings.status === "played";
-              const attended = a.actual_status === "attended";
-              return (
-              <div
-                key={a.id}
-                className="px-4 py-3.5"
-              >
-                <div className="flex items-center justify-between gap-3">
-                <div>
-                  <span className={`text-base ${publicPrimaryText}`}>
-                    {a.bookings.booking_code}
-                  </span>
-                  <span className={`ml-2 ${publicHintText}`}>
-                    {formatDate(a.bookings.play_date)}
-                  </span>
-                  {a.bookings.venue ? (
-                    <p className={`mt-0.5 ${publicHintText}`}>{a.bookings.venue}</p>
-                  ) : null}
-                </div>
-                <StatusBadge
-                  status={a.actual_status ?? a.response_status}
-                  size="md"
-                />
-                </div>
-                {played ? (
-                  <p className={`mt-1 ${publicHintText}`}>
-                    {attended ? "You played." : "Marked on this session."}
-                    {share != null
-                      ? ` Share ${formatMoney(share)}.`
-                      : ""}
-                    {d.tone === "collect" && attended
-                      ? " Balance still open — see How to pay above."
-                      : ""}
-                  </p>
-                ) : null}
-              </div>
-              );
-            })}
-          </Card>
-        )}
-        {historyAll.length > HISTORY_KEEP ? (
-          <p className={`mt-2 px-1 text-center ${publicHintText}`}>
-            Showing the latest {HISTORY_KEEP} games ({historyAll.length} total).
+        {pooled ? (
+          <p className={`mb-3 px-1 ${publicHintText}`}>
+            Your charges on the shared wallet. The full group wallet is on{" "}
+            <PendingLink
+              href={`/g/${pooled.player_groups.public_token}`}
+              busyLabel="Opening group page…"
+              className="font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2"
+            >
+              {pooled.player_groups.name}
+            </PendingLink>.
           </p>
         ) : null}
+        <PlayerActivityList
+          rows={statement.map(({ entry, running }) => {
+            const bookingCtx = formatBookingContext(ledgerContext.get(entry.id));
+            const eMeta =
+              entry.source_type === "team_expense_share" && entry.source_id
+                ? expShareMeta.get(entry.source_id)
+                : null;
+            const who = pooled
+              ? entry.player_group_id
+                ? "Shared wallet"
+                : "Personal"
+              : null;
+            const detail = [who, bookingCtx].filter(Boolean).join(" · ");
+            return {
+              id: entry.id,
+              title: activityTitle(entry, {
+                expenseDesc: eMeta?.expenseDesc,
+              }),
+              detail: detail || undefined,
+              date: entry.entry_date,
+              signedAmount:
+                Number(entry.debit_amount) - Number(entry.credit_amount),
+              running,
+            };
+          })}
+          page={lpage}
+          pageSize={LEDGER_PAGE_SIZE}
+          totalPages={totalLedgerPages}
+          total={totalLedger}
+          pageHref={ledgerPageUrl}
+          showRunning={!pooled}
+        />
       </PublicSection>
 
       <footer className="mt-8 text-center text-sm text-slate-400">
