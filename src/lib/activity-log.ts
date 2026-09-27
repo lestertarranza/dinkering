@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { rsvpLogDetails, type RsvpLogVia } from "@/lib/activity-origin";
 
 export type ActivityEntity =
   | "player"
@@ -49,13 +50,12 @@ export async function logRsvpChange(opts: {
   from: string;
   to: string;
   actorEmail?: string | null;
-  via: "player" | "admin";
+  via: RsvpLogVia;
 }): Promise<void> {
   const who = opts.playerName?.trim() || "Player";
   const game = opts.bookingCode?.trim() || "a game";
-  const via = opts.via === "player" ? "player page" : "admin";
   const action = `${who} RSVP on ${game}: ${label(opts.from)} → ${label(opts.to)}`;
-  const details = `via ${via}`;
+  const details = rsvpLogDetails(opts.via);
   try {
     const db = createAdminClient();
     await db.from("admin_activity").insert([

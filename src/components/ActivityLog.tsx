@@ -1,13 +1,12 @@
-import { formatDate } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
+import { activityOrigin, type ActivityOrigin } from "@/lib/activity-origin";
 import type { ActivityRow } from "@/lib/activity-log";
 
-function formatWhen(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return formatDate(iso.slice(0, 10));
-  return d.toLocaleString("en-PH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+function originNote(origin: ActivityOrigin, details: string | null): string | null {
+  if (origin.source === "waitlist") return "waitlist";
+  if (origin.source === "player page") return "player page";
+  if (origin.source === "admin") return "admin";
+  return details;
 }
 
 export function ActivityLog({
@@ -27,16 +26,32 @@ export function ActivityLog({
   }
   return (
     <ul className="divide-y divide-slate-100">
-      {rows.map((r) => (
-        <li key={r.id} className="px-4 py-2.5 text-sm">
-          <p className="font-medium text-slate-800">{r.action}</p>
-          <p className="mt-0.5 text-xs text-slate-400">
-            {formatWhen(r.created_at)}
-            {r.actor_email ? ` · ${r.actor_email}` : ""}
-            {r.details ? ` · ${r.details}` : ""}
-          </p>
-        </li>
-      ))}
+      {rows.map((r) => {
+        const origin = activityOrigin(r);
+        const note = originNote(origin, r.details);
+        const auto = origin.kind === "automatic";
+        return (
+          <li key={r.id} className="px-4 py-2.5 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-medium text-slate-800">{r.action}</p>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  auto
+                    ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                    : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                }`}
+              >
+                {auto ? "Automatic" : "Manual"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {formatDateTime(r.created_at)} PHT
+              {note ? ` · ${note}` : ""}
+              {r.actor_email ? ` · ${r.actor_email}` : ""}
+            </p>
+          </li>
+        );
+      })}
     </ul>
   );
 }

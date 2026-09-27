@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, phTodayYmd } from "@/lib/format";
 import {
   round2,
   resolveWalletOwner,
@@ -112,7 +112,7 @@ export async function addFundMoney(
   }
   const entry_date =
     String(formData.get("entry_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
   const description =
     String(formData.get("description") || "").trim() || "Set aside";
 
@@ -148,7 +148,7 @@ export async function recordFundPurchase(
   const paid_by_group_id = payer.startsWith("g:") ? payer.slice(2) : null;
   const entry_date =
     String(formData.get("entry_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
 
   const { supabase } = await requireAdmin();
   const remaining = await remainingCashForFund(supabase, fund_id);

@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useMemo } from "react";
 import { Field, inputClass } from "@/components/ui";
-import { formatMoney, formatDate } from "@/lib/format";
+import { formatMoney, formatDate, phTodayYmd } from "@/lib/format";
 import { transferBalance } from "../../actions";
 import type { ActionState } from "@/lib/action-state";
 import type { OpenCharge } from "@/lib/payment-allocation";
@@ -144,7 +144,7 @@ export function TransferForm({
           <input
             name="transfer_date"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={phTodayYmd()}
             className={inputClass}
           />
         </Field>

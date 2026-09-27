@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, phTodayYmd } from "@/lib/format";
 import {
   nextCode,
   voidLedgerForSource,
@@ -71,7 +71,7 @@ export async function createExpense(formData: FormData) {
   const { supabase } = await requireAdmin();
   const purchase_date =
     String(formData.get("purchase_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
   const payer = String(formData.get("payer") || "");
   const paid_by_player_id = payer.startsWith("p:") ? payer.slice(2) : null;
   const paid_by_group_id = payer.startsWith("g:") ? payer.slice(2) : null;
@@ -321,7 +321,7 @@ export async function markExpenseSharePaid(
   );
   const payment_date =
     String(formData.get("payment_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
 
   if (!expense_id || !amount || (!player_id && !player_group_id))
     return actionErr("Missing required fields.");

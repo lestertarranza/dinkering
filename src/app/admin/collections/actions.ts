@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { nextCode, resolveWalletOwner } from "@/lib/ledger";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, phTodayYmd } from "@/lib/format";
 import { logAdminAction } from "@/lib/activity-log";
 import { revalidateClubFundCash } from "@/lib/club-fund-cash";
 
@@ -98,7 +98,7 @@ export async function confirmPaymentProof(
     .eq("id", id)
     .single();
   if (!proof) return actionErr("Proof not found.");
-  const payment_date = new Date().toISOString().slice(0, 10);
+  const payment_date = phTodayYmd();
   const player_id = proof.player_id as string | null;
   const group_id = proof.player_group_id as string | null;
   const wallet = group_id

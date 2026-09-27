@@ -9,7 +9,7 @@ import {
   openChargesFromLedger,
   walletKey,
 } from "@/lib/payment-allocation";
-import { SETTLE_TOLERANCE } from "@/lib/format";
+import { SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import type { Player, PlayerGroup } from "@/lib/types";
 import { TransferForm } from "./TransferForm";
 import { BulkCollectForm, type BulkSource } from "./BulkCollectForm";
@@ -23,7 +23,7 @@ export default async function TransferPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
 
   const [{ data: player }, { data: allPlayers }, { data: groups }, ledgerByWallet] =
     await Promise.all([

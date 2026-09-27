@@ -21,6 +21,7 @@ import {
   formatDate,
   formatTimeRange,
   SETTLE_TOLERANCE,
+  phTodayYmd,
 } from "@/lib/format";
 import type {
   Booking,
@@ -230,7 +231,7 @@ export default async function BookingDetail({
       player_id: s.player_id,
     })),
     new Map([[b.id, b.play_date]]),
-    new Date().toISOString().slice(0, 10),
+    phTodayYmd(),
   );
   const remainingByClubShare = await computeClubFundShareRemaining(
     supabase,
@@ -255,7 +256,7 @@ export default async function BookingDetail({
       0,
     ),
   );
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
   const billable = b.status === "booked" || b.status === "played";
   // Show attendance confirmation for played bookings OR booked games whose
   // date has already passed (no need to manually mark as Played first).
@@ -1341,8 +1342,9 @@ export default async function BookingDetail({
               Activity log
             </h2>
             <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-              RSVP changes for this booking (from a player&apos;s private page or from
-              this roster).
+              RSVP changes for this booking. Automatic means the waitlist moved
+              someone up (for example after a court cap increased or a Going
+              seat opened). Manual is a player or admin tapping RSVP.
             </p>
             <ActivityLog rows={activityRows} />
           </Card>

@@ -6,6 +6,8 @@ import {
   formatDate,
   formatTimeRange,
   SETTLE_TOLERANCE,
+  phTodayYmd,
+  phTodayMonth,
 } from "@/lib/format";
 import { round2 } from "@/lib/ledger";
 import { computeBookingShareRemaining } from "@/lib/payment-allocation";
@@ -26,9 +28,9 @@ export default async function BookingsPage({
   const month =
     sp.month && /^\d{4}-\d{2}$/.test(sp.month)
       ? sp.month
-      : new Date().toISOString().slice(0, 7);
+      : phTodayMonth();
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
 
   type BookingShareRow = {
     id: string;

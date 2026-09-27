@@ -1,9 +1,49 @@
+export const PH_TIME_ZONE = "Asia/Manila";
+
 const peso = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+function parseClubDate(value: string): Date {
+  if (value.length <= 10) return new Date(`${value}T12:00:00+08:00`);
+  return new Date(value);
+}
+
+/** Calendar date in Asia/Manila, e.g. "2026-09-27". */
+export function phTodayYmd(now = new Date()): string {
+  return now.toLocaleDateString("en-CA", { timeZone: PH_TIME_ZONE });
+}
+
+/** YYYY-MM for the current PH month. */
+export function phTodayMonth(now = new Date()): string {
+  return phTodayYmd(now).slice(0, 7);
+}
+
+/** Add whole days to a YYYY-MM-DD club calendar date. */
+export function addCalendarDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00+08:00`);
+  d.setTime(d.getTime() + days * 86_400_000);
+  return d.toLocaleDateString("en-CA", { timeZone: PH_TIME_ZONE });
+}
+
+/** Timestamp in PH time, e.g. "Sep 27, 2026, 7:43 PM". */
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("en-PH", {
+    timeZone: PH_TIME_ZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 /** Format a number as Philippine pesos, e.g. ₱1,250.00 */
 export function formatMoney(value: number | string | null | undefined): string {
@@ -23,14 +63,18 @@ export function formatAmount(value: number | string | null | undefined): string 
 /** e.g. "Jun 21, 2026 (Sunday)" */
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
-  const d = new Date(value.length <= 10 ? `${value}T00:00:00` : value);
+  const d = parseClubDate(value);
   if (Number.isNaN(d.getTime())) return value;
   const datePart = d.toLocaleDateString("en-PH", {
+    timeZone: PH_TIME_ZONE,
     year: "numeric",
     month: "short",
     day: "numeric",
   });
-  const weekday = d.toLocaleDateString("en-PH", { weekday: "long" });
+  const weekday = d.toLocaleDateString("en-PH", {
+    timeZone: PH_TIME_ZONE,
+    weekday: "long",
+  });
   return `${datePart} (${weekday})`;
 }
 
@@ -41,12 +85,19 @@ export function dateChipParts(value: string | null | undefined): {
   month: string;
 } | null {
   if (!value) return null;
-  const d = new Date(value.length <= 10 ? `${value}T00:00:00` : value);
+  const d = parseClubDate(value);
   if (Number.isNaN(d.getTime())) return null;
   return {
-    weekday: d.toLocaleDateString("en-PH", { weekday: "short" }).toUpperCase(),
-    day: d.toLocaleDateString("en-PH", { day: "2-digit" }),
-    month: d.toLocaleDateString("en-PH", { month: "short" }).toUpperCase(),
+    weekday: d
+      .toLocaleDateString("en-PH", { timeZone: PH_TIME_ZONE, weekday: "short" })
+      .toUpperCase(),
+    day: d.toLocaleDateString("en-PH", {
+      timeZone: PH_TIME_ZONE,
+      day: "2-digit",
+    }),
+    month: d
+      .toLocaleDateString("en-PH", { timeZone: PH_TIME_ZONE, month: "short" })
+      .toUpperCase(),
   };
 }
 

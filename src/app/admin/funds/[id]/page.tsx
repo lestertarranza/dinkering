@@ -12,7 +12,7 @@ import {
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { formatMoney, formatDate, SETTLE_TOLERANCE, isSettled } from "@/lib/format";
+import { formatMoney, formatDate, SETTLE_TOLERANCE, isSettled, phTodayYmd } from "@/lib/format";
 import {
   loadClubFundCashSummaries,
   loadClubFundShareAudit,
@@ -86,7 +86,7 @@ export default async function ClubFundDetail({
       : target > 0
         ? 0
         : null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
   const playerOpts = (players ?? []) as { id: string; name: string }[];
   const groupOpts = (groups ?? []) as { id: string; name: string }[];
 

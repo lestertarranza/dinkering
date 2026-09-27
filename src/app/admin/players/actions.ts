@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
-import { formatMoney, SETTLE_TOLERANCE } from "@/lib/format";
+import { formatMoney, SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import { resolveWalletOwner, round2 } from "@/lib/ledger";
 import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
@@ -32,7 +32,7 @@ export async function addManualAdjustment(
   const reason = String(formData.get("reason") || "").trim();
   const date =
     String(formData.get("adjustment_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
 
   if (!reason || !amount || (!player_id && !player_group_id)) {
     return actionErr("Enter an amount, reason, and wallet.");
@@ -246,7 +246,7 @@ export async function transferBalance(
   const itemsJson = String(formData.get("items_json") || "[]");
   const date =
     String(formData.get("transfer_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
   const extraNotes = String(formData.get("notes") || "").trim();
 
   const { supabase, user } = await requireAdmin();
@@ -271,7 +271,7 @@ export async function transferBalancesBulk(
   ];
   const date =
     String(formData.get("transfer_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
   const extraNotes = String(formData.get("notes") || "").trim();
 
   if (!targetPlayerId) return actionErr("Missing target player.");
@@ -528,7 +528,7 @@ export async function assignToGroup(
     player_id,
     player_group_id,
     is_primary: makePrimary,
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: phTodayYmd(),
   });
   revalidatePath(`/admin/players/${player_id}`);
   revalidatePath(`/admin/groups/${player_group_id}`);
@@ -544,7 +544,7 @@ export async function removeFromGroup(
   const { supabase } = await requireAdmin();
   await supabase
     .from("player_group_members")
-    .update({ end_date: new Date().toISOString().slice(0, 10) })
+    .update({ end_date: phTodayYmd() })
     .eq("id", membership_id);
   revalidatePath(`/admin/players/${player_id}`);
   return actionOk("Removed from group.");

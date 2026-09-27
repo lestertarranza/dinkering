@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, addCalendarDaysYmd, phTodayYmd } from "@/lib/format";
 import { logAdminAction, logRsvpChange } from "@/lib/activity-log";
 import { uploadBookingConfirmations } from "@/lib/booking-confirmation";
 import {
@@ -264,10 +264,7 @@ export async function setResponse(
     via: "admin",
   });
   if (prevStatus === "going" && response_status !== "going") {
-    await admitWaitlistedPlayers(supabase, booking_id, {
-      via: "admin",
-      actorEmail: user.email ?? null,
-    });
+    await admitWaitlistedPlayers(supabase, booking_id);
   }
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath(`/admin/players/${player_id}`);
@@ -318,10 +315,7 @@ export async function bulkSetResponse(
     action: `Bulk RSVP → ${response_status}`,
     details: `${ids.length} player(s)`,
   });
-  await admitWaitlistedPlayers(supabase, booking_id, {
-    via: "admin",
-    actorEmail: user.email ?? null,
-  });
+  await admitWaitlistedPlayers(supabase, booking_id);
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk(`Set ${ids.length} player${ids.length === 1 ? "" : "s"} to ${response_status}.`);
 }
@@ -618,7 +612,7 @@ export async function markBookingSharePaid(
   );
   const payment_date =
     String(formData.get("payment_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
 
   if (!booking_id || !payerKey || !amount)
     return actionErr("Missing required fields.");
@@ -727,10 +721,7 @@ export async function cycleResponse(
     via: "admin",
   });
   if (current === "going" && next !== "going") {
-    await admitWaitlistedPlayers(supabase, booking_id, {
-      via: "admin",
-      actorEmail: user.email ?? null,
-    });
+    await admitWaitlistedPlayers(supabase, booking_id);
   }
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk(`${player?.name ?? "Player"} → ${next.replace("_", " ")}`);
@@ -746,9 +737,7 @@ export async function duplicateBooking(formData: FormData) {
     .eq("id", sourceId)
     .single();
   if (!source) return;
-  const srcDate = new Date(`${source.play_date}T00:00:00`);
-  srcDate.setDate(srcDate.getDate() + 7);
-  const play_date = srcDate.toISOString().slice(0, 10);
+  const play_date = addCalendarDaysYmd(source.play_date, 7);
   const code = await nextCode(supabase, "bookings", "booking_code", "PB");
   const other_fees = Number(source.other_fees ?? 0);
   const { data: created } = await supabase

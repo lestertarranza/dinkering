@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { formatDate } from "@/lib/format";
+import { formatDate, phTodayYmd } from "@/lib/format";
 
 type Opt = { id: string; name: string };
 type BookingOpt = { id: string; booking_code: string | null; play_date: string };
@@ -31,7 +31,7 @@ export function ExpenseForm({
           <input
             name="purchase_date"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={phTodayYmd()}
             className={inputClass}
           />
         </Field>

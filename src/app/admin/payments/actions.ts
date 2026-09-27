@@ -16,7 +16,7 @@ import {
   totalOpenDue,
   type OpenCharge,
 } from "@/lib/payment-allocation";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, phTodayYmd } from "@/lib/format";
 
 export type PaymentState = { ok: boolean; message: string } | null;
 
@@ -126,7 +126,7 @@ export async function previewBulkPayment(payer: string): Promise<BulkPreview> {
   if (!player_id && !group_id) return { charges: [], totalOwed: 0 };
 
   const { supabase } = await requireAdmin();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
   const wallet = await resolveWallet(supabase, player_id, group_id, today);
   const charges = await getOpenCharges(supabase, wallet);
   return { charges, totalOwed: totalOpenDue(charges) };
@@ -147,7 +147,7 @@ export async function createPayment(
 
   const payment_date =
     String(formData.get("payment_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
   // A payment can target a booking OR a team expense (or neither = advance).
   const booking_id = String(formData.get("booking_id") || "") || null;
   const team_expense_id = booking_id
@@ -221,7 +221,7 @@ export async function createBulkPayment(
 
   const payment_date =
     String(formData.get("payment_date") || "") ||
-    new Date().toISOString().slice(0, 10);
+    phTodayYmd();
   const payment_method =
     String(formData.get("payment_method") || "").trim() || null;
   const reference_number =
@@ -313,7 +313,7 @@ export async function reversePayment(
   await supabase
     .from("payments")
     .update({
-      notes: `[REVERSED ${new Date().toISOString().slice(0, 10)}] ${
+      notes: `[REVERSED ${phTodayYmd()}] ${
         pay?.notes ?? ""
       }`.trim(),
     })

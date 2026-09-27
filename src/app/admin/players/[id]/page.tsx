@@ -25,7 +25,7 @@ import {
   buildLedgerExpenseContext,
   buildTransferItemEnrichment,
 } from "@/lib/ledger-attribution";
-import { formatMoney, describeBalance } from "@/lib/format";
+import { formatMoney, describeBalance, phTodayYmd } from "@/lib/format";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import { linkedAccountForPlayer, loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
 import { PlayerAvatar } from "@/components/public-ui";
@@ -360,8 +360,8 @@ export default async function PlayerDetail({
               Activity log
             </h2>
             <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-              RSVP changes for this player (from their private page or when you
-              change RSVP on a booking).
+              RSVP changes for this player. Automatic means they were moved up
+              from the waitlist. Manual is their page or an admin RSVP change.
             </p>
             <ActivityLog rows={activityRows} />
           </Card>
@@ -600,7 +600,7 @@ export default async function PlayerDetail({
                 <input
                   name="adjustment_date"
                   type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  defaultValue={phTodayYmd()}
                   className={inputClass}
                 />
               </Field>

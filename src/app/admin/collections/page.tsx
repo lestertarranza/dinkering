@@ -18,6 +18,7 @@ import {
   formatDate,
   describeBalance,
   SETTLE_TOLERANCE,
+  phTodayMonth,
 } from "@/lib/format";
 import {
   updateGcashNumber,
@@ -292,7 +293,7 @@ export default async function CollectionsPage({
           Export balances (CSV)
         </a>
         <DownloadCsvButton
-          filename={`collections-${new Date().toISOString().slice(0, 7)}.csv`}
+          filename={`collections-${phTodayMonth()}.csv`}
           label="Export payments (CSV)"
           rows={[
             ["Code", "Date", "Payer", "Amount", "Method", "Reference", "Notes"],

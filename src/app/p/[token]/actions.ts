@@ -109,7 +109,7 @@ export async function submitRsvp(
   const wasCancelled = prevStatus === "going" && response_status !== "going";
 
   if (wasCancelled) {
-    await admitWaitlistedPlayers(db, booking_id, { via: "player" });
+    await admitWaitlistedPlayers(db, booking_id);
   }
 
   revalidatePath(`/p/${token}`);

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOpenCharges, type OpenCharge } from "@/lib/payment-allocation";
 import { round2 } from "@/lib/ledger";
-import { formatMoney, formatDate, isSettled } from "@/lib/format";
+import { formatMoney, formatDate, isSettled, phTodayYmd } from "@/lib/format";
 
 const POOLED_TYPES = ["couple", "family", "team_fund"];
 
@@ -127,7 +127,7 @@ export async function buildPlayerBalanceSummary(
     bank?: string | null;
   } = {},
 ): Promise<PlayerBalanceSummary | null> {
-  const asOf = opts.asOf ?? new Date().toISOString().slice(0, 10);
+  const asOf = opts.asOf ?? phTodayYmd();
 
   const { data: player } = await db
     .from("players")
@@ -258,7 +258,7 @@ export async function buildGroupBalanceSummary(
     bank?: string | null;
   } = {},
 ): Promise<GroupBalanceSummary | null> {
-  const asOf = opts.asOf ?? new Date().toISOString().slice(0, 10);
+  const asOf = opts.asOf ?? phTodayYmd();
 
   const { data: group } = await db
     .from("player_groups")

@@ -6,6 +6,7 @@ import {
   formatMoney,
   formatDate,
   describeBalance,
+  phTodayYmd,
 } from "@/lib/format";
 import { formatBookingContext, buildLedgerBookingContext } from "@/lib/booking-context";
 import {
@@ -82,7 +83,7 @@ export default async function PlayerPortal({
     .single();
   if (!player) notFound();
   const p = player as Player;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
 
   const { data: memberships } = await db
     .from("player_group_members")

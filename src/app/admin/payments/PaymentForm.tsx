@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Field, inputClass, buttonClass } from "@/components/ui";
-import { formatDate } from "@/lib/format";
+import { formatDate, phTodayYmd } from "@/lib/format";
 import { createPayment, type PaymentState } from "./actions";
 
 type Opt = { id: string; name: string };
@@ -92,7 +92,7 @@ export function PaymentForm({
           <input
             name="payment_date"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={phTodayYmd()}
             className={inputClass}
           />
         </Field>

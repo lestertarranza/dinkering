@@ -7,6 +7,8 @@ import {
   formatTimeRange,
   describeBalance,
   SETTLE_TOLERANCE,
+  phTodayYmd,
+  addCalendarDaysYmd,
 } from "@/lib/format";
 import { round2, resolveWalletOwnersForPlayers } from "@/lib/ledger";
 import {
@@ -71,7 +73,7 @@ export default async function Dashboard({
   const expPage  = Math.max(1, parseInt(sp.exp  ?? "1", 10) || 1);
 
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
 
   const [
     { data: playerBalances },
@@ -411,9 +413,7 @@ export default async function Dashboard({
   const pastUnplayed = allBookings.filter(
     (b) => b.status === "booked" && b.play_date < today,
   );
-  const tomorrow = new Date(`${today}T12:00:00+08:00`);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+  const tomorrowIso = addCalendarDaysYmd(today, 1);
   const soonBookings = allBookings.filter(
     (b) => b.status === "booked" && b.play_date >= today && b.play_date <= tomorrowIso,
   );

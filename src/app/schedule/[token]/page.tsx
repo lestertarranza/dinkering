@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, EmptyState } from "@/components/ui";
-import { formatDate } from "@/lib/format";
+import { formatDate, phTodayYmd } from "@/lib/format";
 import {
   mergeCourts,
   overallCourtTimeRange,
@@ -66,7 +66,7 @@ export default async function PublicSchedule({
   const db = createAdminClient();
   if (!(await validatePublicTeamToken(db, token))) notFound();
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
   const { data: bookings } = await db
     .from("bookings")
     .select("*")

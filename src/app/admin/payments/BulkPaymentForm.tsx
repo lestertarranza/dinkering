@@ -3,7 +3,7 @@
 import { useActionState, useMemo, useState, useTransition } from "react";
 import { Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/SubmitButton";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, phTodayYmd } from "@/lib/format";
 import {
   createBulkPayment,
   previewBulkPayment,
@@ -149,7 +149,7 @@ export function BulkPaymentForm({
           <input
             name="payment_date"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={phTodayYmd()}
             className={inputClass}
           />
         </Field>

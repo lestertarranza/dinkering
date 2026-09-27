@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { round2 } from "@/lib/ledger";
-import { SETTLE_TOLERANCE } from "@/lib/format";
+import { SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import type { GroupType } from "@/lib/types";
 import { revalidateClubFundCash } from "@/lib/cache-tags";
 
@@ -27,7 +27,7 @@ export async function createGroup(formData: FormData) {
     ...new Set(formData.getAll("member_ids").map(String).filter(Boolean)),
   ];
   if (data?.id && memberIds.length) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = phTodayYmd();
     await supabase.from("player_group_members").insert(
       memberIds.map((player_id, i) => ({
         player_group_id: data.id,
@@ -100,7 +100,7 @@ export async function addMember(
     player_group_id,
     player_id,
     is_primary: makePrimary,
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: phTodayYmd(),
   });
   revalidatePath(`/admin/groups/${player_group_id}`);
   return actionOk("Member added.");
@@ -136,7 +136,7 @@ export async function removeMember(
   const { supabase } = await requireAdmin();
   await supabase
     .from("player_group_members")
-    .update({ end_date: new Date().toISOString().slice(0, 10) })
+    .update({ end_date: phTodayYmd() })
     .eq("id", membership_id);
   revalidatePath(`/admin/groups/${player_group_id}`);
   return actionOk("Member removed from group.");
@@ -156,7 +156,7 @@ export async function pullMemberBalances(
   if (!player_group_id) return actionErr("Missing group.");
   const { supabase, user } = await requireAdmin();
   const actor = user.email ?? "admin";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = phTodayYmd();
 
   const { data: group } = await supabase
     .from("player_groups")

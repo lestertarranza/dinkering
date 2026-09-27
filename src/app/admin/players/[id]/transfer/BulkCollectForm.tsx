@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { Field, inputClass } from "@/components/ui";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, phTodayYmd } from "@/lib/format";
 import { transferBalancesBulk } from "../../actions";
 import type { ActionState } from "@/lib/action-state";
 
@@ -154,7 +154,7 @@ export function BulkCollectForm({
           <input
             name="transfer_date"
             type="date"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={phTodayYmd()}
             className={inputClass}
           />
         </Field>

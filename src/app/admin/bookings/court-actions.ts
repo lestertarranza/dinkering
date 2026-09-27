@@ -35,7 +35,7 @@ export async function addCourt(
 
   if (error) return actionErr(error.message);
 
-  await admitWaitlistedPlayers(supabase, booking_id, { via: "admin" });
+  await admitWaitlistedPlayers(supabase, booking_id);
 
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk("Court added.");
@@ -65,7 +65,7 @@ export async function updateCourt(
 
   if (error) return actionErr(error.message);
 
-  await admitWaitlistedPlayers(supabase, booking_id, { via: "admin" });
+  await admitWaitlistedPlayers(supabase, booking_id);
 
   revalidatePath(`/admin/bookings/${booking_id}`);
   return actionOk("Court updated.");

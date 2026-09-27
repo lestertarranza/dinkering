@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, UnauthorizedError } from "@/lib/auth";
-import { formatMoney, SETTLE_TOLERANCE } from "@/lib/format";
+import { formatMoney, SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +85,7 @@ export async function GET() {
   }
 
   const csv = `\uFEFF${lines.join("\n")}`;
-  const date = new Date().toISOString().slice(0, 10);
+  const date = phTodayYmd();
 
   return new NextResponse(csv, {
     headers: {

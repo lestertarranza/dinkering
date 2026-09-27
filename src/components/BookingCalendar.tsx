@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDate } from "@/lib/format";
+import { formatDate, phTodayYmd } from "@/lib/format";
 
 type CalBooking = {
   id: string;
@@ -35,8 +35,8 @@ export function BookingCalendar({
 
   const days: Date[] = [];
   if (view === "week") {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const [y, m, day] = phTodayYmd().split("-").map(Number);
+    const today = new Date(y, m - 1, day);
     const start = new Date(today);
     start.setDate(today.getDate() - today.getDay());
     for (let i = 0; i < 7; i++) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin, UnauthorizedError } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { round2 } from "@/lib/ledger";
+import { phTodayYmd } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 
@@ -35,7 +36,7 @@ function num(v: unknown): number {
 
 function toDate(v: unknown): string {
   if (v === null || v === undefined || String(v).trim() === "")
-    return new Date().toISOString().slice(0, 10);
+    return phTodayYmd();
   // Excel serial number
   if (typeof v === "number") {
     const ms = Math.round((v - 25569) * 86400 * 1000);
@@ -43,7 +44,7 @@ function toDate(v: unknown): string {
   }
   const d = new Date(String(v));
   if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  return new Date().toISOString().slice(0, 10);
+  return phTodayYmd();
 }
 
 export const runtime = "nodejs";

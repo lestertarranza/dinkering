@@ -17,9 +17,6 @@ export {
   waitlistedAtPayload,
 } from "@/lib/waitlist-order";
 
-export type RsvpLogVia = "player" | "admin";
-
-
 let waitlistedAtSupported: boolean | undefined;
 
 export async function waitlistedAtColumnExists(
@@ -124,7 +121,7 @@ export async function getGoingCount(
 export async function admitWaitlistedPlayers(
   db: SupabaseClient,
   bookingId: string,
-  opts?: { via?: RsvpLogVia; actorEmail?: string | null },
+  opts?: { actorEmail?: string | null },
 ): Promise<number> {
   const capacity = await getTotalCapacity(db, bookingId);
   const withAt = await waitlistedAtColumnExists(db);
@@ -185,7 +182,7 @@ export async function admitWaitlistedPlayers(
       from: "waitlist",
       to: "going",
       actorEmail: opts?.actorEmail ?? null,
-      via: opts?.via ?? "admin",
+      via: "auto",
     });
   }
 
