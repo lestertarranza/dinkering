@@ -288,7 +288,9 @@ export default async function PublicBookingRoster({
             const rsvpHint = face.verified
               ? mine
                 ? "Open your page to RSVP"
-                : "Claimed. Only this player can RSVP"
+                : auth.user
+                  ? "Claimed. Only this player can RSVP"
+                  : "Sign in on your page to RSVP"
               : "Tap to RSVP on your page";
             return {
               key: r.id,
@@ -324,7 +326,7 @@ export default async function PublicBookingRoster({
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Tap your name to RSVP. Claimed names can only be changed by that player.
+        Tap your name to RSVP. Claimed names need that player to sign in.
         Unclaimed names still use the private page link.
       </p>
 

@@ -769,16 +769,29 @@ export default async function PlayerPortal({
                       })()}
                     />
                     ) : (
-                      <p className={publicHintText}>
-                        {a.response_status === "going"
-                          ? "Going"
-                          : a.response_status === "not_going"
-                            ? "Not going"
-                            : a.response_status === "waitlist"
-                              ? "Waitlisted"
-                              : "No RSVP yet"}
-                        . Only {face.name} can change this RSVP.
-                      </p>
+                      <div className="space-y-2">
+                        <p className={publicHintText}>
+                          {a.response_status === "going"
+                            ? "Going"
+                            : a.response_status === "not_going"
+                              ? "Not going"
+                              : a.response_status === "waitlist"
+                                ? "Waitlisted"
+                                : "No RSVP yet"}
+                          {auth.user
+                            ? `. Only ${face.name} can change this RSVP.`
+                            : `. Sign in as ${face.name} to change this RSVP.`}
+                        </p>
+                        {auth.user ? null : (
+                          <PendingLink
+                            href={`/login?next=${encodeURIComponent(`/p/${token}`)}`}
+                            busyLabel="Opening sign in…"
+                            className="inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+                          >
+                            Sign in to RSVP
+                          </PendingLink>
+                        )}
+                      </div>
                     )}
                   </div>
                   {detailsHref ? (
