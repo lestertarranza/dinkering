@@ -55,6 +55,7 @@ import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
+import { canEditPublicRsvp } from "@/lib/rsvp-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -418,6 +419,11 @@ export default async function PlayerPortal({
 
   const ledgerPageUrl = (n: number) =>
     `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
+  const canRsvp = canEditPublicRsvp({
+    claimed: face.verified,
+    viewerPlayerId: auth.profile?.player_id,
+    targetPlayerId: p.id,
+  });
 
   return (
     <>
@@ -740,6 +746,7 @@ export default async function PlayerPortal({
                     </div>
                   </div>
                   <div className="mt-3">
+                    {canRsvp ? (
                     <RsvpForm
                       token={token}
                       bookingId={a.bookings.id}
@@ -761,6 +768,18 @@ export default async function PlayerPortal({
                         return !!(cap && cap.totalCap > 0 && cap.goingCount >= cap.totalCap);
                       })()}
                     />
+                    ) : (
+                      <p className={publicHintText}>
+                        {a.response_status === "going"
+                          ? "Going"
+                          : a.response_status === "not_going"
+                            ? "Not going"
+                            : a.response_status === "waitlist"
+                              ? "Waitlisted"
+                              : "No RSVP yet"}
+                        . Only {face.name} can change this RSVP.
+                      </p>
+                    )}
                   </div>
                   {detailsHref ? (
                     <PendingLink

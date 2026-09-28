@@ -15,6 +15,7 @@ import { validatePublicTeamToken } from "@/lib/public-links";
 import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
+import { getAuthContext } from "@/lib/auth";
 import {
   DateChip,
   CountPill,
@@ -64,7 +65,7 @@ export default async function PublicBookingRoster({
   if (!booking) notFound();
   const b = booking as Booking;
 
-  const [{ data: attendance }, { data: courtsData }, identities, inviteIndex] =
+  const [{ data: attendance }, { data: courtsData }, identities, inviteIndex, auth] =
     await Promise.all([
       db
         .from("booking_attendance")
@@ -79,6 +80,7 @@ export default async function PublicBookingRoster({
         .order("created_at"),
       loadLinkedIdentities(),
       loadInviteIndex(db),
+      getAuthContext(),
     ]);
 
   type Row = BookingAttendance & {
@@ -282,6 +284,12 @@ export default async function PublicBookingRoster({
               inviteIndex,
               identities,
             );
+            const mine = auth.profile?.player_id === r.player_id;
+            const rsvpHint = face.verified
+              ? mine
+                ? "Open your page to RSVP"
+                : "Claimed. Only this player can RSVP"
+              : "Tap to RSVP on your page";
             return {
               key: r.id,
               search: `${face.name} ${invited ?? ""}`,
@@ -296,7 +304,7 @@ export default async function PublicBookingRoster({
                       name={face.name}
                       verified={face.verified}
                       avatarUrl={face.avatarUrl}
-                      subtitle={invited ?? "Tap to RSVP on your page"}
+                      subtitle={invited ?? rsvpHint}
                     />
                   </div>
                   <StatusBadge status={r.response_status} size="md" />
@@ -316,7 +324,8 @@ export default async function PublicBookingRoster({
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Tap your name to open your private page and confirm Going / Not going.
+        Tap your name to RSVP. Claimed names can only be changed by that player.
+        Unclaimed names still use the private page link.
       </p>
 
       <footer className="mt-6 text-center text-sm text-slate-400">

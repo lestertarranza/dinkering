@@ -5,6 +5,9 @@ import { isRsvpLocked } from "@/lib/rsvp-lock";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ResponseStatus } from "@/lib/types";
 import { logRsvpChange } from "@/lib/activity-log";
+import { getAuthContext } from "@/lib/auth";
+import { getPlayerLink } from "@/lib/accounts";
+import { canEditPublicRsvp } from "@/lib/rsvp-auth";
 import { admitWaitlistedPlayers, upsertAttendanceRsvp } from "@/lib/waitlist";
 
 export type RsvpState = {
@@ -46,6 +49,27 @@ export async function submitRsvp(
     .single();
   if (!player) {
     return { ok: false, message: "Player not found.", previous: "", saved: "", bookingId: booking_id };
+  }
+
+  const [link, auth] = await Promise.all([
+    getPlayerLink(player.id),
+    getAuthContext(),
+  ]);
+  if (
+    !canEditPublicRsvp({
+      claimed: link.linked,
+      viewerPlayerId: auth.profile?.player_id,
+      targetPlayerId: player.id,
+    })
+  ) {
+    return {
+      ok: false,
+      message:
+        "This name is claimed. Sign in as this player to change RSVP.",
+      previous: "",
+      saved: "",
+      bookingId: booking_id,
+    };
   }
 
   const [{ data: booking }, { data: courts }] = await Promise.all([
