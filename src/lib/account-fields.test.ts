@@ -66,6 +66,14 @@ describe("postLoginPath", () => {
     expect(
       postLoginPath({
         role: "player",
+        playerToken: "abc",
+        pending: false,
+        next: "/schedule/team/game",
+      }),
+    ).toBe("/schedule/team/game");
+    expect(
+      postLoginPath({
+        role: "player",
         playerToken: null,
         pending: true,
         next: "/admin",

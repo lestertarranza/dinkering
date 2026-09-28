@@ -85,32 +85,29 @@ export function SaveAsMyPage({
     () => false,
   );
   const saved = useSyncExternalStore(subscribeHome, readPlayerToken, () => null);
-  const mine = owned || saved === playerToken;
+  const profileHref = `/p/${playerToken}`;
   const labelClass = compact
     ? "text-xs font-semibold text-emerald-700"
     : "text-sm font-semibold text-emerald-700";
-  const profileHref = `/p/${playerToken}`;
 
   if (!hydrated) return null;
   if (verified) {
-    if (mine) {
-      return (
-        <PendingLink
-          href={profileHref}
-          busyLabel="Opening your page…"
-          className={
-            compact
-              ? "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
-              : "inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-          }
-        >
-          Go to My Profile
-        </PendingLink>
-      );
-    }
-    return <p className={labelClass}>Verified</p>;
+    if (!owned) return null;
+    return (
+      <PendingLink
+        href={profileHref}
+        busyLabel="Opening your page…"
+        className={
+          compact
+            ? "inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
+            : "inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+        }
+      >
+        My page
+      </PendingLink>
+    );
   }
-  if (mine) {
+  if (saved === playerToken) {
     return <p className={labelClass}>Saved as My page</p>;
   }
 
@@ -143,28 +140,36 @@ export function SaveAsMyPage({
 }
 
 export function PublicBottomNav({
-  playerToken,
   teamToken,
+  signedIn = false,
+  sessionPlayerToken = null,
 }: {
   playerToken?: string | null;
   teamToken?: string | null;
+  signedIn?: boolean;
+  sessionPlayerToken?: string | null;
 }) {
-  const pathname = usePathname();
-  const storedP = useSyncExternalStore(subscribeHome, readPlayerToken, () => null);
+  const pathname = usePathname() || "/";
   const storedT = useSyncExternalStore(subscribeHome, readTeamToken, () => null);
-  const p = playerToken || storedP;
   const t = teamToken || storedT;
 
-  if (!t && !p) return null;
+  const myHref = signedIn
+    ? sessionPlayerToken
+      ? `/p/${sessionPlayerToken}`
+      : "/account"
+    : `/login?next=${encodeURIComponent(pathname)}`;
+  const myLabel = signedIn
+    ? sessionPlayerToken
+      ? "My page"
+      : "Account"
+    : "Sign in";
 
   const items = [
-    p ? { href: `/p/${p}`, label: "My page", icon: "🏓" } : null,
+    { href: myHref, label: myLabel, icon: signedIn ? "🏓" : "👤" },
     t ? { href: `/players/${t}`, label: "Players", icon: "🧑" } : null,
     t ? { href: `/schedule/${t}`, label: "Games", icon: "📅" } : null,
     t ? { href: `/board/${t}`, label: "Balances", icon: "💰" } : null,
   ].filter(Boolean) as { href: string; label: string; icon: string }[];
-
-  if (items.length === 0) return null;
 
   return (
     <nav
@@ -173,10 +178,13 @@ export function PublicBottomNav({
     >
       <ul className="mx-auto flex max-w-lg">
         {items.map((item) => {
+          const pathOnly = item.href.split("?")[0];
           const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+            item.label === "Sign in"
+              ? pathname === "/login"
+              : pathname === pathOnly || pathname.startsWith(`${pathOnly}/`);
           return (
-            <li key={item.href} className="flex-1">
+            <li key={item.label} className="flex-1">
               <PendingLink
                 href={item.href}
                 busyLabel={`Opening ${item.label}…`}

@@ -46,10 +46,10 @@ import type {
 import { RsvpForm } from "./RsvpForm";
 import { ScrollToHash } from "@/components/ScrollToHash";
 import {
-  PublicBottomNav,
   RememberPublicTokens,
   SaveAsMyPage,
 } from "@/components/PublicBottomNav";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 import { fetchAllRows } from "@/lib/paginate";
 import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
@@ -424,9 +424,14 @@ export default async function PlayerPortal({
     viewerPlayerId: auth.profile?.player_id,
     targetPlayerId: p.id,
   });
+  const loginHref = `/login?next=${encodeURIComponent(`/p/${token}`)}`;
 
   return (
-    <>
+    <PublicChrome
+      returnTo={`/p/${token}`}
+      teamToken={teamToken}
+      viewingName={canRsvp ? null : face.name}
+    >
     <RememberPublicTokens
       playerToken={token}
       teamToken={teamToken}
@@ -539,6 +544,8 @@ export default async function PlayerPortal({
         );
       })() : null}
 
+      {canRsvp ? (
+      <>
       {pooled ? (
         /* ── Pooled player: two clearly labelled wallet panels ── */
         <div className="mb-5 grid grid-cols-2 gap-3">
@@ -680,15 +687,51 @@ export default async function PlayerPortal({
           />
         </p>
       ) : null}
+      </>
+      ) : (
+        <Card className="mb-5 p-4 text-center">
+          <p className={publicHintText}>
+            {auth.user
+              ? `The balance and payment proof stay on ${face.name}'s login.`
+              : `Sign in as ${face.name} to see the balance and send payment proof.`}
+          </p>
+          {auth.user ? null : (
+            <PendingLink
+              href={loginHref}
+              busyLabel="Opening sign in…"
+              className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+            >
+              Sign in
+            </PendingLink>
+          )}
+        </Card>
+      )}
 
       <div className="mb-5">
         <HowToPay bank={payBank} gcash={payGcash} />
-        {d.tone === "collect" ? (
+        {canRsvp && d.tone === "collect" ? (
           <PaymentProofForm token={token} owed={d.amount} />
         ) : null}
       </div>
 
       <PublicSection title="Upcoming games">
+        {!canRsvp ? (
+          <div className="mb-3 px-1">
+            {auth.user ? (
+              <p className={publicHintText}>
+                Only {face.name} can change these RSVPs.
+              </p>
+            ) : (
+              <PendingLink
+                href={loginHref}
+                busyLabel="Opening sign in…"
+                className="inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+              >
+                Sign in to RSVP
+              </PendingLink>
+            )}
+          </div>
+        ) : null}
         {upcoming.length === 0 ? (
           <EmptyState
             title="No upcoming games yet"
@@ -769,29 +812,15 @@ export default async function PlayerPortal({
                       })()}
                     />
                     ) : (
-                      <div className="space-y-2">
-                        <p className={publicHintText}>
-                          {a.response_status === "going"
-                            ? "Going"
-                            : a.response_status === "not_going"
-                              ? "Not going"
-                              : a.response_status === "waitlist"
-                                ? "Waitlisted"
-                                : "No RSVP yet"}
-                          {auth.user
-                            ? `. Only ${face.name} can change this RSVP.`
-                            : `. Sign in as ${face.name} to change this RSVP.`}
-                        </p>
-                        {auth.user ? null : (
-                          <PendingLink
-                            href={`/login?next=${encodeURIComponent(`/p/${token}`)}`}
-                            busyLabel="Opening sign in…"
-                            className="inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
-                          >
-                            Sign in to RSVP
-                          </PendingLink>
-                        )}
-                      </div>
+                      <p className={publicHintText}>
+                        {a.response_status === "going"
+                          ? "Going"
+                          : a.response_status === "not_going"
+                            ? "Not going"
+                            : a.response_status === "waitlist"
+                              ? "Waitlisted"
+                              : "No RSVP yet"}
+                      </p>
                     )}
                   </div>
                   {detailsHref ? (
@@ -811,6 +840,7 @@ export default async function PlayerPortal({
         )}
       </PublicSection>
 
+      {canRsvp ? (
       <PublicSection title="Charges & payments">
         {pooled ? (
           <p className={`mb-3 px-1 ${publicHintText}`}>
@@ -857,12 +887,12 @@ export default async function PlayerPortal({
           showRunning={!pooled}
         />
       </PublicSection>
+      ) : null}
 
       <footer className="mt-8 text-center text-sm text-slate-400">
         Private link · do not share publicly
       </footer>
     </main>
-    <PublicBottomNav playerToken={token} teamToken={teamToken} />
-    </>
+    </PublicChrome>
   );
 }

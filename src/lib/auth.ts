@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { User } from "@supabase/supabase-js";
@@ -32,7 +33,7 @@ export async function getAccountsReady(): Promise<boolean> {
   return true;
 }
 
-export async function getAuthContext(): Promise<AuthContext> {
+export const getAuthContext = cache(async function getAuthContext(): Promise<AuthContext> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -100,7 +101,7 @@ export async function getAuthContext(): Promise<AuthContext> {
     playerToken,
     accountsReady,
   };
-}
+});
 
 /**
  * Require a signed-in admin for server actions and API routes.

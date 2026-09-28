@@ -20,9 +20,9 @@ import {
   publicHintText,
 } from "@/components/public-ui";
 import {
-  PublicBottomNav,
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 import { PendingLink } from "@/components/PendingLink";
 import type { Booking } from "@/lib/types";
 
@@ -108,7 +108,7 @@ export default async function PublicSchedule({
   }
 
   return (
-    <>
+    <PublicChrome returnTo={`/schedule/${token}`} teamToken={token}>
     <RememberPublicTokens teamToken={token} />
     <main className={publicMainClass}>
       <PublicPageHeader
@@ -289,7 +289,6 @@ export default async function PublicSchedule({
         Shared schedule · please don&apos;t post publicly
       </footer>
     </main>
-    <PublicBottomNav teamToken={token} />
-    </>
+    </PublicChrome>
   );
 }

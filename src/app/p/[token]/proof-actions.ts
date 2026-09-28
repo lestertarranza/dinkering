@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { uploadPaymentProof } from "@/lib/payment-proof";
+import { getAuthContext } from "@/lib/auth";
+import { getPlayerLink } from "@/lib/accounts";
+import { canEditPublicRsvp } from "@/lib/rsvp-auth";
 
 export type ProofState = { ok: boolean; message: string } | null;
 
@@ -24,6 +27,23 @@ export async function submitPaymentProof(
     .eq("public_token", token)
     .single();
   if (!player) return { ok: false, message: "Player not found." };
+
+  const [link, auth] = await Promise.all([
+    getPlayerLink(player.id),
+    getAuthContext(),
+  ]);
+  if (
+    !canEditPublicRsvp({
+      claimed: link.linked,
+      viewerPlayerId: auth.profile?.player_id,
+      targetPlayerId: player.id,
+    })
+  ) {
+    return {
+      ok: false,
+      message: "Sign in as this player to send payment proof.",
+    };
+  }
 
   const { data: membership } = await db
     .from("player_group_members")

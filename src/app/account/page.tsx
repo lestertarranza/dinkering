@@ -5,6 +5,7 @@ import { buttonClass, Card } from "@/components/ui";
 import { SignOutButton } from "@/components/SignOutButton";
 import { formatPhMobile } from "@/lib/phone";
 import { AccountSettingsForm } from "./AccountSettingsForm";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export default async function AccountPage() {
   const isAdmin = p.role === "admin";
 
   return (
-    <main className="mx-auto max-w-md px-4 py-10">
+    <PublicChrome returnTo="/account">
+    <main className="mx-auto max-w-md px-4 py-10 pb-28">
       <div className="mb-6 text-center">
         <h1 className="text-xl font-semibold text-slate-900">My account</h1>
         <p className="mt-1 text-sm text-slate-500">
@@ -48,5 +50,6 @@ export default async function AccountPage() {
         <SignOutButton />
       </div>
     </main>
+    </PublicChrome>
   );
 }

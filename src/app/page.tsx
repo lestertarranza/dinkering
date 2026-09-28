@@ -1,15 +1,17 @@
 import { PendingLink } from "@/components/PendingLink";
 import { getAuthContext } from "@/lib/auth";
 import { buttonClass } from "@/components/ui";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const ctx = await getAuthContext();
-  const signedInHref = ctx.user ? "/me" : "/login";
+  const signedInHref = ctx.user ? "/me" : "/login?next=/me";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-16 text-center">
+    <PublicChrome returnTo="/me">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-16 pb-28 text-center">
       <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-600 text-3xl shadow-lg">
         🏓
       </div>
@@ -48,5 +50,6 @@ export default async function Home() {
         new people. If you are already on the team, claim your name.
       </p>
     </main>
+    </PublicChrome>
   );
 }

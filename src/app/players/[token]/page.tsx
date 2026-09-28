@@ -12,9 +12,9 @@ import {
   publicMainClass,
 } from "@/components/public-ui";
 import {
-  PublicBottomNav,
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 import { PlayerDirectory } from "@/components/PlayerDirectory";
 import type { Player } from "@/lib/types";
 
@@ -48,13 +48,13 @@ export default async function PublicPlayersPage({
   const unverifiedCount = list.length - verifiedCount;
 
   return (
-    <>
+    <PublicChrome returnTo={`/players/${token}`} teamToken={token}>
       <RememberPublicTokens teamToken={token} />
       <main className={publicMainClass}>
         <PublicPageHeader
           icon="🧑"
           title="Players"
-          subtitle="Find your name. If it is not verified yet, tap This is me to save it as My page."
+          subtitle="Find your name. Sign in if you already have a login. Otherwise tap This is me."
         />
 
         {list.length > 0 ? (
@@ -63,10 +63,10 @@ export default async function PublicPlayersPage({
               {`${list.length} player${list.length === 1 ? "" : "s"}`}
             </span>
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">
-              {verifiedCount} verified
+              {verifiedCount} with a login
             </span>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
-              {unverifiedCount} not verified
+              {unverifiedCount} no login yet
             </span>
           </p>
         ) : null}
@@ -76,33 +76,33 @@ export default async function PublicPlayersPage({
         ) : (
           <PlayerDirectory
             teamToken={token}
-            rows={list.map((p) => {
-              const face = playerFace(p.id, p, identities);
-              const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
-              return {
-                id: p.id,
-                name: face.name,
-                subtitle: invited ?? "Open page",
-                href: `/p/${p.public_token}`,
-                playerToken: p.public_token,
-                verified: face.verified,
-                owned: auth.profile?.player_id === p.id,
-                avatarUrl: face.avatarUrl,
-              };
-            })}
+            rows={list
+              .map((p) => {
+                const face = playerFace(p.id, p, identities);
+                const invited = inviteLineFromIndex(p.id, inviteIndex, identities);
+                return {
+                  id: p.id,
+                  name: face.name,
+                  subtitle: invited ?? "Open page",
+                  href: `/p/${p.public_token}`,
+                  playerToken: p.public_token,
+                  verified: face.verified,
+                  owned: auth.profile?.player_id === p.id,
+                  avatarUrl: face.avatarUrl,
+                };
+              })
+              .sort((a, b) => Number(b.owned) - Number(a.owned) || a.name.localeCompare(b.name))}
           />
         )}
 
         <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-          This is me is for names that are not verified yet. It saves your page
-          on this phone. Verified names already have a login. If that name is
-          yours, tap Go to My Profile.
+          This is me saves a name that has no login yet, on this phone. If you
+          have a login, sign in and use My page.
         </p>
         <footer className="mt-6 text-center text-sm text-slate-400">
         Shared player list · please don&apos;t post this page publicly
         </footer>
       </main>
-      <PublicBottomNav teamToken={token} />
-    </>
+    </PublicChrome>
   );
 }

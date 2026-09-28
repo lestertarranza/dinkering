@@ -40,21 +40,35 @@ export function isMissingRelation(
   );
 }
 
+function playerReturnPath(next: string | null): string | null {
+  const safe = safeNextPath(next);
+  if (!safe) return null;
+  if (
+    safe === "/login" ||
+    safe.startsWith("/login/") ||
+    safe.startsWith("/admin") ||
+    safe.startsWith("/auth")
+  ) {
+    return null;
+  }
+  return safe;
+}
+
 export function postLoginPath(opts: {
   role?: string | null;
   playerToken?: string | null;
   pending: boolean;
   next: string | null;
 }): string {
+  const next = safeNextPath(opts.next);
+  const back = playerReturnPath(opts.next);
   if (opts.role === "admin") {
-    const n = opts.next;
-    if (n && (n === "/admin" || n.startsWith("/admin/"))) return n;
-    if (n && n.startsWith("/") && !n.startsWith("/admin")) {
-      // Admins may follow a non-admin next (e.g. a player page).
-      return n;
-    }
+    if (next && (next === "/admin" || next.startsWith("/admin/"))) return next;
+    if (back) return back;
     return "/admin";
   }
+  if (opts.pending && !opts.playerToken) return "/pending";
+  if (back) return back;
   if (opts.playerToken) return `/p/${opts.playerToken}`;
   if (opts.pending) return "/pending";
   return "/register";

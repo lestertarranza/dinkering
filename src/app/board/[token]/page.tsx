@@ -18,9 +18,9 @@ import {
   publicHintText,
 } from "@/components/public-ui";
 import {
-  PublicBottomNav,
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 import type { Player } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -235,13 +235,13 @@ export default async function TeamBoard({
   });
 
   return (
-    <>
+    <PublicChrome returnTo={`/board/${token}`} teamToken={token}>
     <RememberPublicTokens teamToken={token} />
     <main className="mx-auto max-w-3xl px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base">
       <PublicPageHeader
         icon="🏓"
         title="Dinkering Pickleball"
-        subtitle="Tap your name to open your private page."
+        subtitle="Tap your name to open your page."
       />
 
       {items.length === 0 ? (
@@ -305,14 +305,13 @@ export default async function TeamBoard({
       ) : null}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Grouped players (couples, families, team funds) share one balance — tap a
+        Grouped players (couples, families, team funds) share one balance. Tap a
         group to see its shared ledger and members.
       </p>
       <footer className="mt-6 text-center text-sm text-slate-400">
         Shared team board · please don&apos;t post publicly
       </footer>
     </main>
-    <PublicBottomNav teamToken={token} />
-    </>
+    </PublicChrome>
   );
 }

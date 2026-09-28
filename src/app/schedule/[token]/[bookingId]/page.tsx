@@ -16,6 +16,10 @@ import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import { getAuthContext } from "@/lib/auth";
+import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
+import { RsvpForm } from "@/app/p/[token]/RsvpForm";
+import { PendingLink } from "@/components/PendingLink";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 import {
   DateChip,
   CountPill,
@@ -31,7 +35,6 @@ import {
   PlayerNameLine,
 } from "@/components/public-ui";
 import {
-  PublicBottomNav,
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
 import type { Booking, BookingAttendance, Player } from "@/lib/types";
@@ -140,8 +143,21 @@ export default async function PublicBookingRoster({
         ? [b.confirmation_url]
         : [];
 
+  const viewerId = auth.profile?.player_id ?? null;
+  const displayRoster = viewerId
+    ? [...roster].sort((a, b) => {
+        if (a.player_id === viewerId) return -1;
+        if (b.player_id === viewerId) return 1;
+        return 0;
+      })
+    : roster;
+  const locked = isRsvpLocked(b.play_date, courts, b.start_time);
+  const lockAt = getRsvpLockAt(b.play_date, courts, b.start_time);
+  const isFull = totalMax > 0 && going >= totalMax;
+  const loginHref = `/login?next=${encodeURIComponent(`/schedule/${token}/${bookingId}`)}`;
+
   return (
-    <>
+    <PublicChrome returnTo={`/schedule/${token}/${bookingId}`} teamToken={token}>
     <RememberPublicTokens teamToken={token} />
     <main className={publicMainClass}>
       <Link
@@ -274,67 +290,114 @@ export default async function PublicBookingRoster({
           description="Once the roster is added, you'll see who's going here."
         />
       ) : (
-        <PublicSearchList
-          placeholder="Search a player…"
-          emptyTitle="No player matches your search"
-          items={roster.map((r) => {
-            const face = playerFace(r.player_id, r.players, identities);
-            const invited = inviteLineFromIndex(
-              r.player_id,
-              inviteIndex,
-              identities,
-            );
-            const mine = auth.profile?.player_id === r.player_id;
-            const rsvpHint = face.verified
-              ? mine
-                ? "Open your page to RSVP"
-                : auth.user
-                  ? "Claimed. Only this player can RSVP"
-                  : "Sign in on your page to RSVP"
-              : "Tap to RSVP on your page";
-            return {
-              key: r.id,
-              search: `${face.name} ${invited ?? ""}`,
-              node: (
-                <Link
-                  key={r.id}
-                  href={`/p/${r.players.public_token}#booking-${bookingId}`}
-                  className={publicTapRowClass}
-                >
-                  <div className="min-w-0 flex-1">
-                    <PlayerNameLine
-                      name={face.name}
-                      verified={face.verified}
-                      avatarUrl={face.avatarUrl}
-                      subtitle={invited ?? rsvpHint}
-                    />
-                  </div>
-                  <StatusBadge status={r.response_status} size="md" />
-                  {r.response_status === "waitlist" && waitlistNumber.get(r.id) ? (
-                    <span className="ml-1 text-xs font-semibold text-amber-800">
-                      #{waitlistNumber.get(r.id)}
+        <>
+          {auth.user ? null : (
+            <div className="mb-3">
+              <PendingLink
+                href={loginHref}
+                busyLabel="Opening sign in…"
+                className="inline-flex min-h-11 items-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white"
+              >
+                Sign in to RSVP
+              </PendingLink>
+            </div>
+          )}
+          <PublicSearchList
+            placeholder="Search a player…"
+            emptyTitle="No player matches your search"
+            items={displayRoster.map((r) => {
+              const face = playerFace(r.player_id, r.players, identities);
+              const invited = inviteLineFromIndex(
+                r.player_id,
+                inviteIndex,
+                identities,
+              );
+              const mine = viewerId === r.player_id;
+              const waitPos = waitlistNumber.get(r.id);
+              if (mine) {
+                return {
+                  key: r.id,
+                  search: `${face.name} You ${invited ?? ""}`,
+                  node: (
+                    <div className="bg-emerald-50/70 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <PlayerNameLine
+                            name={face.name}
+                            verified={face.verified}
+                            avatarUrl={face.avatarUrl}
+                            subtitle="You"
+                          />
+                        </div>
+                        <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          You
+                        </span>
+                        <StatusBadge status={r.response_status} size="md" />
+                      </div>
+                      <div className="mt-3">
+                        <RsvpForm
+                          token={r.players.public_token}
+                          bookingId={b.id}
+                          currentStatus={r.response_status}
+                          locked={locked}
+                          lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
+                          isFull={isFull}
+                          waitlistPosition={
+                            r.response_status === "waitlist" && waitPos
+                              ? { position: waitPos, total: waitlistPeople.length }
+                              : null
+                          }
+                        />
+                      </div>
+                    </div>
+                  ),
+                };
+              }
+              const href = `/p/${r.players.public_token}#booking-${bookingId}`;
+              const hint = face.verified
+                ? invited ?? ""
+                : invited
+                  ? `${invited} · Open the private page to RSVP`
+                  : "Open the private page to RSVP";
+              return {
+                key: r.id,
+                search: `${face.name} ${invited ?? ""}`,
+                node: (
+                  <Link href={href} className={publicTapRowClass}>
+                    <div className="min-w-0 flex-1">
+                      <PlayerNameLine
+                        name={face.name}
+                        verified={face.verified}
+                        avatarUrl={face.avatarUrl}
+                        subtitle={hint}
+                      />
+                    </div>
+                    <StatusBadge status={r.response_status} size="md" />
+                    {r.response_status === "waitlist" && waitPos ? (
+                      <span className="ml-1 text-xs font-semibold text-amber-800">
+                        #{waitPos}
+                      </span>
+                    ) : null}
+                    <span className={publicChevronClass} aria-hidden>
+                      ›
                     </span>
-                  ) : null}
-                  <span className={publicChevronClass} aria-hidden>
-                    ›
-                  </span>
-                </Link>
-              ),
-            };
-          })}
-        />
+                  </Link>
+                ),
+              };
+            })}
+          />
+        </>
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Tap your name to RSVP. Claimed names need that player to sign in.
-        Unclaimed names still use the private page link.
+        Your row is at the top when you are signed in. Names without a login
+        still open their private page.
       </p>
 
       <footer className="mt-6 text-center text-sm text-slate-400">
         Shared schedule · please don&apos;t post publicly
       </footer>
     </main>
-    <PublicBottomNav teamToken={token} />
-    </>
+    </PublicChrome>
   );
 }

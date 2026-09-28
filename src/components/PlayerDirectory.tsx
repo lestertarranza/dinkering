@@ -66,9 +66,14 @@ export function PlayerDirectory({
                   name={r.name}
                   verified={r.verified}
                   avatarUrl={r.avatarUrl}
-                  subtitle={r.subtitle}
+                  subtitle={r.owned ? "You" : r.subtitle}
                 />
               </PendingLink>
+              {r.owned ? (
+                <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  You
+                </span>
+              ) : null}
               <SaveAsMyPage
                 playerToken={r.playerToken}
                 teamToken={teamToken}

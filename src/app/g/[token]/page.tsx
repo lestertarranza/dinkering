@@ -17,12 +17,13 @@ import { PendingLink } from "@/components/PendingLink";
 import { PlayerActivityList } from "@/components/PlayerActivityList";
 import { activityTitle } from "@/lib/player-ledger-copy";
 import { loadLinkedIdentities } from "@/lib/accounts";
+import { getAuthContext } from "@/lib/auth";
 import { playerFace } from "@/lib/player-identity";
 import { fetchAllRows } from "@/lib/paginate";
 import {
-  PublicBottomNav,
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
+import { PublicChrome } from "@/components/PlayerSessionBar";
 import type { LedgerEntry, PlayerGroup } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -184,8 +185,13 @@ export default async function GroupPortal({
     }[]
   ).filter((m) => m.players);
 
+  const auth = await getAuthContext();
+  const viewerIsMember = memberRows.some(
+    (m) => m.players?.id === auth.profile?.player_id,
+  );
+
   return (
-    <>
+    <PublicChrome returnTo={`/g/${token}`} teamToken={teamToken}>
     {teamToken ? <RememberPublicTokens teamToken={teamToken} /> : null}
     <main className={publicMainClass}>
       <header className="mb-5 text-center">
@@ -194,6 +200,11 @@ export default async function GroupPortal({
         </div>
         <h1 className={`text-2xl ${publicPrimaryText}`}>{g.name}</h1>
         <p className="mt-0.5 text-base text-slate-600">Shared pickleball wallet</p>
+        {viewerIsMember ? (
+          <p className="mt-2 text-sm font-semibold text-emerald-700">
+            You are in this group.
+          </p>
+        ) : null}
       </header>
 
       <Card
@@ -246,7 +257,13 @@ export default async function GroupPortal({
                       src={face.avatarUrl}
                       verified={face.verified}
                       size="sm"
-                      hint={m.is_primary ? "primary" : undefined}
+                      hint={
+                        m.players?.id === auth.profile?.player_id
+                          ? "You"
+                          : m.is_primary
+                            ? "primary"
+                            : undefined
+                      }
                       nested
                     />
                   </PendingLink>
@@ -297,7 +314,6 @@ export default async function GroupPortal({
         Private link · do not share publicly
       </footer>
     </main>
-    <PublicBottomNav teamToken={teamToken} />
-    </>
+    </PublicChrome>
   );
 }

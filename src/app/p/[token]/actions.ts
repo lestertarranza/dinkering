@@ -65,7 +65,7 @@ export async function submitRsvp(
     return {
       ok: false,
       message:
-        "This name is claimed. Sign in as this player to change RSVP.",
+        "Sign in as this player to change RSVP.",
       previous: "",
       saved: "",
       bookingId: booking_id,
