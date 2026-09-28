@@ -944,6 +944,7 @@ export async function linkedAccountForPlayer(playerId: string): Promise<{
   avatar_url: string | null;
   first_name: string;
   last_name: string;
+  role: "admin" | "player";
 } | null> {
   const admin = createAdminClient();
   const { data: profile, error } = await admin
@@ -959,5 +960,6 @@ export async function linkedAccountForPlayer(playerId: string): Promise<{
     avatar_url: (profile.avatar_url as string | null) ?? null,
     first_name: (profile.first_name as string) ?? "",
     last_name: (profile.last_name as string) ?? "",
+    role: profile.role === "admin" ? "admin" : "player",
   };
 }

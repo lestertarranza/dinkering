@@ -389,6 +389,7 @@ export async function updatePlayer(
   if (invite.invitedByPlayerId === id) {
     return actionErr("A player cannot invite themselves.");
   }
+  const auto_rsvp_going = formData.get("auto_rsvp_going") === "1";
 
   const { supabase } = await requireAdmin();
   const payload: Record<string, unknown> = {
@@ -398,11 +399,13 @@ export async function updatePlayer(
     active_status,
     is_founding_member: invite.isFoundingMember,
     invited_by_player_id: invite.invitedByPlayerId,
+    auto_rsvp_going,
   };
   const { error } = await supabase.from("players").update(payload).eq("id", id);
   if (error && isMissingRelation(error)) {
     delete payload.is_founding_member;
     delete payload.invited_by_player_id;
+    delete payload.auto_rsvp_going;
     const retry = await supabase.from("players").update(payload).eq("id", id);
     if (retry.error) return actionErr("Could not save the player.");
   } else if (error) {
@@ -594,4 +597,41 @@ export async function linkPlayerToMyLogin(
   if (!result.ok) return actionErr(result.error);
   revalidatePath(`/admin/players/${id}`);
   return actionOk("This player is now linked to your login. You are still an admin.");
+}
+
+export async function setLinkedProfileRole(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const playerId = String(formData.get("id") || "");
+  const role = String(formData.get("role")) === "admin" ? "admin" : "player";
+  if (!playerId) return actionErr("Missing player.");
+  const { supabase, user } = await requireAdmin();
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("id, role")
+    .eq("player_id", playerId)
+    .maybeSingle();
+  if (!profile) {
+    return actionErr("This player does not have a login yet.");
+  }
+  if (profile.id === user.id && role !== "admin") {
+    return actionErr("You cannot remove your own admin access.");
+  }
+  const { error } = await supabase
+    .from("user_profiles")
+    .update({ role })
+    .eq("id", profile.id);
+  if (error) return actionErr("Could not update admin access.");
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: playerId,
+    action: role === "admin" ? "Granted club admin" : "Removed club admin",
+  });
+  revalidatePath(`/admin/players/${playerId}`);
+  return actionOk(
+    role === "admin"
+      ? "This login can now open the manager app."
+      : "This login is now a player account.",
+  );
 }

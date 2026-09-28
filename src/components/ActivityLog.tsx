@@ -4,6 +4,7 @@ import type { ActivityRow } from "@/lib/activity-log";
 
 function originNote(origin: ActivityOrigin, details: string | null): string | null {
   if (origin.source === "waitlist") return "waitlist";
+  if (origin.source === "default going") return "default Going";
   if (origin.source === "player page") return "player page";
   if (origin.source === "admin") return "admin";
   return details;

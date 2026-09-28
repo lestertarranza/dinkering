@@ -28,6 +28,7 @@ export interface Player {
   hidden_on_board: boolean;
   is_founding_member?: boolean;
   invited_by_player_id?: string | null;
+  auto_rsvp_going?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -26,6 +26,7 @@ import {
   buildTransferItemEnrichment,
 } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance, phTodayYmd } from "@/lib/format";
+import { showsAutoRsvpGoing } from "@/lib/auto-rsvp";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import { linkedAccountForPlayer, loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
 import { PlayerAvatar } from "@/components/public-ui";
@@ -47,6 +48,7 @@ import {
   addManualAdjustment,
   deletePlayer,
   linkPlayerToMyLogin,
+  setLinkedProfileRole,
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -154,6 +156,12 @@ export default async function PlayerDetail({
               verified={!!linkedAccount}
             />
             {p.name}
+            {showsAutoRsvpGoing(p) ? (
+              <Badge tone="going">Auto Going</Badge>
+            ) : null}
+            {linkedAccount?.role === "admin" ? (
+              <Badge tone="info">Club admin</Badge>
+            ) : null}
           </span>
         }
         description={
@@ -360,8 +368,9 @@ export default async function PlayerDetail({
               Activity log
             </h2>
             <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-              RSVP changes for this player. Automatic means they were moved up
-              from the waitlist. Manual is their page or an admin RSVP change.
+              RSVP changes for this player. Automatic is a waitlist fill or
+              default Going on a new booking. Manual is their page or an admin
+              RSVP change.
             </p>
             <ActivityLog rows={activityRows} />
           </Card>
@@ -380,11 +389,37 @@ export default async function PlayerDetail({
                   />
                 ) : null}
                 <div className="text-sm text-slate-600">
-                  <p>
+                  <p className="flex flex-wrap items-center gap-2">
                     <StatusBadge status="linked" />
+                    {linkedAccount.role === "admin" ? (
+                      <Badge tone="info">Club admin</Badge>
+                    ) : null}
                   </p>
                   <p className="mt-1">{linkedAccount.email}</p>
                   <p>{formatPhMobile(linkedAccount.phone)}</p>
+                  <div className="mt-3">
+                    {linkedAccount.role === "admin" ? (
+                      <ConfirmButton
+                        action={setLinkedProfileRole}
+                        message="Remove club admin access for this login? They will keep their player page."
+                        variant="ghost"
+                        hidden={{ id: p.id, role: "player" }}
+                        pendingLabel="Updating…"
+                      >
+                        Remove club admin
+                      </ConfirmButton>
+                    ) : (
+                      <ConfirmButton
+                        action={setLinkedProfileRole}
+                        message="Give this login club admin access to the manager app?"
+                        variant="secondary"
+                        hidden={{ id: p.id, role: "admin" }}
+                        pendingLabel="Updating…"
+                      >
+                        Make club admin
+                      </ConfirmButton>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -451,6 +486,22 @@ export default async function PlayerDetail({
                   <option value="archived">Archived</option>
                 </select>
               </Field>
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="auto_rsvp_going"
+                  value="1"
+                  defaultChecked={showsAutoRsvpGoing(p)}
+                  className="mt-1"
+                />
+                <span>
+                  Auto Going on new bookings
+                  <span className="mt-0.5 block text-xs font-normal text-slate-400">
+                    Marked Going when a booking is created or duplicated. They
+                    can still change RSVP later.
+                  </span>
+                </span>
+              </label>
               <Field label="Notes">
                 <textarea
                   name="notes"

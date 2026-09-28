@@ -1342,9 +1342,10 @@ export default async function BookingDetail({
               Activity log
             </h2>
             <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-              RSVP changes for this booking. Automatic means the waitlist moved
-              someone up (for example after a court cap increased or a Going
-              seat opened). Manual is a player or admin tapping RSVP.
+              RSVP changes for this booking. Automatic is a waitlist fill (for
+              example after a court cap increased or a Going seat opened) or
+              default Going when the booking was created. Manual is a player or
+              admin tapping RSVP.
             </p>
             <ActivityLog rows={activityRows} />
           </Card>

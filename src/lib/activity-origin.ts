@@ -1,11 +1,12 @@
-export type RsvpLogVia = "player" | "admin" | "auto";
+export type RsvpLogVia = "player" | "admin" | "auto" | "auto_going";
 
 export type ActivityOrigin = {
   kind: "automatic" | "manual";
-  source: "waitlist" | "player page" | "admin" | "other";
+  source: "waitlist" | "default going" | "player page" | "admin" | "other";
 };
 
 export function rsvpLogDetails(via: RsvpLogVia): string {
+  if (via === "auto_going") return "Automatic · default Going";
   if (via === "auto") return "Automatic · waitlist";
   if (via === "player") return "Manual · player page";
   return "Manual · admin";
@@ -25,6 +26,9 @@ export function activityOrigin(row: {
   const d = details.toLowerCase();
   const waitlistToGoing = /waitlist\s*(→|->)\s*going/i.test(row.action);
 
+  if (d.includes("default going")) {
+    return { kind: "automatic", source: "default going" };
+  }
   if (d.startsWith("automatic") || d.includes("automatic ·")) {
     return { kind: "automatic", source: "waitlist" };
   }

@@ -38,6 +38,16 @@ describe("formatDate", () => {
 });
 
 describe("activityOrigin", () => {
+  it("labels default Going on new bookings as automatic", () => {
+    expect(
+      activityOrigin({
+        action: "Lester Tarranza RSVP on PB-051: No response → Going",
+        details: rsvpLogDetails("auto_going"),
+        actor_email: null,
+      }),
+    ).toEqual({ kind: "automatic", source: "default going" });
+  });
+
   it("labels new waitlist fills as automatic", () => {
     expect(
       activityOrigin({

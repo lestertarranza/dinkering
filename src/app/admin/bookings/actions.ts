@@ -19,6 +19,7 @@ import {
   loadAttendanceRsvp,
   upsertAttendanceRsvp,
 } from "@/lib/waitlist";
+import { seedNewBookingAttendance } from "@/lib/auto-rsvp-seed";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
 
 export async function createBooking(formData: FormData) {
@@ -49,26 +50,12 @@ export async function createBooking(formData: FormData) {
     .select("id")
     .single();
 
-  // Auto-add every active player to the new booking's roster so the admin no
-  // longer has to click "+ Add all active players" after each booking.
+  // Auto-add every active player. Hosts with auto_rsvp_going start as Going.
   if (data?.id) {
-    const { data: players } = await supabase
-      .from("players")
-      .select("id")
-      .eq("active_status", "active");
-    const rows = (players ?? []).map((p) => ({
-      booking_id: data.id as string,
-      player_id: p.id as string,
-      response_status: "no_response" as ResponseStatus,
-    }));
-    if (rows.length > 0) {
-      await supabase
-        .from("booking_attendance")
-        .upsert(rows, {
-          onConflict: "booking_id,player_id",
-          ignoreDuplicates: true,
-        });
-    }
+    await seedNewBookingAttendance(supabase, {
+      bookingId: data.id as string,
+      bookingCode: code,
+    });
   }
 
   revalidatePath("/admin/bookings");
@@ -772,17 +759,11 @@ export async function duplicateBooking(formData: FormData) {
       })),
     );
   }
-  const rows = (roster ?? []).map((r) => ({
-    booking_id: created.id as string,
-    player_id: r.player_id as string,
-    response_status: "no_response" as ResponseStatus,
-  }));
-  if (rows.length > 0) {
-    await supabase.from("booking_attendance").upsert(rows, {
-      onConflict: "booking_id,player_id",
-      ignoreDuplicates: true,
-    });
-  }
+  await seedNewBookingAttendance(supabase, {
+    bookingId: created.id as string,
+    bookingCode: code,
+    sourcePlayerIds: (roster ?? []).map((r) => r.player_id as string),
+  });
   await logAdminAction(supabase, user, {
     entityType: "booking",
     entityId: created.id,
