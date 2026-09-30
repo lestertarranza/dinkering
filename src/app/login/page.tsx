@@ -57,9 +57,15 @@ function LoginForm() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">
-            Password
-          </label>
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <label className="text-sm font-medium text-slate-700">Password</label>
+            <Link
+              href={`/forgot-password?next=${encodeURIComponent(next)}`}
+              className="text-sm font-medium text-emerald-700"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <input
             type="password"
             required

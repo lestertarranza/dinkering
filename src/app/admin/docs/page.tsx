@@ -747,6 +747,12 @@ export default function DocsPage() {
               attached to that existing player. Token, balance, and RSVP history
               stay the same.
             </p>
+            <h3 className={h3Class}>Forgot password</h3>
+            <p className={pClass}>
+              On the sign-in page, Forgot password emails a link to choose a new
+              password. The same message is shown when the email has no login.
+              The link expires. After they save a password they are signed in.
+            </p>
             <h3 className={h3Class}>While a request is pending</h3>
             <p className={pClass}>
               They can still use the old private link for RSVP and balances. Sign-in
