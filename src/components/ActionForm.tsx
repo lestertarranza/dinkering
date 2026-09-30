@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { FormAction, ActionState } from "@/lib/action-state";
 import { safeNextPath } from "@/lib/account-fields";
@@ -69,17 +70,19 @@ export function ActionForm({
       skipPrepare.current = false;
       return;
     }
+    const form = e.currentTarget;
     e.preventDefault();
     setPrepError(null);
     setPreparing(true);
     try {
-      const err = await prepare(e.currentTarget);
+      const err = await prepare(form);
       if (err) {
         setPrepError(err);
         return;
       }
       skipPrepare.current = true;
-      e.currentTarget.requestSubmit();
+      flushSync(() => setPreparing(false));
+      form.requestSubmit();
     } finally {
       setPreparing(false);
     }

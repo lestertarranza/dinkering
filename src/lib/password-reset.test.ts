@@ -3,6 +3,7 @@ import {
   normalizeLoginEmail,
   passwordChoiceError,
   passwordUpdateMessage,
+  readConfirmLink,
   readResetLink,
   recoverFailureMessage,
   resetPagePath,
@@ -69,6 +70,11 @@ describe("reset links", () => {
     expect(
       readResetLink("https://dinkering.example/auth/reset?token_hash=abc&type=recovery"),
     ).toEqual({ kind: "otp", tokenHash: "abc" });
+    expect(
+      readConfirmLink(
+        "https://dinkering.example/auth/confirm#access_token=a&refresh_token=b&type=signup",
+      ),
+    ).toEqual({ kind: "session", accessToken: "a", refreshToken: "b" });
   });
 
   it("removes one-time credentials from the address", () => {

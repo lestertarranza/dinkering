@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
 import { logAdminAction } from "@/lib/activity-log";
 import { formatPhMobile, normalizePhMobile } from "@/lib/phone";
+import { emailSyntaxProblem } from "@/lib/email-address";
 import {
   MAX_PHOTO_BYTES,
   MIN_CLAIM_SEARCH,
@@ -219,9 +220,8 @@ export function validateIdentity(opts: {
   if (!opts.first_name || !opts.last_name) {
     return "Enter your first and last name.";
   }
-  if (!opts.email || !opts.email.includes("@")) {
-    return "Enter a valid email.";
-  }
+  const emailProblem = emailSyntaxProblem(opts.email);
+  if (emailProblem) return emailProblem;
   if (!opts.phone) {
     return "Enter a valid PH mobile number, like 0917 123 4567.";
   }

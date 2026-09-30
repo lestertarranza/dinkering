@@ -49,7 +49,14 @@ export function AccountRequestForm({
           <input name="last_name" required autoComplete="family-name" className={inputClass} />
         </Field>
       </div>
-      <Field label="Email">
+      <Field
+        label="Email"
+        hint={
+          needPassword
+            ? "We'll email a confirmation link. The request is sent only after you open it."
+            : undefined
+        }
+      >
         <input
           name="email"
           type="email"

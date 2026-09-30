@@ -91,8 +91,7 @@ function first(
   return search.get(key) || hash.get(key);
 }
 
-/** Decide how to open a password-reset link. Hash tokens work on any device. */
-export function readResetLink(href: string): ResetLink {
+function readAuthLink(href: string, allowedTypes: Set<string>): ResetLink {
   const params = paramsOf(href);
   if (!params) return { kind: "invalid" };
   const { search, hash } = params;
@@ -102,14 +101,24 @@ export function readResetLink(href: string): ResetLink {
   const accessToken = hash.get("access_token");
   const refreshToken = hash.get("refresh_token");
   const type = first(search, hash, "type");
-  if (accessToken && refreshToken && type === "recovery") {
+  if (accessToken && refreshToken && type && allowedTypes.has(type)) {
     return { kind: "session", accessToken, refreshToken };
   }
   const code = search.get("code");
   if (code) return { kind: "code", code };
   const tokenHash = search.get("token_hash");
-  if (tokenHash && type === "recovery") return { kind: "otp", tokenHash };
+  if (tokenHash && type && allowedTypes.has(type)) return { kind: "otp", tokenHash };
   return { kind: "check-session" };
+}
+
+/** Decide how to open a password-reset link. Hash tokens work on any device. */
+export function readResetLink(href: string): ResetLink {
+  return readAuthLink(href, new Set(["recovery"]));
+}
+
+/** Signup confirmation links use the same token shapes as password reset. */
+export function readConfirmLink(href: string): ResetLink {
+  return readAuthLink(href, new Set(["signup", "email"]));
 }
 
 /** Drop the one-time credentials from the address bar. Keep a safe next path. */

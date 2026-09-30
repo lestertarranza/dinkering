@@ -734,9 +734,10 @@ export default function DocsPage() {
             <h3 className={h3Class}>New registration</h3>
             <p className={pClass}>
               For people who are not on the roster yet. Required: first name, last
-              name, email, PH mobile, password. Photo is optional. On approve, an
-              Active player is created and added to upcoming games, same as Add
-              player.
+              name, email, PH mobile, password. Photo is optional. A misspelled
+              domain is rejected, then they must open a confirmation email
+              before the request appears here. On approve, an Active player is
+              created and added to upcoming games, same as Add player.
             </p>
             <h3 className={h3Class}>Claim</h3>
             <p className={pClass}>
