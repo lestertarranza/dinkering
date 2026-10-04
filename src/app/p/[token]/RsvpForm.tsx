@@ -70,12 +70,16 @@ function RsvpControls({
   locked = false,
   lockAtIso,
   waitlistPosition = null,
+  holdNote = null,
+  holdWarning = null,
 }: {
   currentStatus: string;
   isFull: boolean;
   locked?: boolean;
   lockAtIso?: string | null;
   waitlistPosition?: { position: number; total: number } | null;
+  holdNote?: string | null;
+  holdWarning?: string | null;
 }) {
   const onWaitlist = currentStatus === "waitlist";
   const showWaitlist = isFull && currentStatus !== "going";
@@ -121,6 +125,16 @@ function RsvpControls({
         )}
         <RsvpButton value="not_going" label="Not going" current={currentStatus} />
       </div>
+      {holdWarning ? (
+        <p
+          className="rounded-lg bg-rose-50 px-3 py-2 text-center text-xs text-rose-800 ring-1 ring-rose-200"
+          role="status"
+        >
+          {holdWarning}
+        </p>
+      ) : holdNote ? (
+        <p className="text-center text-xs text-slate-500">{holdNote}</p>
+      ) : null}
       {lockAtIso && !locked ? <LockCountdown lockAtIso={lockAtIso} /> : null}
       {isFull && !onWaitlist && currentStatus !== "going" ? (
         <p className="text-center text-xs text-amber-700">
@@ -147,6 +161,8 @@ export function RsvpForm({
   lockAtIso = null,
   waitlistPosition = null,
   promoted = false,
+  holdNote = null,
+  holdWarning = null,
 }: {
   token: string;
   bookingId: string;
@@ -156,6 +172,8 @@ export function RsvpForm({
   lockAtIso?: string | null;
   waitlistPosition?: { position: number; total: number } | null;
   promoted?: boolean;
+  holdNote?: string | null;
+  holdWarning?: string | null;
 }) {
   const [state, formAction] = useActionState(submitRsvp, null);
   const undoRef = useRef<HTMLFormElement>(null);
@@ -177,6 +195,8 @@ export function RsvpForm({
           locked={locked}
           lockAtIso={lockAtIso}
           waitlistPosition={waitlistPosition}
+          holdNote={holdNote}
+          holdWarning={holdWarning}
         />
       </form>
       {shown ? (

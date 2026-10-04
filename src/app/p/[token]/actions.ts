@@ -9,6 +9,7 @@ import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink } from "@/lib/accounts";
 import { canEditPublicRsvp } from "@/lib/rsvp-auth";
 import { admitWaitlistedPlayers, upsertAttendanceRsvp } from "@/lib/waitlist";
+import { syncSeatHold } from "@/lib/seat-hold-db";
 
 export type RsvpState = {
   ok: boolean;
@@ -122,13 +123,51 @@ export async function submitRsvp(
     };
   }
 
-  await upsertAttendanceRsvp(db, {
+  const holdError = await syncSeatHold(db, {
+    bookingId: booking_id,
+    playerId: player.id,
+    nextStatus: response_status,
+    prevStatus,
+    waived: false,
+    bookingCode: (booking as { booking_code?: string | null } | null)?.booking_code,
+    playDate: (booking as { play_date?: string | null } | null)?.play_date,
+  });
+  if (holdError) {
+    revalidatePath(`/p/${token}`);
+    return {
+      ok: false,
+      message: holdError,
+      previous: prevStatus,
+      saved: prevStatus,
+      bookingId: booking_id,
+    };
+  }
+
+  const savedRsvp = await upsertAttendanceRsvp(db, {
     booking_id,
     player_id: player.id,
     response_status,
     prevStatus,
     prevWaitlistedAt,
   });
+  if (savedRsvp.error) {
+    await syncSeatHold(db, {
+      bookingId: booking_id,
+      playerId: player.id,
+      nextStatus: prevStatus,
+      prevStatus: response_status,
+      waived: false,
+      bookingCode: (booking as { booking_code?: string | null } | null)?.booking_code,
+      playDate: (booking as { play_date?: string | null } | null)?.play_date,
+    });
+    return {
+      ok: false,
+      message: "Could not save RSVP.",
+      previous: prevStatus,
+      saved: prevStatus,
+      bookingId: booking_id,
+    };
+  }
 
   const wasCancelled = prevStatus === "going" && response_status !== "going";
 

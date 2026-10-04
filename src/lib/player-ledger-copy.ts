@@ -33,6 +33,9 @@ export function activityTitle(
       return "Club item payout";
     case "manual_adjustment": {
       const d = entry.description ?? "";
+      if (d.startsWith("Seat hold applied")) return code ? `Seat hold applied · ${code}` : "Seat hold applied";
+      if (d.startsWith("Seat hold returned")) return code ? `Seat hold returned · ${code}` : "Seat hold returned";
+      if (d.startsWith("Seat hold")) return code ? `Seat hold · ${code}` : "Seat hold";
       if (d.startsWith("Transfer ")) {
         const cut = d.search(/ — | - /);
         return (cut > 0 ? d.slice(0, cut) : d).trim() || "Transfer";

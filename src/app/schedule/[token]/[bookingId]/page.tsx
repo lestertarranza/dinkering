@@ -39,6 +39,9 @@ import {
 } from "@/components/PublicBottomNav";
 import type { Booking, BookingAttendance, Player } from "@/lib/types";
 import { compareWaitlistOrder } from "@/lib/waitlist-order";
+import { isSeatStatus, seatHoldBlockReason, seatHoldNote } from "@/lib/seat-hold";
+import { holdFeeFromRow, seatHoldsReady } from "@/lib/seat-hold-db";
+import { resolveWalletOwner } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +147,31 @@ export default async function PublicBookingRoster({
         : [];
 
   const viewerId = auth.profile?.player_id ?? null;
+  const scheduleHoldFee = (await seatHoldsReady(db)) ? holdFeeFromRow(b) : null;
+  let scheduleHoldNote: string | null = null;
+  let scheduleHoldWarning: string | null = null;
+  if (viewerId && scheduleHoldFee != null) {
+    const owner = await resolveWalletOwner(db, viewerId, b.play_date);
+    const balanceQuery = owner.player_group_id
+      ? await db
+          .from("group_balances")
+          .select("balance")
+          .eq("player_group_id", owner.player_group_id)
+          .maybeSingle()
+      : await db
+          .from("player_balances")
+          .select("balance")
+          .eq("player_id", viewerId)
+          .maybeSingle();
+    const viewerRow = roster.find((r) => r.player_id === viewerId);
+    scheduleHoldNote = seatHoldNote(scheduleHoldFee);
+    scheduleHoldWarning = seatHoldBlockReason({
+      balance: Number(balanceQuery.data?.balance ?? 0),
+      holdFee: scheduleHoldFee,
+      alreadyHeld: isSeatStatus(viewerRow?.response_status),
+      sharedWallet: Boolean(owner.player_group_id),
+    });
+  }
   const displayRoster = viewerId
     ? [...roster].sort((a, b) => {
         if (a.player_id === viewerId) return -1;
@@ -342,6 +370,8 @@ export default async function PublicBookingRoster({
                           locked={locked}
                           lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
                           isFull={isFull}
+                          holdNote={scheduleHoldNote}
+                          holdWarning={scheduleHoldWarning}
                           waitlistPosition={
                             r.response_status === "waitlist" && waitPos
                               ? { position: waitPos, total: waitlistPeople.length }

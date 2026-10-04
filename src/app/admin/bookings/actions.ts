@@ -20,6 +20,14 @@ import {
   upsertAttendanceRsvp,
 } from "@/lib/waitlist";
 import { seedNewBookingAttendance } from "@/lib/auto-rsvp-seed";
+import { defaultLateCancelCharge, parseHoldFee } from "@/lib/seat-hold";
+import {
+  bookedHoldError,
+  reconcileHoldsAfterShares,
+  releaseBookingHolds,
+  syncSeatHold,
+} from "@/lib/seat-hold-db";
+import { isMissingRelation } from "@/lib/account-fields";
 import type { BookingStatus, ResponseStatus, ActualStatus } from "@/lib/types";
 
 export async function createBooking(formData: FormData) {
@@ -33,22 +41,33 @@ export async function createBooking(formData: FormData) {
   const confirmation_urls = await uploadBookingConfirmations(screenshotFiles, code);
 
   const other_fees = parseFloat(String(formData.get("other_fees") || "0")) || 0;
+  const status = String(formData.get("status") || "for_booking");
+  const holdParsed = parseHoldFee(formData.get("hold_fee") || "200");
+  if (!holdParsed.ok && status === "booked") return;
+  const holdFee = holdParsed.ok ? holdParsed.fee : 200;
 
-  const { data } = await supabase
+  const insertRow: Record<string, unknown> = {
+    booking_code: code,
+    play_date: String(formData.get("play_date")),
+    venue: String(formData.get("venue") || "").trim() || null,
+    booking_reference: String(formData.get("booking_reference") || "").trim() || null,
+    other_fees,
+    total_booking_cost: other_fees, // courts not added yet; trigger will update
+    status,
+    notes: String(formData.get("notes") || "").trim() || null,
+    confirmation_urls,
+    hold_fee: holdFee,
+  };
+  let { data, error: insertError } = await supabase
     .from("bookings")
-    .insert({
-      booking_code: code,
-      play_date: String(formData.get("play_date")),
-      venue: String(formData.get("venue") || "").trim() || null,
-      booking_reference: String(formData.get("booking_reference") || "").trim() || null,
-      other_fees,
-      total_booking_cost: other_fees, // courts not added yet; trigger will update
-      status: String(formData.get("status") || "for_booking"),
-      notes: String(formData.get("notes") || "").trim() || null,
-      confirmation_urls,
-    })
+    .insert(insertRow)
     .select("id")
     .single();
+  if (insertError && isMissingRelation(insertError)) {
+    delete insertRow.hold_fee;
+    const retry = await supabase.from("bookings").insert(insertRow).select("id").single();
+    data = retry.data;
+  }
 
   // Auto-add every active player. Hosts with auto_rsvp_going start as Going.
   if (data?.id) {
@@ -78,14 +97,23 @@ export async function updateBooking(
     `PB-${id.slice(0, 8)}`,
   );
 
+  const status = String(formData.get("status") || "for_booking");
+  const holdParsed = parseHoldFee(formData.get("hold_fee") || "200");
+  if (!holdParsed.ok) return actionErr(holdParsed.error);
+  if (status === "booked") {
+    const blocked = await bookedHoldError(supabase, id, holdParsed.fee);
+    if (blocked) return actionErr(blocked);
+  }
+
   const updateData: Record<string, unknown> = {
     booking_code: String(formData.get("booking_code") || "").trim() || null,
     play_date,
     venue: String(formData.get("venue") || "").trim() || null,
     booking_reference: String(formData.get("booking_reference") || "").trim() || null,
     other_fees: parseFloat(String(formData.get("other_fees") || "0")) || 0,
-    status: String(formData.get("status") || "for_booking"),
+    status,
     notes: String(formData.get("notes") || "").trim() || null,
+    hold_fee: holdParsed.fee,
   };
 
   if (newUrls.length > 0) {
@@ -98,7 +126,17 @@ export async function updateBooking(
     updateData.confirmation_urls = [...current, ...newUrls];
   }
 
-  await supabase.from("bookings").update(updateData).eq("id", id);
+  const { error: updateError } = await supabase.from("bookings").update(updateData).eq("id", id);
+  if (updateError && isMissingRelation(updateError)) {
+    delete updateData.hold_fee;
+    const retry = await supabase.from("bookings").update(updateData).eq("id", id);
+    if (retry.error) return actionErr("Could not save the booking.");
+  } else if (updateError) {
+    return actionErr("Could not save the booking.");
+  }
+  if (status === "cancelled" || status === "refunded") {
+    await releaseBookingHolds(supabase, id);
+  }
 
   // Re-sync total_booking_cost after other_fees may have changed
   await supabase.rpc("sync_booking_total", { p_booking_id: id });
@@ -115,7 +153,19 @@ export async function setBookingStatus(
   const id = String(formData.get("id"));
   const status = String(formData.get("status")) as BookingStatus;
   const { supabase, user } = await requireAdmin();
+  if (status === "booked") {
+    const { data: current } = await supabase
+      .from("bookings")
+      .select("hold_fee")
+      .eq("id", id)
+      .maybeSingle();
+    const blocked = await bookedHoldError(supabase, id, current?.hold_fee ?? "");
+    if (blocked) return actionErr(blocked);
+  }
   await supabase.from("bookings").update({ status }).eq("id", id);
+  if (status === "cancelled" || status === "refunded") {
+    await releaseBookingHolds(supabase, id);
+  }
 
   // When a game is marked Played, treat everyone who committed as "Going" as
   // Attended by default so they're all included in the cost split without the
@@ -240,6 +290,14 @@ export async function setResponse(
     prevWaitlistedAt: existing.waitlisted_at,
   });
   if (saved.error) return actionErr(saved.error.message);
+  await syncSeatHold(supabase, {
+    bookingId: booking_id,
+    playerId: player_id,
+    nextStatus: response_status,
+    prevStatus,
+    waived: true,
+    bookingCode: booking?.booking_code ?? null,
+  });
   await logRsvpChange({
     playerId: player_id,
     bookingId: booking_id,
@@ -295,6 +353,13 @@ export async function bulkSetResponse(
       prevWaitlistedAt: prev?.waitlisted_at ?? null,
     });
     if (saved.error) return actionErr(saved.error.message);
+    await syncSeatHold(supabase, {
+      bookingId: booking_id,
+      playerId: player_id,
+      nextStatus: response_status,
+      prevStatus: (prev?.response_status as ResponseStatus) ?? "no_response",
+      waived: true,
+    });
   }
   await logAdminAction(supabase, user, {
     entityType: "booking",
@@ -453,6 +518,11 @@ export async function generateShares(
   const lateIds = lateCancelPlayerIds(
     (attendance ?? []) as { player_id: string; actual_status?: string | null }[],
   );
+  for (const row of attendance ?? []) {
+    if ((row as { actual_status?: string | null }).actual_status === "absent") {
+      lateIds.add((row as { player_id: string }).player_id);
+    }
+  }
 
   try {
     await rebuildBookingSharesAtomic(
@@ -467,6 +537,11 @@ export async function generateShares(
     );
   }
 
+  await reconcileHoldsAfterShares(
+    supabase,
+    booking_id,
+    rows.map((r) => r.player_id),
+  );
   revalidateClubFundCash();
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
@@ -526,20 +601,40 @@ export async function chargeAttendees(
     return actionErr("No players on a court seat — confirm attendance or RSVP first.");
   }
 
-  const rows: ShareRow[] = included.map((r) => ({
-    player_id: r.player_id as string,
-    share_units: 1,
-    override_share_amount: null,
-  }));
+  const perSeat = defaultLateCancelCharge(
+    Number(booking.total_booking_cost),
+    included.length,
+  );
+  const penaltyRows = (roster ?? []).filter((r) => {
+    const actual = r.actual_status as string | null;
+    return actual === "late_cancel" || actual === "absent";
+  });
+  const rows: ShareRow[] = [
+    ...included.map((r) => ({
+      player_id: r.player_id as string,
+      share_units: 1,
+      override_share_amount: null,
+    })),
+    ...penaltyRows
+      .filter((r) => perSeat > 0)
+      .map((r) => ({
+        player_id: r.player_id as string,
+        share_units: 0,
+        override_share_amount: perSeat,
+      })),
+  ];
+
+  const penaltyIds = lateCancelPlayerIds(
+    (roster ?? []) as { player_id: string; actual_status?: string | null }[],
+  );
+  for (const row of penaltyRows) penaltyIds.add(row.player_id as string);
 
   try {
     await rebuildBookingSharesAtomic(
       supabase,
       booking as BookingRecord,
       rows,
-      lateCancelPlayerIds(
-        (roster ?? []) as { player_id: string; actual_status?: string | null }[],
-      ),
+      penaltyIds,
     );
   } catch (e) {
     return actionErr(
@@ -547,11 +642,18 @@ export async function chargeAttendees(
     );
   }
 
+  await reconcileHoldsAfterShares(
+    supabase,
+    booking_id,
+    rows.map((r) => r.player_id),
+  );
   revalidateClubFundCash();
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
   return actionOk(
-    `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} split equally).`,
+    penaltyRows.length > 0
+      ? `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} split equally) and ${penaltyRows.length} late cancel or no-show at ${formatMoney(perSeat)} each.`
+      : `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} split equally).`,
   );
 }
 
@@ -567,6 +669,7 @@ export async function deleteBooking(
     .eq("booking_id", id);
   if ((shares ?? []).length > 0) {
     await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
+    await releaseBookingHolds(supabase, id);
     await logAdminAction(supabase, user, {
       entityType: "booking",
       entityId: id,
@@ -578,6 +681,7 @@ export async function deleteBooking(
       "Booking cancelled — it had shares, so it was marked cancelled instead of deleted.",
     );
   }
+  await releaseBookingHolds(supabase, id);
   await supabase.from("bookings").delete().eq("id", id);
   revalidatePath("/admin/bookings");
   redirect("/admin/bookings");
@@ -697,6 +801,14 @@ export async function cycleResponse(
     prevWaitlistedAt: existing?.waitlisted_at ?? null,
   });
   if (saved.error) return actionErr(saved.error.message);
+  await syncSeatHold(supabase, {
+    bookingId: booking_id,
+    playerId: player_id,
+    nextStatus: next,
+    prevStatus: current,
+    waived: true,
+    bookingCode: booking?.booking_code ?? null,
+  });
   await logRsvpChange({
     playerId: player_id,
     bookingId: booking_id,
@@ -727,20 +839,27 @@ export async function duplicateBooking(formData: FormData) {
   const play_date = addCalendarDaysYmd(source.play_date, 7);
   const code = await nextCode(supabase, "bookings", "booking_code", "PB");
   const other_fees = Number(source.other_fees ?? 0);
-  const { data: created } = await supabase
+  const duplicateRow: Record<string, unknown> = {
+    booking_code: code,
+    play_date,
+    venue: source.venue,
+    booking_reference: null,
+    other_fees,
+    total_booking_cost: other_fees,
+    status: "for_booking",
+    notes: source.notes,
+    hold_fee: source.hold_fee ?? 200,
+  };
+  let { data: created, error: duplicateError } = await supabase
     .from("bookings")
-    .insert({
-      booking_code: code,
-      play_date,
-      venue: source.venue,
-      booking_reference: null,
-      other_fees,
-      total_booking_cost: other_fees,
-      status: "for_booking",
-      notes: source.notes,
-    })
+    .insert(duplicateRow)
     .select("id")
     .single();
+  if (duplicateError && isMissingRelation(duplicateError)) {
+    delete duplicateRow.hold_fee;
+    const retry = await supabase.from("bookings").insert(duplicateRow).select("id").single();
+    created = retry.data;
+  }
   if (!created?.id) return;
   const [{ data: courts }, { data: roster }] = await Promise.all([
     supabase.from("booking_courts").select("*").eq("booking_id", sourceId),

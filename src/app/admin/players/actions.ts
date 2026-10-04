@@ -344,29 +344,26 @@ export async function createPlayer(formData: FormData) {
   const invite = parseInviteChoice(String(formData.get("invited_by") || ""));
 
   const { supabase } = await requireAdmin();
-  const row: Record<string, unknown> = {
-    name,
-    display_name,
-    notes,
-    active_status,
-    is_founding_member: invite.isFoundingMember,
-    invited_by_player_id: invite.invitedByPlayerId,
-  };
-  let { data: created, error } = await supabase
+  const { data: created, error } = await supabase
     .from("players")
-    .insert(row)
+    .insert({
+      name,
+      display_name,
+      notes,
+      active_status,
+    })
     .select("id")
     .single();
-  if (error && isMissingRelation(error)) {
-    delete row.is_founding_member;
-    delete row.invited_by_player_id;
-    const retry = await supabase.from("players").insert(row).select("id").single();
-    created = retry.data;
-    error = retry.error;
-  }
-  if (error) return;
+  if (error || !created?.id) return;
+  await supabase
+    .from("players")
+    .update({
+      is_founding_member: invite.isFoundingMember,
+      invited_by_player_id: invite.invitedByPlayerId,
+    })
+    .eq("id", created.id);
 
-  if (created?.id && active_status === "active") {
+  if (active_status === "active") {
     await enrollPlayerInUpcomingBookings(supabase, created.id);
   }
 
@@ -389,27 +386,37 @@ export async function updatePlayer(
   if (invite.invitedByPlayerId === id) {
     return actionErr("A player cannot invite themselves.");
   }
-  const auto_rsvp_going = formData.get("auto_rsvp_going") === "1";
-
   const { supabase } = await requireAdmin();
-  const payload: Record<string, unknown> = {
-    name,
-    display_name,
-    notes,
-    active_status,
-    is_founding_member: invite.isFoundingMember,
-    invited_by_player_id: invite.invitedByPlayerId,
-    auto_rsvp_going,
-  };
-  const { error } = await supabase.from("players").update(payload).eq("id", id);
-  if (error && isMissingRelation(error)) {
-    delete payload.is_founding_member;
-    delete payload.invited_by_player_id;
-    delete payload.auto_rsvp_going;
-    const retry = await supabase.from("players").update(payload).eq("id", id);
-    if (retry.error) return actionErr("Could not save the player.");
-  } else if (error) {
-    return actionErr("Could not save the player.");
+  const { error } = await supabase
+    .from("players")
+    .update({
+      name,
+      display_name,
+      notes,
+      active_status,
+    })
+    .eq("id", id);
+  if (error) return actionErr("Could not save the player.");
+
+  const inviteResult = await supabase
+    .from("players")
+    .update({
+      is_founding_member: invite.isFoundingMember,
+      invited_by_player_id: invite.invitedByPlayerId,
+    })
+    .eq("id", id);
+  if (inviteResult.error && isMissingRelation(inviteResult.error)) {
+    return actionErr(
+      "Who invited them could not be saved. Apply the invite database update, then try again.",
+    );
+  }
+  if (inviteResult.error) return actionErr("Could not save who invited them.");
+
+  if (formData.has("auto_rsvp_going")) {
+    await supabase
+      .from("players")
+      .update({ auto_rsvp_going: formData.get("auto_rsvp_going") === "1" })
+      .eq("id", id);
   }
   revalidatePath("/admin/players");
   revalidatePath(`/admin/players/${id}`);

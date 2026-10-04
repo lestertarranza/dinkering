@@ -15,6 +15,8 @@ import {
   formatCourtTime,
 } from "@/lib/court-format";
 import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
+import { isSeatStatus, seatHoldBlockReason, seatHoldNote } from "@/lib/seat-hold";
+import { holdFeeFromRow, seatHoldsReady } from "@/lib/seat-hold-db";
 import { openChargesFromLedger, type LedgerRow } from "@/lib/payment-allocation";
 import { HowToPay, BalancePlainSummary } from "@/components/HowToPay";
 import { UpcomingGamesFilter } from "@/components/UpcomingGamesFilter";
@@ -199,7 +201,10 @@ export default async function PlayerPortal({
         case "club_fund_credit":
           return fundPurchaseIds.has(e.source_id);
         case "manual_adjustment":
-          return manualAdjIds.has(e.source_id);
+          return (
+            manualAdjIds.has(e.source_id) ||
+            (e.description ?? "").startsWith("Seat hold")
+          );
         default:
           return false;
       }
@@ -426,6 +431,25 @@ export default async function PlayerPortal({
   });
   const loginHref = `/login?next=${encodeURIComponent(`/p/${token}`)}`;
 
+  const seatHoldsOn = await seatHoldsReady(db);
+  const holdWalletBalance = pooled
+    ? Number(groupWalletBalance ?? 0)
+    : personalWalletBalance;
+  const bookingIds = ((attendance ?? []) as { booking_id: string }[]).map(
+    (row) => row.booking_id,
+  );
+  const holdFeeByBooking = new Map<string, number>();
+  if (seatHoldsOn && bookingIds.length > 0) {
+    const { data: feeRows } = await db
+      .from("bookings")
+      .select("id, hold_fee")
+      .in("id", bookingIds);
+    for (const row of feeRows ?? []) {
+      const fee = holdFeeFromRow(row as { hold_fee?: number | null });
+      if (fee != null) holdFeeByBooking.set(row.id as string, fee);
+    }
+  }
+
   return (
     <PublicChrome
       returnTo={`/p/${token}`}
@@ -443,6 +467,16 @@ export default async function PlayerPortal({
       <div className="mb-3 flex justify-end">
         <AppearanceToggle />
       </div>
+      {seatHoldsOn ? (
+        <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+          Upcoming RSVPs were reset so the seat hold can start clean. Your old
+          Going and waitlist spots are kept on the booking as Previous RSVP.
+          Please answer again. Going and the waitlist each need court credit
+          of at least ₱200. Pay any balance you owe first. The hold is applied
+          to your share after the game. Leave more than 24 hours before the
+          game and it comes back as credit.
+        </div>
+      ) : null}
       <header className="mb-5 text-center">
         {face.verified ? (
           <div className="mb-2 flex justify-center">
@@ -794,6 +828,21 @@ export default async function PlayerPortal({
                       token={token}
                       bookingId={a.bookings.id}
                       currentStatus={a.response_status}
+                      holdNote={
+                        holdFeeByBooking.has(a.booking_id)
+                          ? seatHoldNote(holdFeeByBooking.get(a.booking_id)!)
+                          : null
+                      }
+                      holdWarning={
+                        holdFeeByBooking.has(a.booking_id)
+                          ? seatHoldBlockReason({
+                              balance: holdWalletBalance,
+                              holdFee: holdFeeByBooking.get(a.booking_id)!,
+                              alreadyHeld: isSeatStatus(a.response_status),
+                              sharedWallet: Boolean(pooled),
+                            })
+                          : null
+                      }
                       locked={locked}
                       lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
                       waitlistPosition={waitlistPosition(

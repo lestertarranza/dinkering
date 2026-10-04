@@ -72,6 +72,13 @@ export async function seedNewBookingAttendance(
       ignoreDuplicates: true,
     });
   }
+  if (autoGoingIds.length > 0) {
+    await db
+      .from("booking_attendance")
+      .update({ hold_waived: true })
+      .eq("booking_id", opts.bookingId)
+      .in("player_id", autoGoingIds);
+  }
   const nameById = new Map(active.map((p) => [p.id, p.name ?? null]));
   const onRoster = new Set(playerIds);
   for (const id of autoGoingIds) {

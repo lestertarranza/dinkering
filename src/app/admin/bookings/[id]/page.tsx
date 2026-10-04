@@ -38,6 +38,8 @@ import {
   inEqualCourtSplit,
   isLateCancelActual,
 } from "@/lib/attendance";
+import { defaultLateCancelCharge } from "@/lib/seat-hold";
+import { holdFeeFromRow, openHoldTotal } from "@/lib/seat-hold-db";
 import {
   computeBookingShareRemaining,
   computeClubFundShareRemaining,
@@ -175,6 +177,26 @@ export default async function BookingDetail({
   const waitlistNumber = new Map(
     waitlistQueue.map((r, i) => [r.id, i + 1]),
   );
+  const previousRsvp = roster
+    .filter(
+      (r) =>
+        r.previous_response_status === "going" ||
+        r.previous_response_status === "waitlist",
+    )
+    .sort((a, c) => {
+      if (a.previous_response_status !== c.previous_response_status) {
+        return a.previous_response_status === "going" ? -1 : 1;
+      }
+      const at = a.previous_waitlisted_at ?? a.created_at;
+      const ct = c.previous_waitlisted_at ?? c.created_at;
+      return at.localeCompare(ct);
+    });
+  const openHolds = await openHoldTotal(supabase, id);
+  const perSeatDefault = defaultLateCancelCharge(
+    Number(b.total_booking_cost),
+    roster.filter((r) => inEqualCourtSplit(r)).length,
+  );
+  const holdFee = holdFeeFromRow(b);
   const rosterIds = new Set(roster.map((r) => r.player_id));
   const availablePlayers = ((players ?? []) as Player[]).filter(
     (p) => !rosterIds.has(p.id) && p.active_status !== "archived",
@@ -463,6 +485,35 @@ export default async function BookingDetail({
           ) : null}
         </Card>
       </div>
+
+      {holdFee != null ? (
+        <p className="mb-3 text-sm text-slate-600">
+          Hold fee {formatMoney(holdFee)} per Going or waitlist player.
+          {openHolds != null ? ` Open holds on this game: ${formatMoney(openHolds)}.` : ""}
+          {" "}Marking Booked requires this fee, and a hold already taken for each player who is Going or on the waitlist.
+        </p>
+      ) : null}
+
+      {previousRsvp.length > 0 ? (
+        <Card className="mb-5 p-4">
+          <h2 className="text-sm font-semibold text-slate-700">Previous RSVP</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Saved when RSVPs were reset for the seat hold. This list is a reference. It is not the live answer.
+          </p>
+          <ul className="mt-3 divide-y divide-slate-100 text-sm">
+            {previousRsvp.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3 py-2">
+                <span className="font-medium text-slate-800">{r.players?.name}</span>
+                <span className="text-slate-500">
+                  {r.previous_response_status === "waitlist"
+                    ? `Waitlist ${previousRsvp.filter((row) => row.previous_response_status === "waitlist").findIndex((row) => row.id === r.id) + 1}`
+                    : "Going"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <StatusBadge status={b.status} />
@@ -1021,7 +1072,7 @@ export default async function BookingDetail({
                 </h2>
                 <ConfirmButton
                   action={chargeAttendees}
-                  message="Split the court equally across Attended and Guest (or Going if attendance is not set)? Late cancel is skipped. Existing shares are replaced; add a late-cancel penalty afterward with Override ₱ on Generate shares."
+                  message="Split the court equally across Attended and Guest (or Going if attendance is not set)? Late cancel and no-show are charged one seat by default. Existing shares are replaced."
                   variant="secondary"
                   hidden={{ booking_id: b.id }}
                   pendingLabel="Charging…"
@@ -1069,7 +1120,9 @@ export default async function BookingDetail({
                         })
                         .map((r) => {
                         const existing = shareByPlayer.get(r.player_id);
-                        const isLate = isLateCancelActual(r.actual_status);
+                        const isLate =
+                          isLateCancelActual(r.actual_status) ||
+                          r.actual_status === "absent";
                         const defaultInclude =
                           existing != null ||
                           isLate ||
@@ -1118,9 +1171,10 @@ export default async function BookingDetail({
                                 step="0.01"
                                 min="0"
                                 defaultValue={
-                                  existing?.override_share_amount ?? ""
+                                  existing?.override_share_amount ??
+                                  (isLate && perSeatDefault > 0 ? perSeatDefault : "")
                                 }
-                                placeholder={isLate ? "penalty" : "—"}
+                                placeholder={isLate ? "share" : "—"}
                                 className="w-24 rounded-md border border-slate-300 px-2 py-1"
                               />
                             </td>
@@ -1146,9 +1200,11 @@ export default async function BookingDetail({
                 </div>
                 <p className="mt-3 text-xs text-slate-400">
                   Court cost is split by units across Attended and Guest (or
-                  Going). Late cancel is not a seat; type a penalty in Override
-                  ₱. That penalty is added on top of the court total. Regenerating
-                  voids and replaces the previous shares.
+                  Going). Late cancel and no-show are not seats. Override ₱
+                  starts as one player share and is added on top of the court
+                  total. Change it to charge a different amount. Regenerating
+                  voids and replaces the previous shares. Open seat holds are
+                  applied to the charge, and any leftover returns as credit.
                 </p>
                 <div className="mt-3">
                   <ConfirmSubmit

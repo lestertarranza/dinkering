@@ -26,7 +26,12 @@ import {
   buildTransferItemEnrichment,
 } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance, phTodayYmd } from "@/lib/format";
-import { showsAutoRsvpGoing } from "@/lib/auto-rsvp";
+import { canBeAutoGoing, showsAutoRsvpGoing } from "@/lib/auto-rsvp";
+import {
+  AutoGoingBadge,
+  AutoGoingProvider,
+  AutoGoingToggle,
+} from "@/components/AutoGoingToggle";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import { linkedAccountForPlayer, loadInviteIndex, loadLinkedIdentities } from "@/lib/accounts";
 import { PlayerAvatar } from "@/components/public-ui";
@@ -132,6 +137,8 @@ export default async function PlayerDetail({
     buildLedgerExpenseContext(supabase, ledgerEntries),
     buildTransferItemEnrichment(supabase, ledgerEntries),
   ]);
+  const autoGoing = showsAutoRsvpGoing(p);
+  const autoGoingReady = typeof p.auto_rsvp_going === "boolean";
   const appUrl = await getAppBaseUrl();
   const shareUrl = `${appUrl}/p/${p.public_token}`;
   const { data: paySettings } = await supabase
@@ -145,6 +152,7 @@ export default async function PlayerDetail({
   });
 
   return (
+    <AutoGoingProvider initial={autoGoing}>
     <div>
       <PageHeader
         title={
@@ -156,9 +164,7 @@ export default async function PlayerDetail({
               verified={!!linkedAccount}
             />
             {p.name}
-            {showsAutoRsvpGoing(p) ? (
-              <Badge tone="going">Auto Going</Badge>
-            ) : null}
+            <AutoGoingBadge />
             {linkedAccount?.role === "admin" ? (
               <Badge tone="info">Club admin</Badge>
             ) : null}
@@ -486,22 +492,9 @@ export default async function PlayerDetail({
                   <option value="archived">Archived</option>
                 </select>
               </Field>
-              <label className="flex items-start gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  name="auto_rsvp_going"
-                  value="1"
-                  defaultChecked={showsAutoRsvpGoing(p)}
-                  className="mt-1"
-                />
-                <span>
-                  Auto Going on new bookings
-                  <span className="mt-0.5 block text-xs font-normal text-slate-400">
-                    Marked Going when a booking is created or duplicated. They
-                    can still change RSVP later.
-                  </span>
-                </span>
-              </label>
+              {canBeAutoGoing(p.id) ? (
+                <AutoGoingToggle playerId={p.id} canSave={autoGoingReady} />
+              ) : null}
               <Field label="Notes">
                 <textarea
                   name="notes"
@@ -685,5 +678,6 @@ export default async function PlayerDetail({
         </div>
       </div>
     </div>
+    </AutoGoingProvider>
   );
 }

@@ -68,6 +68,7 @@ export interface Booking {
   rate_per_court_per_hour: number;
   other_fees: number;
   total_booking_cost: number;
+  hold_fee?: number | null;
   status: BookingStatus;
   notes: string | null;
   confirmation_url: string | null; // legacy single (kept for back-compat)
@@ -98,6 +99,9 @@ export interface BookingAttendance {
   confirmed_by_admin: boolean;
   notes: string | null;
   waitlisted_at?: string | null;
+  previous_response_status?: string | null;
+  previous_waitlisted_at?: string | null;
+  hold_waived?: boolean | null;
   created_at: string;
   updated_at: string;
 }

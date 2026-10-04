@@ -47,16 +47,17 @@ describe("autoGoingFromRoster", () => {
     expect(showsAutoRsvpGoing({ id: lester, auto_rsvp_going: false })).toBe(false);
   });
 
-  it("uses the saved flag once the column exists", () => {
+  it("uses the saved flag once the column exists, only for club admins", () => {
     expect(
       autoGoingFromRoster(
         [
           { id: lester, auto_rsvp_going: false },
+          { id: donna, auto_rsvp_going: true },
           { id: "other", auto_rsvp_going: true },
         ],
         true,
       ),
-    ).toEqual(["other"]);
+    ).toEqual([donna]);
   });
 });
 

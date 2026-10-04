@@ -1,17 +1,22 @@
 import type { ResponseStatus } from "@/lib/types";
 
-/** Used until players.auto_rsvp_going exists. Lester, then Donna Tarranza. */
+/** Club admins who may use Auto Going. Lester, then Donna Tarranza. */
 export const DEFAULT_AUTO_GOING_PLAYER_IDS = [
   "5a96e0ad-9645-49f9-924c-3598f0c49800",
   "469aacc2-4449-44dc-9f93-897cb600b702",
 ] as const;
 
+export function canBeAutoGoing(playerId: string): boolean {
+  return (DEFAULT_AUTO_GOING_PLAYER_IDS as readonly string[]).includes(playerId);
+}
+
 export function showsAutoRsvpGoing(player: {
   id: string;
   auto_rsvp_going?: boolean | null;
 }): boolean {
+  if (!canBeAutoGoing(player.id)) return false;
   if (typeof player.auto_rsvp_going === "boolean") return player.auto_rsvp_going;
-  return (DEFAULT_AUTO_GOING_PLAYER_IDS as readonly string[]).includes(player.id);
+  return true;
 }
 
 export function autoGoingFromRoster(
@@ -22,7 +27,9 @@ export function autoGoingFromRoster(
     const present = new Set(players.map((p) => p.id));
     return DEFAULT_AUTO_GOING_PLAYER_IDS.filter((id) => present.has(id));
   }
-  return players.filter((p) => p.auto_rsvp_going).map((p) => p.id);
+  return players
+    .filter((p) => canBeAutoGoing(p.id) && p.auto_rsvp_going)
+    .map((p) => p.id);
 }
 
 export function rosterStatus(

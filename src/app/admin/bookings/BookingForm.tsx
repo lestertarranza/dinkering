@@ -51,6 +51,20 @@ function BookingFields({ booking }: { booking?: Partial<Booking> }) {
           className={inputClass}
         />
       </Field>
+      <Field
+        label="Hold fee per player"
+        hint="Default ₱200. Required before this game is marked Booked. Each Going and waitlist player needs this much court credit."
+      >
+        <input
+          name="hold_fee"
+          type="number"
+          step="0.01"
+          min="200"
+          required
+          defaultValue={booking?.hold_fee ?? 200}
+          className={inputClass}
+        />
+      </Field>
       <Field label="Other fees" hint="Additional costs not covered by court rates">
         <input
           name="other_fees"

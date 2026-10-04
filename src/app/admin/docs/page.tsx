@@ -133,6 +133,12 @@ export default function DocsPage() {
                 preserved but cannot be charged.
               </li>
               <li className={liClass}>
+                <strong>Auto Going on new bookings</strong> — saves as soon as you
+                check it, after the Auto Going database update is applied. That
+                player starts as Going on bookings you create or duplicate, and
+                can still change RSVP later.
+              </li>
+              <li className={liClass}>
                 <strong>Public link / QR</strong> — each player gets a unique private
                 URL. Share this so they can check their own balance and respond to
                 games.
@@ -210,6 +216,32 @@ export default function DocsPage() {
               see the numbered waitlist on their page and on the public game
               roster.
             </p>
+
+            <h3 className={h3Class}>Seat hold</h3>
+            <p className={pClass}>
+              Each booking has a hold fee, ₱200 by default, and it cannot be
+              lower. A player needs that much court credit, and no unpaid
+              balance, before they can tap Going or the waitlist. The same
+              amount is taken from a group wallet once per person. The hold
+              sits with the club until the game is billed, then it is applied
+              to that player&apos;s share. Anything left returns as credit. If
+              the share is higher, the difference is billed. Leaving more than
+              24 hours before the game returns the hold. A cancelled or refunded
+              game returns every open hold.
+            </p>
+            <ul className="ml-4 mt-2 list-disc space-y-1">
+              <li className={liClass}>
+                Marking a game <strong>Booked</strong> requires the hold fee,
+                plus a hold already taken for anyone who is already Going or
+                on the waitlist. Auto Going for Lester and Donna, and RSVPs you
+                set by hand, do not take a hold.
+              </li>
+              <li className={liClass}>
+                <strong>Previous RSVP</strong> on a booking is the Going and
+                waitlist list from before the reset, including waitlist order.
+                It is a reference. Players answer again under the new rule.
+              </li>
+            </ul>
 
             <h3 className={h3Class}>Generating shares</h3>
             <p className={pClass}>
