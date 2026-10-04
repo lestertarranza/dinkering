@@ -17,6 +17,7 @@ import {
 import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
 import { isSeatStatus, seatHoldBlockReason, seatHoldNote } from "@/lib/seat-hold";
 import { holdFeeFromRow, seatHoldsReady } from "@/lib/seat-hold-db";
+import { groupPreviousSeats } from "@/lib/previous-rsvp";
 import { openChargesFromLedger, type LedgerRow } from "@/lib/payment-allocation";
 import { HowToPay, BalancePlainSummary } from "@/components/HowToPay";
 import { UpcomingGamesFilter } from "@/components/UpcomingGamesFilter";
@@ -30,6 +31,7 @@ import {
   publicMetaText,
   publicHintText,
   PlayerAvatar,
+  PreviousRsvpList,
 } from "@/components/public-ui";
 import { PaymentProofForm } from "@/components/PaymentProofForm";
 import { AppearanceToggle } from "@/components/AppearanceToggle";
@@ -285,7 +287,19 @@ export default async function PlayerPortal({
   const bookingCapMap = new Map<string, { totalCap: number; goingCount: number }>();
   type DisplayCourt = { court_number: string | null; start_time: string | null; end_time: string | null; max_players: number };
   const bookingCourtsMap = new Map<string, DisplayCourt[]>();
+  type PreviousAttendanceRow = {
+    booking_id: string;
+    player_id: string;
+    previous_response_status: string | null;
+    previous_waitlisted_at: string | null;
+    created_at: string | null;
+    players:
+      | { name: string; display_name: string | null }
+      | { name: string; display_name: string | null }[]
+      | null;
+  };
   let goingWaitRows: Awaited<ReturnType<typeof fetchGoingAndWaitlist>> = [];
+  let previousAttendance: PreviousAttendanceRow[] = [];
 
   const orderedLedger = [...ledger].sort((a, b) => {
     const byDate = a.entry_date.localeCompare(b.entry_date);
@@ -316,10 +330,18 @@ export default async function PlayerPortal({
         ? Promise.all([
             db.from("booking_courts").select("booking_id, court_number, start_time, end_time, max_players").in("booking_id", upcomingBookingIds).order("created_at"),
             fetchGoingAndWaitlist(db, upcomingBookingIds),
+            db
+              .from("booking_attendance")
+              .select(
+                "booking_id, player_id, previous_response_status, previous_waitlisted_at, created_at, players(name, display_name)",
+              )
+              .in("booking_id", upcomingBookingIds)
+              .in("previous_response_status", ["going", "waitlist"]),
           ])
         : Promise.resolve([
             { data: [] as (DisplayCourt & { booking_id: string })[] },
             [] as Awaited<ReturnType<typeof fetchGoingAndWaitlist>>,
+            { data: [] as PreviousAttendanceRow[] },
           ] as const),
       buildLedgerBookingContext(db, statementEntries),
       expShareIds.length > 0
@@ -333,11 +355,13 @@ export default async function PlayerPortal({
     ]);
 
   if (upcomingBookingIds.length > 0) {
-    const [{ data: courtRows }, gw] = courtsGoing as [
+    const [{ data: courtRows }, gw, previousResult] = courtsGoing as [
       { data: (DisplayCourt & { booking_id: string })[] | null },
       Awaited<ReturnType<typeof fetchGoingAndWaitlist>>,
+      { data: PreviousAttendanceRow[] | null },
     ];
     goingWaitRows = gw;
+    previousAttendance = previousResult.data ?? [];
     for (const c of courtRows ?? []) {
       const list = bookingCourtsMap.get(c.booking_id) ?? [];
       list.push({
@@ -359,6 +383,34 @@ export default async function PlayerPortal({
       const totalCap = unlimited ? 0 : cts.reduce((s, c) => s + c.max_players, 0);
       bookingCapMap.set(bid, { totalCap, goingCount: goingByBooking.get(bid) ?? 0 });
     }
+  }
+
+  const previousByBooking = new Map<
+    string,
+    ReturnType<typeof groupPreviousSeats>
+  >();
+  const previousInputs = new Map<
+    string,
+    Parameters<typeof groupPreviousSeats>[0]
+  >();
+  for (const row of previousAttendance) {
+    const raw = Array.isArray(row.players) ? row.players[0] : row.players;
+    const list = previousInputs.get(row.booking_id) ?? [];
+    list.push({
+      playerId: row.player_id,
+      name: playerFace(
+        row.player_id,
+        raw ?? { name: "Player", display_name: null },
+        identities,
+      ).name,
+      previousStatus: row.previous_response_status,
+      previousWaitlistedAt: row.previous_waitlisted_at,
+      createdAt: row.created_at,
+    });
+    previousInputs.set(row.booking_id, list);
+  }
+  for (const [bid, rows] of previousInputs) {
+    previousByBooking.set(bid, groupPreviousSeats(rows));
   }
 
   for (const s of (ess.data ?? []) as unknown as {
@@ -470,8 +522,8 @@ export default async function PlayerPortal({
       {seatHoldsOn ? (
         <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
           Upcoming RSVPs were reset so the seat hold can start clean. Your old
-          Going and waitlist spots are kept on the booking as Previous RSVP.
-          Please answer again. Going and the waitlist each need court credit
+          The previous Going list and waitlist are on each game below, in the
+          same order. Please answer again. Going and the waitlist each need court credit
           of at least ₱200. Pay any balance you owe first. The hold is applied
           to your share after the game. Leave more than 24 hours before the
           game and it comes back as credit.
@@ -872,6 +924,24 @@ export default async function PlayerPortal({
                       </p>
                     )}
                   </div>
+                  {(() => {
+                    const prev = previousByBooking.get(a.booking_id);
+                    if (
+                      !prev ||
+                      (prev.going.length === 0 && prev.waitlist.length === 0)
+                    ) {
+                      return null;
+                    }
+                    return (
+                      <div className="mt-3">
+                        <PreviousRsvpList
+                          going={prev.going}
+                          waitlist={prev.waitlist}
+                          viewerPlayerId={p.id}
+                        />
+                      </div>
+                    );
+                  })()}
                   {detailsHref ? (
                     <PendingLink
                       href={detailsHref}

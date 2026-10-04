@@ -33,12 +33,14 @@ import {
   MapsLink,
   WaitlistQueue,
   PlayerNameLine,
+  PreviousRsvpList,
 } from "@/components/public-ui";
 import {
   RememberPublicTokens,
 } from "@/components/PublicBottomNav";
 import type { Booking, BookingAttendance, Player } from "@/lib/types";
 import { compareWaitlistOrder } from "@/lib/waitlist-order";
+import { groupPreviousSeats } from "@/lib/previous-rsvp";
 import { isSeatStatus, seatHoldBlockReason, seatHoldNote } from "@/lib/seat-hold";
 import { holdFeeFromRow, seatHoldsReady } from "@/lib/seat-hold-db";
 import { resolveWalletOwner } from "@/lib/ledger";
@@ -122,6 +124,19 @@ export default async function PublicBookingRoster({
         avatarUrl: face.avatarUrl,
       };
     });
+
+  const previous = groupPreviousSeats(
+    roster.map((r) => ({
+      playerId: r.player_id,
+      name: playerFace(r.player_id, r.players, identities).name,
+      previousStatus: r.previous_response_status,
+      previousWaitlistedAt: r.previous_waitlisted_at,
+      createdAt: r.created_at,
+    })),
+  );
+  const previousWaitByPlayer = new Map(
+    previous.waitlist.map((p) => [p.playerId, p.position]),
+  );
 
   const going = roster.filter((r) => r.response_status === "going").length;
   const notGoing = roster.filter((r) => r.response_status === "not_going").length;
@@ -297,6 +312,16 @@ export default async function PublicBookingRoster({
         ) : null}
       </Card>
 
+      {previous.going.length > 0 || previous.waitlist.length > 0 ? (
+        <div className="mb-4">
+          <PreviousRsvpList
+            going={previous.going}
+            waitlist={previous.waitlist}
+            viewerPlayerId={viewerId}
+          />
+        </div>
+      ) : null}
+
       <div className="mb-4">
         <AddToCalendar
           filename={`${b.booking_code ?? "open-play"}.ics`}
@@ -361,6 +386,15 @@ export default async function PublicBookingRoster({
                           You
                         </span>
                         <StatusBadge status={r.response_status} size="md" />
+                        {r.previous_response_status === "going" ? (
+                          <span className="shrink-0 text-xs font-medium text-slate-500">
+                            Was Going
+                          </span>
+                        ) : r.previous_response_status === "waitlist" ? (
+                          <span className="shrink-0 text-xs font-medium text-amber-800">
+                            Was waitlist #{previousWaitByPlayer.get(r.player_id)}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="mt-3">
                         <RsvpForm
@@ -403,6 +437,15 @@ export default async function PublicBookingRoster({
                       />
                     </div>
                     <StatusBadge status={r.response_status} size="md" />
+                    {r.previous_response_status === "going" ? (
+                      <span className="shrink-0 text-xs font-medium text-slate-500">
+                        Was Going
+                      </span>
+                    ) : r.previous_response_status === "waitlist" ? (
+                      <span className="shrink-0 text-xs font-medium text-amber-800">
+                        Was waitlist #{previousWaitByPlayer.get(r.player_id)}
+                      </span>
+                    ) : null}
                     {r.response_status === "waitlist" && waitPos ? (
                       <span className="ml-1 text-xs font-semibold text-amber-800">
                         #{waitPos}

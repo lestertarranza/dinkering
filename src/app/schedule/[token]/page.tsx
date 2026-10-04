@@ -28,7 +28,11 @@ import type { Booking } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-type AttendanceStatusRow = { booking_id: string; response_status: string };
+type AttendanceStatusRow = {
+  booking_id: string;
+  response_status: string;
+  previous_response_status: string | null;
+};
 
 /**
  * Fetch attendance rows for many bookings, paging past PostgREST's per-request
@@ -46,7 +50,7 @@ async function fetchAllAttendanceStatuses(
   for (let from = 0; ; from += pageSize) {
     const { data } = await db
       .from("booking_attendance")
-      .select("booking_id, response_status")
+      .select("booking_id, response_status, previous_response_status")
       .in("booking_id", bookingIds)
       .order("booking_id")
       .range(from, from + pageSize - 1);
@@ -95,15 +99,31 @@ export default async function PublicSchedule({
 
   const stats = new Map<
     string,
-    { invited: number; going: number; notGoing: number; waitlisted: number }
+    {
+      invited: number;
+      going: number;
+      notGoing: number;
+      waitlisted: number;
+      previousGoing: number;
+      previousWaitlist: number;
+    }
   >();
   for (const a of attendance) {
     const bid = a.booking_id as string;
-    const s = stats.get(bid) ?? { invited: 0, going: 0, notGoing: 0, waitlisted: 0 };
+    const s = stats.get(bid) ?? {
+      invited: 0,
+      going: 0,
+      notGoing: 0,
+      waitlisted: 0,
+      previousGoing: 0,
+      previousWaitlist: 0,
+    };
     s.invited += 1;
     if (a.response_status === "going") s.going += 1;
     else if (a.response_status === "not_going") s.notGoing += 1;
     else if (a.response_status === "waitlist") s.waitlisted += 1;
+    if (a.previous_response_status === "going") s.previousGoing += 1;
+    else if (a.previous_response_status === "waitlist") s.previousWaitlist += 1;
     stats.set(bid, s);
   }
 
@@ -114,7 +134,7 @@ export default async function PublicSchedule({
       <PublicPageHeader
         icon="🏓"
         title="Upcoming games"
-        subtitle="Tap a game to see who's invited and RSVP status."
+        subtitle="Tap a game to see who's invited, the live RSVP, and the previous Going and waitlist."
       />
 
       {upcoming.length === 0 ? (
@@ -222,6 +242,20 @@ export default async function PublicSchedule({
                           count={noResponse}
                           label="no response"
                           tone="neutral"
+                        />
+                      ) : null}
+                      {st.previousGoing > 0 ? (
+                        <CountPill
+                          count={st.previousGoing}
+                          label="previously going"
+                          tone="going"
+                        />
+                      ) : null}
+                      {st.previousWaitlist > 0 ? (
+                        <CountPill
+                          count={st.previousWaitlist}
+                          label="previously waitlisted"
+                          tone="waitlist"
                         />
                       ) : null}
                     </div>

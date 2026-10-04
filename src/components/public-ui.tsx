@@ -360,3 +360,67 @@ export function WaitlistQueue({
     </div>
   );
 }
+
+/** Temporary reference after live RSVPs were reset for the seat hold. */
+export function PreviousRsvpList({
+  going,
+  waitlist,
+  viewerPlayerId,
+}: {
+  going: { playerId: string; name: string }[];
+  waitlist: {
+    playerId: string;
+    name: string;
+    position: number;
+  }[];
+  viewerPlayerId?: string | null;
+}) {
+  if (going.length === 0 && waitlist.length === 0) return null;
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
+      <p className="text-sm font-semibold text-slate-800">Previous RSVP</p>
+      <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+        This is the Going list and waitlist from before the reset, in the same
+        order. It is a reference while everyone answers again. It is not the
+        live RSVP.
+      </p>
+      {going.length > 0 ? (
+        <div className="mt-2">
+          <p className="text-xs font-semibold text-emerald-800">
+            Was Going ({going.length})
+          </p>
+          <ul className="mt-1.5 flex flex-wrap gap-1">
+            {going.map((p) => {
+              const you = Boolean(viewerPlayerId && p.playerId === viewerPlayerId);
+              return (
+                <li key={p.playerId}>
+                  <PlayerChip name={p.name} hint={you ? "you" : undefined} />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+      {waitlist.length > 0 ? (
+        <div className="mt-2">
+          <p className="text-xs font-semibold text-amber-800">
+            Was on the waitlist ({waitlist.length})
+          </p>
+          <ol className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {waitlist.map((p) => {
+              const you = Boolean(viewerPlayerId && p.playerId === viewerPlayerId);
+              return (
+                <li key={p.playerId} className="flex items-center gap-1">
+                  <span className="w-5 shrink-0 text-right text-[11px] font-semibold tabular-nums text-amber-700">
+                    #{p.position}
+                  </span>
+                  <PlayerChip name={p.name} hint={you ? "you" : undefined} />
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ) : null}
+    </div>
+  );
+}
