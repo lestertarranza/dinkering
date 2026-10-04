@@ -51,20 +51,20 @@ export function seatHoldBlockReason(opts: {
   if (opts.alreadyHeld) return null;
   const who = opts.sharedWallet ? "The shared wallet" : "Your wallet";
   if (owesBalance(opts.balance)) {
-    return `${who} still has ${formatMoney(opts.balance)} to settle. Pay that first before Going or joining the waitlist. The minimum hold is ${formatMoney(MIN_HOLD_FEE)} per game.`;
+    return `${who} still has ${formatMoney(opts.balance)} to settle. Pay that first, then you can tap Going or Waitlist. Each game needs at least ${formatMoney(MIN_HOLD_FEE)} in credit.`;
   }
   const credit = availableCredit(opts.balance);
   if (credit + 0.001 < opts.holdFee) {
     const has = opts.sharedWallet
-      ? `The shared wallet has ${formatMoney(credit)} court credit.`
-      : `You have ${formatMoney(credit)} court credit.`;
-    return `${has} This game needs ${formatMoney(opts.holdFee)} before you can tap Going or the waitlist.`;
+      ? `The shared wallet has ${formatMoney(credit)} in credit.`
+      : `You have ${formatMoney(credit)} in credit.`;
+    return `${has} This game sets aside ${formatMoney(opts.holdFee)} when you tap Going or Waitlist.`;
   }
   return null;
 }
 
 export function seatHoldNote(holdFee: number): string {
-  return `Going and the waitlist each take a seat hold of ${formatMoney(holdFee)} from court credit. After the game it is applied to your share. Leave more than 24 hours before the game and the hold comes back as credit.`;
+  return `Tapping Going or Waitlist sets aside ${formatMoney(holdFee)} from your credit. After the game, that amount goes toward your share. Switch to Not going more than 24 hours before the game and it comes back.`;
 }
 
 /** One seat's share, used as the default late-cancel charge. */

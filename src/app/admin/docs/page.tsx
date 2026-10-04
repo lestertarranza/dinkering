@@ -220,14 +220,13 @@ export default function DocsPage() {
             <h3 className={h3Class}>Seat hold</h3>
             <p className={pClass}>
               Each booking has a hold fee, ₱200 by default, and it cannot be
-              lower. A player needs that much court credit, and no unpaid
-              balance, before they can tap Going or the waitlist. The same
-              amount is taken from a group wallet once per person. The hold
-              sits with the club until the game is billed, then it is applied
-              to that player&apos;s share. Anything left returns as credit. If
-              the share is higher, the difference is billed. Leaving more than
-              24 hours before the game returns the hold. A cancelled or refunded
-              game returns every open hold.
+              lower. A player pays any balance they owe, then needs that much
+              credit, before they can tap Going or Waitlist. The same amount
+              is set aside from a group wallet once per person. After the game
+              it goes toward that player&apos;s share. Anything left stays as
+              credit. If the share is higher, the difference is billed.
+              Switching to Not going more than 24 hours before the game returns
+              the amount. A cancelled or refunded game returns every open hold.
             </p>
             <ul className="ml-4 mt-2 list-disc space-y-1">
               <li className={liClass}>
@@ -237,9 +236,10 @@ export default function DocsPage() {
                 set by hand, do not take a hold.
               </li>
               <li className={liClass}>
-                <strong>Previous RSVP</strong> on a booking is the Going and
-                waitlist list from before the reset, including waitlist order.
-                It is a reference. Players answer again under the new rule.
+                <strong>Previous RSVP</strong> is the old Going list and waitlist,
+                in the same order. It is a reminder on the admin booking page
+                and on the public game page. It does not keep a spot. Players
+                answer again.
               </li>
             </ul>
 

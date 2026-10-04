@@ -520,13 +520,29 @@ export default async function PlayerPortal({
         <AppearanceToggle />
       </div>
       {seatHoldsOn ? (
-        <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
-          Upcoming RSVPs were reset so the seat hold can start clean. Your old
-          The previous Going list and waitlist are on each game below, in the
-          same order. Please answer again. Going and the waitlist each need court credit
-          of at least ₱200. Pay any balance you owe first. The hold is applied
-          to your share after the game. Leave more than 24 hours before the
-          game and it comes back as credit.
+        <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950 ring-1 ring-amber-200">
+          <p className="font-semibold">How to save your spot</p>
+          <p className="mt-1">
+            Upcoming RSVPs were cleared so we can start fresh. Your old Going
+            and waitlist are still on each game below, under Previous RSVP.
+            That list is only a reminder. It does not keep your spot.
+          </p>
+          <p className="mt-2 font-semibold">To join a game, tap your answer again.</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-5">
+            <li>Pay any balance you still owe.</li>
+            <li>
+              Have at least ₱200 in credit. We set that aside when you tap
+              Going or Waitlist.
+            </li>
+            <li>
+              After the game, that amount goes toward your share. Anything
+              left stays in your credit.
+            </li>
+            <li>
+              Switch to Not going more than 24 hours before the game, and the
+              ₱200 comes back.
+            </li>
+          </ol>
         </div>
       ) : null}
       <header className="mb-5 text-center">

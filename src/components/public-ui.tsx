@@ -380,9 +380,9 @@ export function PreviousRsvpList({
     <div className="rounded-xl bg-slate-50 px-3 py-3 ring-1 ring-slate-200">
       <p className="text-sm font-semibold text-slate-800">Previous RSVP</p>
       <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-        This is the Going list and waitlist from before the reset, in the same
-        order. It is a reference while everyone answers again. It is not the
-        live RSVP.
+        These are the answers from before RSVPs were cleared, in the same
+        order. This is a reminder only. It does not keep your spot. Please
+        choose Going, Waitlist, or Not going again.
       </p>
       {going.length > 0 ? (
         <div className="mt-2">

@@ -498,7 +498,7 @@ export default async function BookingDetail({
         <Card className="mb-5 p-4">
           <h2 className="text-sm font-semibold text-slate-700">Previous RSVP</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Saved when RSVPs were reset for the seat hold. This list is a reference. It is not the live answer.
+            The Going list and waitlist from before the reset, in the same order. A reminder only. Players still need to answer again.
           </p>
           <ul className="mt-3 divide-y divide-slate-100 text-sm">
             {previousRsvp.map((r) => (
