@@ -236,6 +236,13 @@ export default function DocsPage() {
                 set by hand, do not take a hold.
               </li>
               <li className={liClass}>
+                The <strong>hold fund</strong> is on the Dashboard and on each
+                booking. It is the total set aside from player credit for open
+                Going and waitlist seats. It is not cash in the bank, and it is
+                not a Club item fund. After the game it goes toward the share,
+                or it returns to the player&apos;s credit.
+              </li>
+              <li className={liClass}>
                 <strong>Previous RSVP</strong> is the old Going list and waitlist,
                 in the same order. It is a reminder on the admin booking page
                 and on the public game page. It does not keep a spot. Players

@@ -811,8 +811,11 @@ export default async function PlayerPortal({
 
       <div className="mb-5">
         <HowToPay bank={payBank} gcash={payGcash} />
-        {canRsvp && d.tone === "collect" ? (
-          <PaymentProofForm token={token} owed={d.amount} />
+        {canRsvp ? (
+          <PaymentProofForm
+            token={token}
+            owed={d.tone === "collect" ? d.amount : 0}
+          />
         ) : null}
       </div>
 

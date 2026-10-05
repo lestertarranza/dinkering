@@ -49,7 +49,9 @@ export function PaymentProofForm({
       <input type="hidden" name="token" value={token} />
       <p className="text-sm font-semibold text-slate-800">Send payment proof</p>
       <p className="text-xs text-slate-500">
-        Screenshot of your transfer. Admin still confirms before it hits your balance.
+        Upload a screenshot of your transfer. Use this to pay a balance or to
+        add credit for Going and the waitlist. Admin confirms it before it
+        shows on your balance.
       </p>
       <input
         type="file"

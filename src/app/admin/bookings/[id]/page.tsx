@@ -63,6 +63,7 @@ import {
   deleteBooking,
   markBookingSharePaid,
   removeBookingConfirmation,
+  addBookingConfirmations,
   duplicateBooking,
 } from "../actions";
 import { CourtAddForm } from "../CourtAddForm";
@@ -192,6 +193,21 @@ export default async function BookingDetail({
       return at.localeCompare(ct);
     });
   const openHolds = await openHoldTotal(supabase, id);
+  const { data: openHoldRows } = await supabase
+    .from("seat_holds")
+    .select("id, amount, players(name)")
+    .eq("booking_id", id)
+    .eq("status", "open")
+    .order("created_at");
+  const openHoldList = ((openHoldRows ?? []) as unknown as {
+    id: string;
+    amount: number;
+    players: { name: string } | { name: string }[] | null;
+  }[]).map((row) => ({
+    id: row.id,
+    amount: Number(row.amount),
+    name: (Array.isArray(row.players) ? row.players[0] : row.players)?.name ?? "Player",
+  }));
   const perSeatDefault = defaultLateCancelCharge(
     Number(b.total_booking_cost),
     roster.filter((r) => inEqualCourtSplit(r)).length,
@@ -399,15 +415,14 @@ export default async function BookingDetail({
         }
       />
 
-      {/* Booking confirmation screenshot */}
-      {confirmationUrls.length > 0 ? (
-        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-sm font-semibold text-emerald-800">
-            Booking confirmation{confirmationUrls.length > 1 ? "s" : ""}
-          </p>
-          <p className="mt-0.5 text-xs text-emerald-600">
-            Court reservation screenshot{confirmationUrls.length > 1 ? "s" : ""} from the venue.
-          </p>
+      <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+        <p className="text-sm font-semibold text-emerald-800">
+          Booking confirmation{confirmationUrls.length > 1 ? "s" : ""}
+        </p>
+        <p className="mt-0.5 text-xs text-emerald-700">
+          Upload the venue receipt here. You can add more than one.
+        </p>
+        {confirmationUrls.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-3">
             {confirmationUrls.map((url, i) => (
               <div key={i} className="flex flex-col items-center gap-1">
@@ -431,8 +446,26 @@ export default async function BookingDetail({
               </div>
             ))}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+        <ActionForm
+          action={addBookingConfirmations}
+          className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end"
+          pendingLabel="Uploading…"
+          hidden={<input type="hidden" name="booking_id" value={b.id} />}
+        >
+          <input
+            name="confirmation_screenshot"
+            type="file"
+            accept="image/*"
+            multiple
+            required
+            className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-emerald-800"
+          />
+          <SubmitButton className="shrink-0" pendingLabel="Uploading…">
+            Upload
+          </SubmitButton>
+        </ActionForm>
+      </div>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Card className="p-4">
@@ -487,11 +520,38 @@ export default async function BookingDetail({
       </div>
 
       {holdFee != null ? (
-        <p className="mb-3 text-sm text-slate-600">
-          Hold fee {formatMoney(holdFee)} per Going or waitlist player.
-          {openHolds != null ? ` Open holds on this game: ${formatMoney(openHolds)}.` : ""}
-          {" "}Marking Booked requires this fee, and a hold already taken for each player who is Going or on the waitlist.
-        </p>
+        <Card className="mb-5 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">Hold fund</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Credit set aside for this game. It is not cash in the bank.
+                After the game it goes toward each player&apos;s share, or it
+                returns to their credit.
+              </p>
+            </div>
+            <p className="text-xl font-semibold text-emerald-700">
+              {formatMoney(openHolds ?? 0)}
+            </p>
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Hold fee {formatMoney(holdFee)} per Going or waitlist player.
+            Marking Booked needs this fee, and a hold already taken for each
+            player who is Going or on the waitlist, unless the hold was waived.
+          </p>
+          {openHoldList.length > 0 ? (
+            <ul className="mt-3 divide-y divide-slate-100 text-sm">
+              {openHoldList.map((row) => (
+                <li key={row.id} className="flex items-center justify-between py-2">
+                  <span className="font-medium text-slate-800">{row.name}</span>
+                  <span className="text-slate-600">{formatMoney(row.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-slate-500">No open holds on this game yet.</p>
+          )}
+        </Card>
       ) : null}
 
       {previousRsvp.length > 0 ? (

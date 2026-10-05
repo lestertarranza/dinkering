@@ -146,6 +146,35 @@ export async function updateBooking(
   return actionOk("Booking saved.");
 }
 
+export async function addBookingConfirmations(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const id = String(formData.get("booking_id") || "");
+  if (!id) return actionErr("Missing booking.");
+  const { supabase } = await requireAdmin();
+  const screenshotFiles = formData.getAll("confirmation_screenshot") as File[];
+  const newUrls = await uploadBookingConfirmations(
+    screenshotFiles,
+    `PB-${id.slice(0, 8)}`,
+  );
+  if (newUrls.length === 0) return actionErr("Choose a screenshot to upload.");
+  const { data: existing } = await supabase
+    .from("bookings")
+    .select("confirmation_urls")
+    .eq("id", id)
+    .single();
+  const current = (existing?.confirmation_urls as string[] | null) ?? [];
+  const { error } = await supabase
+    .from("bookings")
+    .update({ confirmation_urls: [...current, ...newUrls] })
+    .eq("id", id);
+  if (error) return actionErr("Could not save the screenshot.");
+  revalidatePath(`/admin/bookings/${id}`);
+  revalidatePath("/admin/bookings");
+  return actionOk("Screenshot added.");
+}
+
 export async function setBookingStatus(
   _prev: ActionState,
   formData: FormData,

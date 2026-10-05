@@ -130,13 +130,18 @@ export default async function Dashboard({
       .limit(PAGE_SIZE * 3),
   ]);
 
-  const [{ data: clubFunds }, { byFund: clubCashByFund }] = await Promise.all([
+  const [{ data: clubFunds }, { byFund: clubCashByFund }, { data: openHoldRows }] =
+    await Promise.all([
     supabase
       .from("club_item_funds")
       .select("id, name, target_amount, status")
       .eq("status", "active")
       .order("name"),
     loadCachedClubFundCashSummaries(),
+    supabase
+      .from("seat_holds")
+      .select("amount, booking_id, players(name), bookings(booking_code, play_date, status)")
+      .eq("status", "open"),
   ]);
 
   const playerNameMap = new Map(
@@ -197,6 +202,40 @@ export default async function Dashboard({
   const clubUnpaidTotal = round2(
     clubFundRows.reduce((s, f) => s + f.unpaid, 0),
   );
+
+  type HoldBooking = {
+    booking_code: string | null;
+    play_date: string;
+    status: string;
+  };
+  const holdByBooking = new Map<
+    string,
+    { code: string; playDate: string; status: string; amount: number; names: string[] }
+  >();
+  for (const row of (openHoldRows ?? []) as unknown as {
+    amount: number;
+    booking_id: string;
+    players: { name: string } | { name: string }[] | null;
+    bookings: HoldBooking | HoldBooking[] | null;
+  }[]) {
+    const booking = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
+    if (!booking) continue;
+    const player = Array.isArray(row.players) ? row.players[0] : row.players;
+    const current = holdByBooking.get(row.booking_id) ?? {
+      code: booking.booking_code ?? "Booking",
+      playDate: booking.play_date,
+      status: booking.status,
+      amount: 0,
+      names: [],
+    };
+    current.amount = round2(current.amount + Number(row.amount ?? 0));
+    if (player?.name) current.names.push(player.name);
+    holdByBooking.set(row.booking_id, current);
+  }
+  const holdGames = [...holdByBooking.entries()].sort((a, b) =>
+    a[1].playDate.localeCompare(b[1].playDate),
+  );
+  const holdFundTotal = round2(holdGames.reduce((sum, [, game]) => sum + game.amount, 0));
 
   // ── Bookings ─────────────────────────────────────────────────────────────
   type BookingShareRow = { id: string; booking_id: string; player_id: string | null; amount_owed: number };
@@ -526,6 +565,43 @@ export default async function Dashboard({
         <StatCard label="Court cost (played)"      value={formatMoney(playedBookingCost)} tone="neutral" hint="Cost of games played & billed" />
         <StatCard label="Upcoming commitments"     value={formatMoney(upcomingCommitments)} tone="neutral" hint="Future booked games not yet billed" />
       </div>
+
+      <Card className="mt-5 p-4">
+        <h2 className="text-sm font-semibold text-slate-800">Hold fund</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Credit players set aside when they tap Going or Waitlist. This is not
+          cash in the bank, and it is not a Club item fund. After each game it
+          goes toward that player&apos;s share, or it returns to their credit.
+        </p>
+        <p className="mt-3 text-2xl font-semibold text-emerald-700">
+          {formatMoney(holdFundTotal)}
+        </p>
+        {holdGames.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No open holds yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {holdGames.map(([bookingId, game]) => (
+              <li key={bookingId} className="flex items-start justify-between gap-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <Link
+                    href={`/admin/bookings/${bookingId}`}
+                    className="font-medium text-slate-800 hover:text-emerald-800"
+                  >
+                    {game.code}
+                  </Link>
+                  <p className="text-xs text-slate-500">
+                    {formatDate(game.playDate)}
+                    {game.names.length > 0 ? ` · ${game.names.join(", ")}` : ""}
+                  </p>
+                </div>
+                <span className="shrink-0 font-semibold text-emerald-700">
+                  {formatMoney(game.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       {clubFundRows.length > 0 ? (
         <Card className="mt-5 p-4">
