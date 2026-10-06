@@ -7,7 +7,15 @@ export function canEditPublicRsvp(opts: {
   claimed: boolean;
   viewerPlayerId: string | null | undefined;
   targetPlayerId: string;
+  /** Club admin is using View as for this exact player. */
+  adminViewAsPlayerId?: string | null;
 }): boolean {
+  if (
+    opts.adminViewAsPlayerId &&
+    opts.adminViewAsPlayerId === opts.targetPlayerId
+  ) {
+    return true;
+  }
   if (!opts.claimed) return true;
   return opts.viewerPlayerId === opts.targetPlayerId;
 }

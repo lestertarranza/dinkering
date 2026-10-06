@@ -6,6 +6,7 @@ import { uploadPaymentProof } from "@/lib/payment-proof";
 import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink } from "@/lib/accounts";
 import { canEditPublicRsvp } from "@/lib/rsvp-auth";
+import { getAdminViewAs } from "@/lib/view-as";
 
 export type ProofState = { ok: boolean; message: string } | null;
 
@@ -28,15 +29,17 @@ export async function submitPaymentProof(
     .single();
   if (!player) return { ok: false, message: "Player not found." };
 
-  const [link, auth] = await Promise.all([
+  const [link, auth, viewAs] = await Promise.all([
     getPlayerLink(player.id),
     getAuthContext(),
+    getAdminViewAs(),
   ]);
   if (
     !canEditPublicRsvp({
       claimed: link.linked,
       viewerPlayerId: auth.profile?.player_id,
       targetPlayerId: player.id,
+      adminViewAsPlayerId: viewAs?.playerId,
     })
   ) {
     return {

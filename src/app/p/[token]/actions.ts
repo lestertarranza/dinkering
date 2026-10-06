@@ -8,6 +8,7 @@ import { logRsvpChange } from "@/lib/activity-log";
 import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink } from "@/lib/accounts";
 import { canEditPublicRsvp } from "@/lib/rsvp-auth";
+import { getAdminViewAs } from "@/lib/view-as";
 import { admitWaitlistedPlayers, upsertAttendanceRsvp } from "@/lib/waitlist";
 import { syncSeatHold } from "@/lib/seat-hold-db";
 
@@ -52,15 +53,18 @@ export async function submitRsvp(
     return { ok: false, message: "Player not found.", previous: "", saved: "", bookingId: booking_id };
   }
 
-  const [link, auth] = await Promise.all([
+  const [link, auth, viewAs] = await Promise.all([
     getPlayerLink(player.id),
     getAuthContext(),
+    getAdminViewAs(),
   ]);
+  const actingAsPlayer = viewAs?.playerId === player.id;
   if (
     !canEditPublicRsvp({
       claimed: link.linked,
       viewerPlayerId: auth.profile?.player_id,
       targetPlayerId: player.id,
+      adminViewAsPlayerId: viewAs?.playerId,
     })
   ) {
     return {
@@ -186,7 +190,8 @@ export async function submitRsvp(
       bookingCode: (booking as { booking_code?: string | null } | null)?.booking_code,
       from: prevStatus,
       to: response_status,
-      via: "player",
+      actorEmail: actingAsPlayer ? auth.user?.email ?? null : undefined,
+      via: actingAsPlayer ? "view_as" : "player",
     });
   }
   const waitlisted = response_status === "waitlist" && requested === "going";

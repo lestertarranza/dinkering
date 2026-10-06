@@ -43,6 +43,7 @@ import {
   recordFromRow,
 } from "@/lib/player-invite";
 import { formatPhMobile } from "@/lib/phone";
+import { startViewAs } from "@/app/admin/view-as/actions";
 import {
   updatePlayer,
   setPlayerStatus,
@@ -174,7 +175,13 @@ export default async function PlayerDetail({
           [p.display_name, invited].filter(Boolean).join(" · ") || undefined
         }
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <form action={startViewAs}>
+              <input type="hidden" name="player_id" value={p.id} />
+              <button type="submit" className={buttonClass("secondary")}>
+                View as this player
+              </button>
+            </form>
             <Link
               href={`/admin/players/${p.id}/transfer`}
               className={buttonClass("secondary")}

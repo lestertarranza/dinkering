@@ -230,6 +230,12 @@ export default function DocsPage() {
             </p>
             <ul className="ml-4 mt-2 list-disc space-y-1">
               <li className={liClass}>
+                <strong>View as this player</strong> on a player page opens their
+                page as them. Going, the waitlist, and payment proof use their
+                wallet, including a shared group wallet. Setting RSVP on the
+                booking roster still waives the hold.
+              </li>
+              <li className={liClass}>
                 Marking a game <strong>Booked</strong> requires the hold fee,
                 plus a hold already taken for anyone who is already Going or
                 on the waitlist. Auto Going for Lester and Donna, and RSVPs you

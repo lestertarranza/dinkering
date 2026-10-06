@@ -60,6 +60,7 @@ import { getPlayerLink, loadLinkedIdentities, loadInviteIndex } from "@/lib/acco
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import { canEditPublicRsvp } from "@/lib/rsvp-auth";
+import { getAdminViewAs } from "@/lib/view-as";
 
 export const dynamic = "force-dynamic";
 
@@ -476,10 +477,12 @@ export default async function PlayerPortal({
 
   const ledgerPageUrl = (n: number) =>
     `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
+  const viewAs = await getAdminViewAs();
   const canRsvp = canEditPublicRsvp({
     claimed: face.verified,
     viewerPlayerId: auth.profile?.player_id,
     targetPlayerId: p.id,
+    adminViewAsPlayerId: viewAs?.playerId,
   });
   const loginHref = `/login?next=${encodeURIComponent(`/p/${token}`)}`;
 
@@ -512,7 +515,10 @@ export default async function PlayerPortal({
       playerToken={token}
       teamToken={teamToken}
       claimPlayer={auth.profile?.player_id === p.id}
-      skipPlayer={face.verified && auth.profile?.player_id !== p.id}
+      skipPlayer={
+        auth.profile?.player_id !== p.id &&
+        (face.verified || viewAs?.playerId === p.id)
+      }
     />
     <main className={publicMainClass}>
       <ScrollToHash />

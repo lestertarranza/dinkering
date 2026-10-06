@@ -3,6 +3,8 @@ import { PlayerAvatar } from "@/components/PlayerChip";
 import { PendingLink } from "@/components/PendingLink";
 import { SignOutButton } from "@/components/SignOutButton";
 import { getAuthContext, type AuthContext } from "@/lib/auth";
+import { getAdminViewAs } from "@/lib/view-as";
+import { stopViewAs } from "@/app/admin/view-as/actions";
 import { PublicBottomNav } from "@/components/PublicBottomNav";
 
 function sessionName(auth: AuthContext): string {
@@ -117,14 +119,33 @@ export async function PublicChrome({
   children: ReactNode;
 }) {
   const auth = await getAuthContext();
+  const viewAs = await getAdminViewAs();
   return (
     <>
       <PlayerSessionBar returnTo={returnTo} viewingName={viewingName} />
+      {viewAs ? (
+        <div className="border-b border-amber-200 bg-amber-50">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2">
+            <p className="text-sm text-amber-950">
+              <span className="font-semibold">Viewing as {viewAs.name}.</span>{" "}
+              Going, the waitlist, and payment proof use this player&apos;s wallet.
+            </p>
+            <form action={stopViewAs}>
+              <button
+                type="submit"
+                className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-amber-800 px-3 text-sm font-semibold text-white"
+              >
+                Exit
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
       {children}
       <PublicBottomNav
         teamToken={teamToken}
         signedIn={!!auth.user}
-        sessionPlayerToken={auth.playerToken}
+        sessionPlayerToken={viewAs?.token ?? auth.playerToken}
       />
     </>
   );

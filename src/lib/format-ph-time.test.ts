@@ -58,6 +58,16 @@ describe("activityOrigin", () => {
     ).toEqual({ kind: "automatic", source: "waitlist" });
   });
 
+  it("labels a club admin viewing as the player as a manual admin RSVP", () => {
+    expect(
+      activityOrigin({
+        action: "Zamie Lloren RSVP on PB-053: No response → Going",
+        details: rsvpLogDetails("view_as"),
+        actor_email: "lestertarranza@gmail.com",
+      }),
+    ).toEqual({ kind: "manual", source: "admin" });
+  });
+
   it("labels player and admin RSVPs as manual", () => {
     expect(
       activityOrigin({

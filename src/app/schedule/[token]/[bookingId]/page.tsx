@@ -16,6 +16,7 @@ import { loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import { getAuthContext } from "@/lib/auth";
+import { getAdminViewAs } from "@/lib/view-as";
 import { isRsvpLocked, getRsvpLockAt } from "@/lib/rsvp-lock";
 import { RsvpForm } from "@/app/p/[token]/RsvpForm";
 import { PendingLink } from "@/components/PendingLink";
@@ -161,7 +162,8 @@ export default async function PublicBookingRoster({
         ? [b.confirmation_url]
         : [];
 
-  const viewerId = auth.profile?.player_id ?? null;
+  const viewAs = await getAdminViewAs();
+  const viewerId = viewAs?.playerId ?? auth.profile?.player_id ?? null;
   const scheduleHoldFee = (await seatHoldsReady(db)) ? holdFeeFromRow(b) : null;
   let scheduleHoldNote: string | null = null;
   let scheduleHoldWarning: string | null = null;
@@ -379,11 +381,11 @@ export default async function PublicBookingRoster({
                             name={face.name}
                             verified={face.verified}
                             avatarUrl={face.avatarUrl}
-                            subtitle="You"
+                            subtitle={viewAs ? "Viewing as" : "You"}
                           />
                         </div>
                         <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                          You
+                          {viewAs ? "View as" : "You"}
                         </span>
                         <StatusBadge status={r.response_status} size="md" />
                         {r.previous_response_status === "going" ? (

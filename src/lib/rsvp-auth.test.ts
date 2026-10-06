@@ -42,4 +42,23 @@ describe("canEditPublicRsvp", () => {
       }),
     ).toBe(false);
   });
+
+  it("lets a club admin act only for the player they are viewing as", () => {
+    expect(
+      canEditPublicRsvp({
+        claimed: true,
+        viewerPlayerId: "admin",
+        targetPlayerId: "p1",
+        adminViewAsPlayerId: "p1",
+      }),
+    ).toBe(true);
+    expect(
+      canEditPublicRsvp({
+        claimed: true,
+        viewerPlayerId: "admin",
+        targetPlayerId: "p2",
+        adminViewAsPlayerId: "p1",
+      }),
+    ).toBe(false);
+  });
 });
