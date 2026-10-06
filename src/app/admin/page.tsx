@@ -140,7 +140,7 @@ export default async function Dashboard({
     loadCachedClubFundCashSummaries(),
     supabase
       .from("seat_holds")
-      .select("amount, booking_id, players(name), bookings(booking_code, play_date, status)")
+      .select("amount, booking_id, players(name), bookings(booking_code, play_date, status, total_booking_cost)")
       .eq("status", "open"),
   ]);
 
@@ -207,10 +207,18 @@ export default async function Dashboard({
     booking_code: string | null;
     play_date: string;
     status: string;
+    total_booking_cost: number | null;
   };
   const holdByBooking = new Map<
     string,
-    { code: string; playDate: string; status: string; amount: number; names: string[] }
+    {
+      code: string;
+      playDate: string;
+      status: string;
+      amount: number;
+      totalCost: number;
+      names: string[];
+    }
   >();
   for (const row of (openHoldRows ?? []) as unknown as {
     amount: number;
@@ -226,6 +234,7 @@ export default async function Dashboard({
       playDate: booking.play_date,
       status: booking.status,
       amount: 0,
+      totalCost: round2(Number(booking.total_booking_cost ?? 0)),
       names: [],
     };
     current.amount = round2(current.amount + Number(row.amount ?? 0));
@@ -594,9 +603,20 @@ export default async function Dashboard({
                     {game.names.length > 0 ? ` · ${game.names.join(", ")}` : ""}
                   </p>
                 </div>
-                <span className="shrink-0 font-semibold text-emerald-700">
-                  {formatMoney(game.amount)}
-                </span>
+                <div className="shrink-0 text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    Hold fund
+                  </p>
+                  <p className="font-semibold text-emerald-700">
+                    {formatMoney(game.amount)}
+                  </p>
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    Total cost
+                  </p>
+                  <p className="font-semibold text-slate-800">
+                    {formatMoney(game.totalCost)}
+                  </p>
+                </div>
               </li>
             ))}
           </ul>
