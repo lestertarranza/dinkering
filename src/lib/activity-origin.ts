@@ -1,14 +1,27 @@
-export type RsvpLogVia = "player" | "admin" | "auto" | "auto_going" | "view_as";
+export type RsvpLogVia =
+  | "player"
+  | "admin"
+  | "auto"
+  | "auto_going"
+  | "view_as"
+  | "group";
 
 export type ActivityOrigin = {
   kind: "automatic" | "manual";
-  source: "waitlist" | "default going" | "player page" | "admin" | "other";
+  source:
+    | "waitlist"
+    | "default going"
+    | "player page"
+    | "admin"
+    | "group"
+    | "other";
 };
 
 export function rsvpLogDetails(via: RsvpLogVia): string {
   if (via === "auto_going") return "Automatic · default Going";
   if (via === "auto") return "Automatic · waitlist";
   if (via === "view_as") return "Manual · club admin viewing as this player";
+  if (via === "group") return "Manual · another member of the shared group";
   if (via === "player") return "Manual · player page";
   return "Manual · admin";
 }
@@ -29,6 +42,9 @@ export function activityOrigin(row: {
 
   if (d.includes("viewing as")) {
     return { kind: "manual", source: "admin" };
+  }
+  if (d.includes("shared group")) {
+    return { kind: "manual", source: "group" };
   }
   if (d.includes("default going")) {
     return { kind: "automatic", source: "default going" };

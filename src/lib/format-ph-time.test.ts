@@ -58,6 +58,16 @@ describe("activityOrigin", () => {
     ).toEqual({ kind: "automatic", source: "waitlist" });
   });
 
+  it("labels a group member RSVP as a manual group action", () => {
+    expect(
+      activityOrigin({
+        action: "Zamie Lloren RSVP on PB-053: No response → Going",
+        details: rsvpLogDetails("group"),
+        actor_email: "jerolyn@example.com",
+      }),
+    ).toEqual({ kind: "manual", source: "group" });
+  });
+
   it("labels a club admin viewing as the player as a manual admin RSVP", () => {
     expect(
       activityOrigin({

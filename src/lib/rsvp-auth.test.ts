@@ -43,6 +43,25 @@ describe("canEditPublicRsvp", () => {
     ).toBe(false);
   });
 
+  it("lets a group member RSVP only when that permission was granted", () => {
+    expect(
+      canEditPublicRsvp({
+        claimed: true,
+        viewerPlayerId: "jerolyn",
+        targetPlayerId: "zamie",
+        groupMemberRsvp: true,
+      }),
+    ).toBe(true);
+    expect(
+      canEditPublicRsvp({
+        claimed: true,
+        viewerPlayerId: "jerolyn",
+        targetPlayerId: "zamie",
+        groupMemberRsvp: false,
+      }),
+    ).toBe(false);
+  });
+
   it("lets a club admin act only for the player they are viewing as", () => {
     expect(
       canEditPublicRsvp({

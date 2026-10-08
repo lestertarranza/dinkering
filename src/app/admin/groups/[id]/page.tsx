@@ -457,6 +457,23 @@ export default async function GroupDetail({
                   className={inputClass}
                 />
               </Field>
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  name="members_can_rsvp"
+                  defaultChecked={!!g.members_can_rsvp}
+                  className="mt-0.5"
+                />
+                <span>
+                  Members can RSVP for each other
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    A signed-in member can set Going, Waitlist, or Not going
+                    for the other members. Going and Waitlist still set aside
+                    the hold from this shared wallet, and only when it has
+                    enough credit. Couple, family, and team fund only.
+                  </span>
+                </span>
+              </label>
               <SubmitButton className="w-full" pendingLabel="Saving…">
                 Save
               </SubmitButton>

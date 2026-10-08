@@ -166,6 +166,15 @@ export default function DocsPage() {
                 public page showing all member charges and the shared balance.
               </li>
               <li className={liClass}>
+                <strong>Members can RSVP for each other</strong> is off until
+                you check it on the group. A signed-in member can then answer
+                Going, Waitlist, or Not going for the other members whose
+                charges use this wallet. The hold is not waived. Going and
+                Waitlist still need enough credit in the shared wallet, one
+                hold per person. Not going does not take a hold. Payment proof
+                and account settings stay on each person&apos;s own login.
+              </li>
+              <li className={liClass}>
                 <strong>Pull member balances</strong> — if a player has personal
                 wallet credit (e.g. from a payment before they joined the group), use
                 this to move that credit into the group wallet where it can offset

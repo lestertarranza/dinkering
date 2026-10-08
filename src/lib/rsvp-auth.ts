@@ -9,6 +9,8 @@ export function canEditPublicRsvp(opts: {
   targetPlayerId: string;
   /** Club admin is using View as for this exact player. */
   adminViewAsPlayerId?: string | null;
+  /** Signed-in member of a group that allows RSVP for this player. */
+  groupMemberRsvp?: boolean;
 }): boolean {
   if (
     opts.adminViewAsPlayerId &&
@@ -16,6 +18,7 @@ export function canEditPublicRsvp(opts: {
   ) {
     return true;
   }
+  if (opts.groupMemberRsvp) return true;
   if (!opts.claimed) return true;
   return opts.viewerPlayerId === opts.targetPlayerId;
 }

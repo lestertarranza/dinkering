@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
+import { isMissingRelation } from "@/lib/account-fields";
 import { round2 } from "@/lib/ledger";
 import { SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import type { GroupType } from "@/lib/types";
@@ -49,12 +50,25 @@ export async function updateGroup(
   if (!name) return actionErr("Name is required.");
   const type = String(formData.get("type") || "couple") as GroupType;
   const notes = String(formData.get("notes") || "").trim() || null;
+  const members_can_rsvp = formData.get("members_can_rsvp") === "on";
 
   const { supabase } = await requireAdmin();
-  await supabase
+  const { error } = await supabase
     .from("player_groups")
-    .update({ name, type, notes })
+    .update({ name, type, notes, members_can_rsvp })
     .eq("id", id);
+  if (error && isMissingRelation(error)) {
+    await supabase.from("player_groups").update({ name, type, notes }).eq("id", id);
+    if (members_can_rsvp) {
+      return actionErr(
+        "Name and type were saved. Run migration 0024_group_member_rsvp.sql in the Supabase SQL editor, then turn on member RSVP again.",
+      );
+    }
+    revalidatePath(`/admin/groups/${id}`);
+    revalidatePath("/admin/groups");
+    return actionOk("Group saved.");
+  }
+  if (error) return actionErr("Could not save the group.");
   revalidatePath(`/admin/groups/${id}`);
   revalidatePath("/admin/groups");
   return actionOk("Group saved.");

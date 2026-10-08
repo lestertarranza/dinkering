@@ -6,6 +6,7 @@ function originNote(origin: ActivityOrigin, details: string | null): string | nu
   if (origin.source === "waitlist") return "waitlist";
   if (origin.source === "default going") return "default Going";
   if (origin.source === "player page") return "player page";
+  if (origin.source === "group") return "group member";
   if (origin.source === "admin") return "admin";
   return details;
 }

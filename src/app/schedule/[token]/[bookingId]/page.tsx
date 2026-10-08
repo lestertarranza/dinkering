@@ -45,6 +45,11 @@ import { groupPreviousSeats } from "@/lib/previous-rsvp";
 import { isSeatStatus, seatHoldBlockReason, seatHoldNote } from "@/lib/seat-hold";
 import { holdFeeFromRow, seatHoldsReady } from "@/lib/seat-hold-db";
 import { resolveWalletOwner } from "@/lib/ledger";
+import {
+  groupRsvpGrantOn,
+  loadGroupRsvpContext,
+  type GroupRsvpGrant,
+} from "@/lib/group-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +169,39 @@ export default async function PublicBookingRoster({
 
   const viewAs = await getAdminViewAs();
   const viewerId = viewAs?.playerId ?? auth.profile?.player_id ?? null;
+  const groupRsvpByPlayer = new Map<string, GroupRsvpGrant>();
+  const groupHoldBalance = new Map<string, number>();
+  if (viewerId && roster.length > 0) {
+    const rsvpCtx = await loadGroupRsvpContext(
+      db,
+      roster.map((r) => r.player_id),
+    );
+    for (const row of roster) {
+      if (row.player_id === viewerId) continue;
+      const grant = groupRsvpGrantOn(
+        rsvpCtx,
+        viewerId,
+        row.player_id,
+        b.play_date,
+      );
+      if (grant) groupRsvpByPlayer.set(row.player_id, grant);
+    }
+    const groupIds = [
+      ...new Set([...groupRsvpByPlayer.values()].map((g) => g.groupId)),
+    ];
+    if (groupIds.length > 0) {
+      const { data: groupBalances } = await db
+        .from("group_balances")
+        .select("player_group_id, balance")
+        .in("player_group_id", groupIds);
+      for (const row of groupBalances ?? []) {
+        groupHoldBalance.set(
+          row.player_group_id as string,
+          Number(row.balance ?? 0),
+        );
+      }
+    }
+  }
   const scheduleHoldFee = (await seatHoldsReady(db)) ? holdFeeFromRow(b) : null;
   let scheduleHoldNote: string | null = null;
   let scheduleHoldWarning: string | null = null;
@@ -368,24 +406,38 @@ export default async function PublicBookingRoster({
                 identities,
               );
               const mine = viewerId === r.player_id;
+              const groupGrant = groupRsvpByPlayer.get(r.player_id) ?? null;
+              const canAnswer = mine || !!groupGrant;
               const waitPos = waitlistNumber.get(r.id);
-              if (mine) {
+              if (canAnswer) {
                 return {
                   key: r.id,
-                  search: `${face.name} You ${invited ?? ""}`,
+                  search: `${face.name} ${mine ? "You" : "Group"} ${invited ?? ""}`,
                   node: (
-                    <div className="bg-emerald-50/70 px-4 py-3">
+                    <div className={mine ? "bg-emerald-50/70 px-4 py-3" : "px-4 py-3"}>
                       <div className="flex items-center gap-2">
                         <div className="min-w-0 flex-1">
                           <PlayerNameLine
                             name={face.name}
                             verified={face.verified}
                             avatarUrl={face.avatarUrl}
-                            subtitle={viewAs ? "Viewing as" : "You"}
+                            subtitle={
+                              mine
+                                ? viewAs
+                                  ? "Viewing as"
+                                  : "You"
+                                : groupGrant?.groupName ?? "Your group"
+                            }
                           />
                         </div>
-                        <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                          {viewAs ? "View as" : "You"}
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                            mine
+                              ? "bg-emerald-600 text-white"
+                              : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                          }`}
+                        >
+                          {mine ? (viewAs ? "View as" : "You") : "Group"}
                         </span>
                         <StatusBadge status={r.response_status} size="md" />
                         {r.previous_response_status === "going" ? (
@@ -407,7 +459,20 @@ export default async function PublicBookingRoster({
                           lockAtIso={lockAt && !locked ? lockAt.toISOString() : null}
                           isFull={isFull}
                           holdNote={scheduleHoldNote}
-                          holdWarning={scheduleHoldWarning}
+                          holdWarning={
+                            mine
+                              ? scheduleHoldWarning
+                              : scheduleHoldFee != null && groupGrant
+                                ? seatHoldBlockReason({
+                                    balance:
+                                      groupHoldBalance.get(groupGrant.groupId) ??
+                                      0,
+                                    holdFee: scheduleHoldFee,
+                                    alreadyHeld: isSeatStatus(r.response_status),
+                                    sharedWallet: true,
+                                  })
+                                : null
+                          }
                           waitlistPosition={
                             r.response_status === "waitlist" && waitPos
                               ? { position: waitPos, total: waitlistPeople.length }
@@ -465,8 +530,9 @@ export default async function PublicBookingRoster({
       )}
 
       <p className={`mt-4 px-1 text-center ${publicHintText}`}>
-        Your row is at the top when you are signed in. Names without a login
-        still open their private page.
+        Your row is at the top when you are signed in. If your group allows
+        it, you can also answer for the other members here. Names without a
+        login still open their private page.
       </p>
 
       <footer className="mt-6 text-center text-sm text-slate-400">

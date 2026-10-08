@@ -40,6 +40,8 @@ export interface PlayerGroup {
   notes: string | null;
   public_token: string;
   hidden_on_board: boolean;
+  /** Members may RSVP for each other. Hold still uses the shared wallet. */
+  members_can_rsvp?: boolean;
   created_at: string;
   updated_at: string;
 }

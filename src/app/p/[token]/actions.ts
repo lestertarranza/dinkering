@@ -9,6 +9,8 @@ import { getAuthContext } from "@/lib/auth";
 import { getPlayerLink } from "@/lib/accounts";
 import { canEditPublicRsvp } from "@/lib/rsvp-auth";
 import { getAdminViewAs } from "@/lib/view-as";
+import { groupRsvpGrantOn, loadGroupRsvpContext } from "@/lib/group-rsvp";
+import { phTodayYmd } from "@/lib/format";
 import { admitWaitlistedPlayers, upsertAttendanceRsvp } from "@/lib/waitlist";
 import { syncSeatHold } from "@/lib/seat-hold-db";
 
@@ -53,18 +55,38 @@ export async function submitRsvp(
     return { ok: false, message: "Player not found.", previous: "", saved: "", bookingId: booking_id };
   }
 
-  const [link, auth, viewAs] = await Promise.all([
+  const [link, auth, viewAs, bookingResult, courtsResult] = await Promise.all([
     getPlayerLink(player.id),
     getAuthContext(),
     getAdminViewAs(),
+    db
+      .from("bookings")
+      .select("play_date, start_time, booking_code")
+      .eq("id", booking_id)
+      .single(),
+    db.from("booking_courts").select("max_players, start_time").eq("booking_id", booking_id),
   ]);
+  const booking = bookingResult.data;
+  const courts = courtsResult.data;
   const actingAsPlayer = viewAs?.playerId === player.id;
+  const viewerPlayerId = auth.profile?.player_id ?? null;
+  let groupGrant = null;
+  if (!actingAsPlayer && viewerPlayerId && viewerPlayerId !== player.id) {
+    const ctx = await loadGroupRsvpContext(db, [viewerPlayerId, player.id]);
+    groupGrant = groupRsvpGrantOn(
+      ctx,
+      viewerPlayerId,
+      player.id,
+      (booking as { play_date?: string | null } | null)?.play_date ?? phTodayYmd(),
+    );
+  }
   if (
     !canEditPublicRsvp({
       claimed: link.linked,
-      viewerPlayerId: auth.profile?.player_id,
+      viewerPlayerId,
       targetPlayerId: player.id,
       adminViewAsPlayerId: viewAs?.playerId,
+      groupMemberRsvp: !!groupGrant,
     })
   ) {
     return {
@@ -76,11 +98,6 @@ export async function submitRsvp(
       bookingId: booking_id,
     };
   }
-
-  const [{ data: booking }, { data: courts }] = await Promise.all([
-    db.from("bookings").select("play_date, start_time, booking_code").eq("id", booking_id).single(),
-    db.from("booking_courts").select("max_players, start_time").eq("booking_id", booking_id),
-  ]);
   const courtList = (courts ?? []) as { max_players: number; start_time: string | null }[];
 
   const { data: existing } = await db
@@ -190,15 +207,18 @@ export async function submitRsvp(
       bookingCode: (booking as { booking_code?: string | null } | null)?.booking_code,
       from: prevStatus,
       to: response_status,
-      actorEmail: actingAsPlayer ? auth.user?.email ?? null : undefined,
-      via: actingAsPlayer ? "view_as" : "player",
+      actorEmail:
+        actingAsPlayer || groupGrant ? auth.user?.email ?? null : undefined,
+      via: actingAsPlayer ? "view_as" : groupGrant ? "group" : "player",
     });
   }
   const waitlisted = response_status === "waitlist" && requested === "going";
   return {
     ok: true,
     message: waitlisted
-      ? "Booking is full. You're on the waitlist"
+      ? groupGrant
+        ? "Booking is full. They're on the waitlist"
+        : "Booking is full. You're on the waitlist"
       : labelOf(response_status),
     previous: prevStatus,
     saved: response_status,

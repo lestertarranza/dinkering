@@ -113,6 +113,11 @@ export default async function GroupsPage() {
                             Off board
                           </span>
                         ) : null}
+                        {g.members_can_rsvp ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                            Members RSVP
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="text-right">

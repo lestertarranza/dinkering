@@ -61,6 +61,7 @@ import { playerFace } from "@/lib/player-identity";
 import { inviteLineFromIndex } from "@/lib/player-invite";
 import { canEditPublicRsvp } from "@/lib/rsvp-auth";
 import { getAdminViewAs } from "@/lib/view-as";
+import { groupRsvpGrantOn, loadGroupRsvpContext } from "@/lib/group-rsvp";
 
 export const dynamic = "force-dynamic";
 
@@ -477,13 +478,6 @@ export default async function PlayerPortal({
 
   const ledgerPageUrl = (n: number) =>
     `/p/${token}${n > 1 ? `?lpage=${n}` : ""}`;
-  const viewAs = await getAdminViewAs();
-  const canRsvp = canEditPublicRsvp({
-    claimed: face.verified,
-    viewerPlayerId: auth.profile?.player_id,
-    targetPlayerId: p.id,
-    adminViewAsPlayerId: viewAs?.playerId,
-  });
   const loginHref = `/login?next=${encodeURIComponent(`/p/${token}`)}`;
 
   const seatHoldsOn = await seatHoldsReady(db);
@@ -505,11 +499,44 @@ export default async function PlayerPortal({
     }
   }
 
+  const viewAs = await getAdminViewAs();
+  const canManageWallet = canEditPublicRsvp({
+    claimed: face.verified,
+    viewerPlayerId: auth.profile?.player_id,
+    targetPlayerId: p.id,
+    adminViewAsPlayerId: viewAs?.playerId,
+  });
+  const groupGrant =
+    !canManageWallet &&
+    auth.profile?.player_id &&
+    auth.profile.player_id !== p.id
+      ? groupRsvpGrantOn(
+          await loadGroupRsvpContext(db, [auth.profile.player_id, p.id]),
+          auth.profile.player_id,
+          p.id,
+          today,
+        )
+      : null;
+  const canChangeRsvp = canManageWallet || !!groupGrant;
+  let groupHoldBalance: number | null = null;
+  if (groupGrant && pooled?.player_group_id !== groupGrant.groupId) {
+    const { data: grantBalance } = await db
+      .from("group_balances")
+      .select("balance")
+      .eq("player_group_id", groupGrant.groupId)
+      .maybeSingle();
+    groupHoldBalance = Number(grantBalance?.balance ?? 0);
+  }
+  const rsvpHoldBalance =
+    groupHoldBalance ??
+    (groupGrant ? Number(groupWalletBalance ?? 0) : holdWalletBalance);
+  const rsvpSharedWallet = groupGrant ? true : Boolean(pooled);
+
   return (
     <PublicChrome
       returnTo={`/p/${token}`}
       teamToken={teamToken}
-      viewingName={canRsvp ? null : face.name}
+      viewingName={canManageWallet ? null : face.name}
     >
     <RememberPublicTokens
       playerToken={token}
@@ -652,7 +679,15 @@ export default async function PlayerPortal({
         );
       })() : null}
 
-      {canRsvp ? (
+      {groupGrant ? (
+        <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-950 ring-1 ring-emerald-200">
+          You can answer for {face.name}. Going and Waitlist use{" "}
+          {groupGrant.groupName}&apos;s wallet, and only when that wallet has
+          enough credit.
+        </div>
+      ) : null}
+
+      {canChangeRsvp ? (
       <>
       {pooled ? (
         /* ── Pooled player: two clearly labelled wallet panels ── */
@@ -817,7 +852,7 @@ export default async function PlayerPortal({
 
       <div className="mb-5">
         <HowToPay bank={payBank} gcash={payGcash} />
-        {canRsvp ? (
+        {canManageWallet ? (
           <PaymentProofForm
             token={token}
             owed={d.tone === "collect" ? d.amount : 0}
@@ -826,7 +861,7 @@ export default async function PlayerPortal({
       </div>
 
       <PublicSection title="Upcoming games">
-        {!canRsvp ? (
+        {!canChangeRsvp ? (
           <div className="mb-3 px-1">
             {auth.user ? (
               <p className={publicHintText}>
@@ -900,7 +935,7 @@ export default async function PlayerPortal({
                     </div>
                   </div>
                   <div className="mt-3">
-                    {canRsvp ? (
+                    {canChangeRsvp ? (
                     <RsvpForm
                       token={token}
                       bookingId={a.bookings.id}
@@ -913,10 +948,10 @@ export default async function PlayerPortal({
                       holdWarning={
                         holdFeeByBooking.has(a.booking_id)
                           ? seatHoldBlockReason({
-                              balance: holdWalletBalance,
+                              balance: rsvpHoldBalance,
                               holdFee: holdFeeByBooking.get(a.booking_id)!,
                               alreadyHeld: isSeatStatus(a.response_status),
-                              sharedWallet: Boolean(pooled),
+                              sharedWallet: rsvpSharedWallet,
                             })
                           : null
                       }
@@ -984,7 +1019,7 @@ export default async function PlayerPortal({
         )}
       </PublicSection>
 
-      {canRsvp ? (
+      {canChangeRsvp ? (
       <PublicSection title="Charges & payments">
         {pooled ? (
           <p className={`mb-3 px-1 ${publicHintText}`}>
