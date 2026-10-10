@@ -11,7 +11,9 @@ import {
 } from "@/lib/payment-allocation";
 import { SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import type { Player, PlayerGroup } from "@/lib/types";
+import { availableCredit } from "@/lib/seat-hold";
 import { TransferForm } from "./TransferForm";
+import { CreditTransferForm } from "./CreditTransferForm";
 import { BulkCollectForm, type BulkSource } from "./BulkCollectForm";
 
 export const dynamic = "force-dynamic";
@@ -99,11 +101,18 @@ export default async function TransferPage({
   }
   bulkSources.sort((a, b) => b.remaining - a.remaining);
 
+  const { data: personalBalance } = await supabase
+    .from("player_balances")
+    .select("balance")
+    .eq("player_id", id)
+    .maybeSingle();
+  const personalCredit = availableCredit(Number(personalBalance?.balance ?? 0));
+
   return (
     <div>
       <PageHeader
         title={`Transfer balance — ${playerName}`}
-        description="Send this player's charges to someone else, or pull several other players' debts onto this player."
+        description="Send this player's charges to someone else, pull other debts onto this player, or move personal credit to another player."
         action={
           <Link href={`/admin/players/${id}`} className={buttonClass("ghost")}>
             ← Back to player
@@ -143,6 +152,22 @@ export default async function TransferPage({
         </Card>
       </div>
 
+      <Card className="mx-auto mt-6 max-w-5xl p-6">
+        <h2 className="mb-1 text-base font-semibold text-slate-900">
+          Send {playerName}&apos;s personal credit
+        </h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Moves credit that sits on this player&apos;s own wallet. A couple,
+          family, or team fund is left alone.
+        </p>
+        <CreditTransferForm
+          sourcePlayerId={id}
+          sourcePlayerName={playerName}
+          available={personalCredit}
+          players={others}
+        />
+      </Card>
+
       <div className="mx-auto mt-6 max-w-5xl rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
         <p className="font-semibold">How this works</p>
         <ul className="mt-2 list-inside list-disc space-y-1 text-amber-700">
@@ -158,8 +183,12 @@ export default async function TransferPage({
             Both ledger entries list the original items so history stays clear.
           </li>
           <li>
-            Group wallets are respected. Two people who already share a wallet
-            cannot transfer to each other.
+            Group wallets are respected when moving charges. Two people who
+            already share a wallet cannot transfer charges to each other.
+          </li>
+          <li>
+            Personal credit moves only between the two players&apos; own
+            wallets. It does not come out of a shared group wallet.
           </li>
         </ul>
       </div>

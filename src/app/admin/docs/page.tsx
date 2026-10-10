@@ -600,6 +600,17 @@ export default function DocsPage() {
               and expense pages will still show the source player. The transfer only
               moves the financial obligation via ledger entries.
             </div>
+
+            <h3 className={h3Class}>Personal credit</h3>
+            <p className={pClass}>
+              The same Transfer balance page can send credit that sits on a
+              player&apos;s own wallet to another player. Enter an amount up to
+              the personal credit shown, then choose who receives it. A charge
+              is posted on the sender&apos;s personal wallet and a matching
+              credit on the receiver&apos;s personal wallet. Credit in a couple,
+              family, or team fund is not moved by this. Use Pull balances on
+              the group if that shared credit should change wallets.
+            </p>
           </Card>
 
           {/* ── Collections ── */}

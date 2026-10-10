@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth";
 import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney, SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import { resolveWalletOwner, round2 } from "@/lib/ledger";
+import { personalCreditTransferProblem } from "@/lib/personal-credit-transfer";
 import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
 import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
@@ -326,6 +327,125 @@ export async function transferBalancesBulk(
     `Transferred ${formatMoney(total)} from ${okNames.length} player${
       okNames.length === 1 ? "" : "s"
     } (${okNames.join(", ")}).`,
+  );
+}
+
+/**
+ * Move credit that sits on one player's own wallet onto another player's
+ * own wallet. Shared couple, family, and team-fund wallets are not used.
+ */
+export async function transferPersonalCredit(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const sourcePlayerId = String(formData.get("source_player_id") || "");
+  const targetPlayerId = String(formData.get("target_player_id") || "");
+  const amount = round2(Math.abs(parseFloat(String(formData.get("amount") || "0"))));
+  const date = String(formData.get("transfer_date") || "") || phTodayYmd();
+  const extraNotes = String(formData.get("notes") || "").trim();
+
+  const { supabase, user } = await requireAdmin();
+  const { data: sourceBalance } = await supabase
+    .from("player_balances")
+    .select("balance")
+    .eq("player_id", sourcePlayerId)
+    .maybeSingle();
+  const problem = personalCreditTransferProblem({
+    sourcePlayerId,
+    targetPlayerId,
+    amount,
+    sourceBalance: Number(sourceBalance?.balance ?? 0),
+  });
+  if (problem) return actionErr(problem);
+
+  const [{ data: src }, { data: tgt }] = await Promise.all([
+    supabase.from("players").select("name").eq("id", sourcePlayerId).single(),
+    supabase.from("players").select("name").eq("id", targetPlayerId).single(),
+  ]);
+  if (!src || !tgt) return actionErr("Player not found.");
+  const sourceName = src.name as string;
+  const targetName = tgt.name as string;
+  const note = extraNotes ? `. ${extraNotes}` : "";
+  const createdBy = user?.email ?? "admin";
+
+  const { data: sourceAdj, error: sourceErr } = await supabase
+    .from("manual_adjustments")
+    .insert({
+      player_id: sourcePlayerId,
+      player_group_id: null,
+      amount,
+      type: "charge",
+      reason: `Personal credit sent to ${targetName}${note}`,
+      adjustment_date: date,
+      created_by: createdBy,
+    })
+    .select("id")
+    .single();
+  if (sourceErr || !sourceAdj?.id) {
+    return actionErr("Could not take the credit from the personal wallet.");
+  }
+
+  await supabase.from("ledger_entries").insert({
+    entry_date: date,
+    player_id: sourcePlayerId,
+    player_group_id: null,
+    source_type: "manual_adjustment",
+    source_id: sourceAdj.id,
+    description: `Personal credit to ${targetName}${note}`,
+    debit_amount: amount,
+    credit_amount: 0,
+  });
+
+  const { data: targetAdj, error: targetErr } = await supabase
+    .from("manual_adjustments")
+    .insert({
+      player_id: targetPlayerId,
+      player_group_id: null,
+      amount,
+      type: "credit",
+      reason: `Personal credit received from ${sourceName}${note}`,
+      adjustment_date: date,
+      created_by: createdBy,
+    })
+    .select("id")
+    .single();
+  if (targetErr || !targetAdj?.id) {
+    return actionErr(
+      "Credit was taken from the sender, but it was not added to the other player. Check both ledgers.",
+    );
+  }
+
+  await supabase.from("ledger_entries").insert({
+    entry_date: date,
+    player_id: targetPlayerId,
+    player_group_id: null,
+    source_type: "manual_adjustment",
+    source_id: targetAdj.id,
+    description: `Personal credit from ${sourceName}${note}`,
+    debit_amount: 0,
+    credit_amount: amount,
+  });
+
+  revalidatePath(`/admin/players/${sourcePlayerId}`);
+  revalidatePath(`/admin/players/${targetPlayerId}`);
+  revalidatePath(`/admin/players/${sourcePlayerId}/transfer`);
+  revalidatePath(`/admin/players/${targetPlayerId}/transfer`);
+  revalidatePath("/admin");
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: sourcePlayerId,
+    action: `Sent ${formatMoney(amount)} personal credit`,
+    details: targetName,
+  });
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: targetPlayerId,
+    action: `Received ${formatMoney(amount)} personal credit`,
+    details: sourceName,
+  });
+
+  return actionOk(
+    `Sent ${formatMoney(amount)} personal credit from ${sourceName} to ${targetName}.`,
   );
 }
 
