@@ -38,6 +38,51 @@ export function isSeatStatus(status: string | null | undefined): boolean {
   return status === "going" || status === "waitlist";
 }
 
+const MOVABLE_BOOKING_STATUSES = new Set(["for_booking", "booked", "played"]);
+
+/** Why an open seat hold cannot move onto another game. Null means it can. */
+export function seatHoldMoveProblem(input: {
+  holdStatus: string;
+  sourceBookingId: string;
+  destBookingId: string;
+  destBookingStatus: string;
+  destHoldStatus: string | null;
+}): string | null {
+  if (input.holdStatus !== "open") {
+    return "Only an open seat hold can be moved.";
+  }
+  if (!input.destBookingId || input.destBookingId === input.sourceBookingId) {
+    return "Pick a different game.";
+  }
+  if (!MOVABLE_BOOKING_STATUSES.has(input.destBookingStatus)) {
+    return "That game is cancelled or refunded, so a hold cannot move there.";
+  }
+  if (input.destHoldStatus === "open") {
+    return "This player already has an open hold on that game.";
+  }
+  if (input.destHoldStatus === "applied") {
+    return "This player already used a hold on that game.";
+  }
+  if (input.destHoldStatus) {
+    return "This player already has a hold record on that game.";
+  }
+  return null;
+}
+
+export function seatHoldMoveSummary(move: {
+  playerName: string;
+  amount: number;
+  sourceCode: string;
+  destCode: string;
+  applied: boolean;
+}): string {
+  const money = formatMoney(move.amount);
+  const tail = move.applied
+    ? `Applied it to their share on ${move.destCode}.`
+    : `It stays open on ${move.destCode}.`;
+  return `Moved ${move.playerName}'s ${money} seat hold from ${move.sourceCode} to ${move.destCode}. ${tail}`;
+}
+
 /**
  * Why this wallet cannot take a Going or waitlist seat.
  * A seat that already has an open hold does not need a second one.

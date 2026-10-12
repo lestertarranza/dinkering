@@ -6,6 +6,7 @@ import {
   isSeatStatus,
   parseHoldFee,
   seatHoldBlockReason,
+  seatHoldMoveProblem,
 } from "@/lib/seat-hold";
 
 type Db = SupabaseClient;
@@ -328,6 +329,247 @@ export async function openHoldTotal(db: Db, bookingId: string): Promise<number |
   return round2(
     (data ?? []).reduce((sum, row) => sum + Number(row.amount ?? 0), 0),
   );
+}
+
+export type SeatHoldMove = {
+  playerId: string;
+  playerName: string;
+  amount: number;
+  sourceBookingId: string;
+  destBookingId: string;
+  sourceCode: string;
+  destCode: string;
+  applied: boolean;
+  /** RSVP that was cleared on the source game, if they were Going or waitlist. */
+  clearedFrom: string | null;
+  rsvpWarning: string | null;
+};
+
+/**
+ * Move one open seat hold onto another game.
+ * If that game already has a share for this player, the hold is applied
+ * the same way share generation consumes a hold: the set-aside is credited
+ * back so the share is the real charge.
+ * Going or waitlist on the source game is cleared, because that seat no
+ * longer has a hold.
+ */
+export async function moveOpenSeatHold(
+  db: Db,
+  opts: { holdId: string; destBookingId: string },
+): Promise<{ ok: true; move: SeatHoldMove } | { ok: false; error: string }> {
+  if (!(await seatHoldsReady(db))) {
+    return { ok: false, error: "Seat holds are not set up yet." };
+  }
+  const holdId = opts.holdId.trim();
+  const destBookingId = opts.destBookingId.trim();
+  if (!holdId || !destBookingId) {
+    return { ok: false, error: "Pick the hold and the game to move it to." };
+  }
+
+  const { data: hold, error: holdError } = await db
+    .from("seat_holds")
+    .select("id, booking_id, player_id, amount, status, player_group_id")
+    .eq("id", holdId)
+    .maybeSingle();
+  if (holdError || !hold) return { ok: false, error: "That seat hold was not found." };
+
+  const sourceBookingId = hold.booking_id as string;
+  const playerId = hold.player_id as string;
+  const { data: bookings, error: bookingError } = await db
+    .from("bookings")
+    .select("id, booking_code, status")
+    .in("id", [sourceBookingId, destBookingId]);
+  if (bookingError) return { ok: false, error: "Could not load those games." };
+  const source = (bookings ?? []).find((b) => b.id === sourceBookingId);
+  const dest = (bookings ?? []).find((b) => b.id === destBookingId);
+  if (!source || !dest) return { ok: false, error: "That game was not found." };
+
+  const { data: destHold, error: destHoldError } = await db
+    .from("seat_holds")
+    .select("status")
+    .eq("booking_id", destBookingId)
+    .eq("player_id", playerId)
+    .maybeSingle();
+  if (destHoldError) {
+    return { ok: false, error: "Could not check the destination game." };
+  }
+  const problem = seatHoldMoveProblem({
+    holdStatus: String(hold.status),
+    sourceBookingId,
+    destBookingId,
+    destBookingStatus: String(dest.status),
+    destHoldStatus: (destHold?.status as string | undefined) ?? null,
+  });
+  if (problem) return { ok: false, error: problem };
+
+  const sourceCode = (source.booking_code as string | null) ?? "the original game";
+  const destCode = (dest.booking_code as string | null) ?? "the other game";
+  const sourceDesc = `Seat hold ${sourceCode}`;
+  const destDesc = `Seat hold ${destCode}`;
+
+  const { data: debitRows, error: debitReadError } = await db
+    .from("ledger_entries")
+    .select("id")
+    .eq("source_id", holdId)
+    .eq("source_type", "manual_adjustment")
+    .eq("description", sourceDesc)
+    .eq("voided", false)
+    .gt("debit_amount", 0);
+  if (debitReadError || (debitRows ?? []).length === 0) {
+    return {
+      ok: false,
+      error: "The hold charge on the ledger could not be found, so nothing was moved.",
+    };
+  }
+
+  const moved = await db
+    .from("seat_holds")
+    .update({ booking_id: destBookingId })
+    .eq("id", holdId)
+    .eq("status", "open")
+    .select("id");
+  if (moved.error || (moved.data ?? []).length === 0) {
+    return { ok: false, error: "Could not move the seat hold. Try again." };
+  }
+
+  const relabeled = await db
+    .from("ledger_entries")
+    .update({ description: destDesc })
+    .eq("source_id", holdId)
+    .eq("source_type", "manual_adjustment")
+    .eq("description", sourceDesc)
+    .eq("voided", false)
+    .gt("debit_amount", 0)
+    .select("id");
+  if (relabeled.error || (relabeled.data ?? []).length === 0) {
+    await db
+      .from("seat_holds")
+      .update({ booking_id: sourceBookingId })
+      .eq("id", holdId)
+      .eq("status", "open");
+    return {
+      ok: false,
+      error: "Could not retarget the hold charge. Nothing was moved.",
+    };
+  }
+
+  const { data: shares, error: shareError } = await db
+    .from("booking_shares")
+    .select("id")
+    .eq("booking_id", destBookingId)
+    .eq("player_id", playerId)
+    .limit(1);
+  if (shareError) {
+    await revertHoldMove(db, holdId, sourceBookingId, sourceDesc, destDesc);
+    return { ok: false, error: "Could not check the destination share. Nothing was moved." };
+  }
+
+  const applied = (shares ?? []).length > 0;
+  if (applied) {
+    const amount = round2(Number(hold.amount));
+    const credit = await db
+      .from("ledger_entries")
+      .insert({
+        entry_date: phTodayYmd(),
+        player_id: hold.player_group_id ? null : playerId,
+        player_group_id: hold.player_group_id,
+        source_type: "manual_adjustment",
+        source_id: holdId,
+        description: `Seat hold applied ${destCode}`,
+        debit_amount: 0,
+        credit_amount: amount,
+      })
+      .select("id")
+      .single();
+    if (credit.error || !credit.data?.id) {
+      await revertHoldMove(db, holdId, sourceBookingId, sourceDesc, destDesc);
+      return {
+        ok: false,
+        error: "Could not apply the hold to the share. Nothing was moved.",
+      };
+    }
+    const marked = await db
+      .from("seat_holds")
+      .update({ status: "applied" })
+      .eq("id", holdId)
+      .eq("status", "open")
+      .select("id");
+    if (marked.error || (marked.data ?? []).length === 0) {
+      await db.from("ledger_entries").delete().eq("id", credit.data.id);
+      await revertHoldMove(db, holdId, sourceBookingId, sourceDesc, destDesc);
+      return {
+        ok: false,
+        error: "Could not apply the hold to the share. Nothing was moved.",
+      };
+    }
+  }
+
+  const { data: attendance } = await db
+    .from("booking_attendance")
+    .select("response_status")
+    .eq("booking_id", sourceBookingId)
+    .eq("player_id", playerId)
+    .maybeSingle();
+  let clearedFrom: string | null = null;
+  let rsvpWarning: string | null = null;
+  const previous = attendance?.response_status as string | undefined;
+  if (previous && isSeatStatus(previous)) {
+    const cleared = await db
+      .from("booking_attendance")
+      .update({ response_status: "no_response", hold_waived: false })
+      .eq("booking_id", sourceBookingId)
+      .eq("player_id", playerId)
+      .eq("response_status", previous);
+    if (cleared.error) {
+      rsvpWarning =
+        "The hold moved, but their Going or waitlist spot on the original game could not be cleared.";
+    } else {
+      clearedFrom = previous;
+    }
+  }
+
+  const { data: player } = await db
+    .from("players")
+    .select("name")
+    .eq("id", playerId)
+    .maybeSingle();
+
+  return {
+    ok: true,
+    move: {
+      playerId,
+      playerName: (player?.name as string | undefined)?.trim() || "Player",
+      amount: round2(Number(hold.amount)),
+      sourceBookingId,
+      destBookingId,
+      sourceCode,
+      destCode,
+      applied,
+      clearedFrom,
+      rsvpWarning,
+    },
+  };
+}
+
+async function revertHoldMove(
+  db: Db,
+  holdId: string,
+  sourceBookingId: string,
+  sourceDesc: string,
+  destDesc: string,
+) {
+  await db
+    .from("seat_holds")
+    .update({ booking_id: sourceBookingId })
+    .eq("id", holdId)
+    .eq("status", "open");
+  await db
+    .from("ledger_entries")
+    .update({ description: sourceDesc })
+    .eq("source_id", holdId)
+    .eq("description", destDesc)
+    .eq("voided", false)
+    .gt("debit_amount", 0);
 }
 
 export function holdFeeFromRow(row: { hold_fee?: number | null }): number | null {

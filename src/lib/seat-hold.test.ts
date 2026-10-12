@@ -5,6 +5,8 @@ import {
   MIN_HOLD_FEE,
   parseHoldFee,
   seatHoldBlockReason,
+  seatHoldMoveProblem,
+  seatHoldMoveSummary,
 } from "./seat-hold";
 
 describe("parseHoldFee", () => {
@@ -66,6 +68,50 @@ describe("availableCredit", () => {
   it("reads credit from a negative balance", () => {
     expect(availableCredit(-200)).toBe(200);
     expect(availableCredit(20)).toBe(0);
+  });
+});
+
+describe("seatHoldMoveProblem", () => {
+  const base = {
+    holdStatus: "open",
+    sourceBookingId: "src",
+    destBookingId: "dest",
+    destBookingStatus: "played",
+    destHoldStatus: null as string | null,
+  };
+
+  it("allows an open hold onto a played game with no hold there", () => {
+    expect(seatHoldMoveProblem(base)).toBeNull();
+  });
+
+  it("refuses a hold that is not open, the same game, or a cancelled game", () => {
+    expect(seatHoldMoveProblem({ ...base, holdStatus: "applied" })).toMatch(/open/);
+    expect(seatHoldMoveProblem({ ...base, destBookingId: "src" })).toMatch(/different/);
+    expect(
+      seatHoldMoveProblem({ ...base, destBookingStatus: "cancelled" }),
+    ).toMatch(/cancelled/);
+  });
+
+  it("refuses when the destination already has a hold for this player", () => {
+    expect(seatHoldMoveProblem({ ...base, destHoldStatus: "open" })).toMatch(/open hold/);
+    expect(seatHoldMoveProblem({ ...base, destHoldStatus: "applied" })).toMatch(/already used/);
+    expect(seatHoldMoveProblem({ ...base, destHoldStatus: "returned" })).toMatch(/hold record/);
+  });
+});
+
+describe("seatHoldMoveSummary", () => {
+  it("says the hold was applied when the destination already charged them", () => {
+    expect(
+      seatHoldMoveSummary({
+        playerName: "Ian Keith Clarion",
+        amount: 200,
+        sourceCode: "PB-060",
+        destCode: "PB-054",
+        applied: true,
+      }),
+    ).toBe(
+      "Moved Ian Keith Clarion's ₱200.00 seat hold from PB-060 to PB-054. Applied it to their share on PB-054.",
+    );
   });
 });
 

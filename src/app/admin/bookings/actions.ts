@@ -20,9 +20,14 @@ import {
   upsertAttendanceRsvp,
 } from "@/lib/waitlist";
 import { seedNewBookingAttendance } from "@/lib/auto-rsvp-seed";
-import { defaultLateCancelCharge, parseHoldFee } from "@/lib/seat-hold";
+import {
+  defaultLateCancelCharge,
+  parseHoldFee,
+  seatHoldMoveSummary,
+} from "@/lib/seat-hold";
 import {
   bookedHoldError,
+  moveOpenSeatHold,
   reconcileHoldsAfterShares,
   releaseBookingHolds,
   syncSeatHold,
@@ -920,4 +925,54 @@ export async function duplicateBooking(formData: FormData) {
   });
   revalidatePath("/admin/bookings");
   redirect(`/admin/bookings/${created.id}`);
+}
+
+/** Move one player's open seat hold onto another game. */
+export async function transferSeatHold(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const holdId = String(formData.get("hold_id") || "");
+  const destBookingId = String(formData.get("dest_booking_id") || "");
+  const { supabase, user } = await requireAdmin();
+  const result = await moveOpenSeatHold(supabase, { holdId, destBookingId });
+  if (!result.ok) return actionErr(result.error);
+
+  const { move } = result;
+  const action = seatHoldMoveSummary(move);
+  await logAdminAction(supabase, user, {
+    entityType: "player",
+    entityId: move.playerId,
+    action,
+    details: "Manual · admin",
+  });
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: move.sourceBookingId,
+    action,
+    details: "Manual · admin",
+  });
+  await logAdminAction(supabase, user, {
+    entityType: "booking",
+    entityId: move.destBookingId,
+    action,
+    details: "Manual · admin",
+  });
+  if (move.clearedFrom) {
+    await logRsvpChange({
+      playerId: move.playerId,
+      bookingId: move.sourceBookingId,
+      playerName: move.playerName,
+      bookingCode: move.sourceCode,
+      from: move.clearedFrom,
+      to: "no_response",
+      actorEmail: user.email,
+      via: "admin",
+    });
+  }
+  revalidatePath(`/admin/bookings/${move.sourceBookingId}`);
+  revalidatePath(`/admin/bookings/${move.destBookingId}`);
+  revalidatePath(`/admin/players/${move.playerId}`);
+  revalidatePath("/admin");
+  return actionOk(move.rsvpWarning ? `${action} ${move.rsvpWarning}` : action);
 }

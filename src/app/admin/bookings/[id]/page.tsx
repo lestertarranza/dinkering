@@ -61,6 +61,7 @@ import {
   generateShares,
   chargeAttendees,
   deleteBooking,
+  transferSeatHold,
   markBookingSharePaid,
   removeBookingConfirmation,
   addBookingConfirmations,
@@ -193,6 +194,28 @@ export default async function BookingDetail({
       return at.localeCompare(ct);
     });
   const openHolds = await openHoldTotal(supabase, id);
+  const { data: moveBookingRows } = await supabase
+    .from("bookings")
+    .select("id, booking_code, play_date, status")
+    .in("status", ["for_booking", "booked", "played"])
+    .neq("id", id)
+    .order("play_date", { ascending: false })
+    .limit(80);
+  const moveTargets = ((moveBookingRows ?? []) as {
+    id: string;
+    booking_code: string | null;
+    play_date: string;
+    status: string;
+  }[]).map((row) => ({
+    id: row.id,
+    label: `${row.booking_code ?? "Game"} · ${formatDate(row.play_date)} · ${
+      row.status === "for_booking"
+        ? "For booking"
+        : row.status === "booked"
+          ? "Booked"
+          : "Played"
+    }`,
+  }));
   const { data: openHoldRows } = await supabase
     .from("seat_holds")
     .select("id, amount, players(name)")
@@ -542,9 +565,45 @@ export default async function BookingDetail({
           {openHoldList.length > 0 ? (
             <ul className="mt-3 divide-y divide-slate-100 text-sm">
               {openHoldList.map((row) => (
-                <li key={row.id} className="flex items-center justify-between py-2">
-                  <span className="font-medium text-slate-800">{row.name}</span>
-                  <span className="text-slate-600">{formatMoney(row.amount)}</span>
+                <li key={row.id} className="py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-slate-800">{row.name}</span>
+                    <span className="text-slate-600">{formatMoney(row.amount)}</span>
+                  </div>
+                  {moveTargets.length > 0 ? (
+                    <ActionForm
+                      action={transferSeatHold}
+                      className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end"
+                      pendingLabel="Moving…"
+                      hidden={<input type="hidden" name="hold_id" value={row.id} />}
+                    >
+                      <label className="block min-w-0 flex-1 text-xs text-slate-500">
+                        Move this hold to
+                        <select
+                          name="dest_booking_id"
+                          required
+                          defaultValue=""
+                          className={`${inputClass} mt-1`}
+                        >
+                          <option value="" disabled>
+                            Choose a game
+                          </option>
+                          {moveTargets.map((target) => (
+                            <option key={target.id} value={target.id}>
+                              {target.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <ConfirmSubmit
+                        message={`Move ${row.name}'s ${formatMoney(row.amount)} hold to the game you picked? If that game already charged them, the hold is applied to their share. Their Going or waitlist spot on this game is cleared.`}
+                        variant="secondary"
+                        pendingLabel="Moving…"
+                      >
+                        Move hold
+                      </ConfirmSubmit>
+                    </ActionForm>
+                  ) : null}
                 </li>
               ))}
             </ul>

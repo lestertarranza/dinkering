@@ -258,6 +258,15 @@ export default function DocsPage() {
                 or it returns to the player&apos;s credit.
               </li>
               <li className={liClass}>
+                <strong>Move hold</strong> on a booking&apos;s hold fund sends
+                one player&apos;s open hold to another game. The amount stays
+                the same. If that game already charged them, the hold is applied
+                to the share. Their Going or waitlist spot on the original game
+                is cleared. A game that is cancelled or refunded cannot receive
+                a hold, and a player who already has a hold on the destination
+                cannot receive a second one.
+              </li>
+              <li className={liClass}>
                 <strong>Previous RSVP</strong> is the old Going list and waitlist,
                 in the same order. It is a reminder on the admin booking page
                 and on the public game page. It does not keep a spot. Players
