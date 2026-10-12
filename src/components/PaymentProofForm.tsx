@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState, type FormEvent } from "react";
+import { useActionState, useRef, useState, type FormEvent } from "react";
+import { flushSync } from "react-dom";
 import { submitPaymentProof, type ProofState } from "@/app/p/[token]/proof-actions";
 import { prepareProofField } from "@/lib/image-compress";
 
@@ -15,8 +16,13 @@ export function PaymentProofForm({
   const [prepError, setPrepError] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const skipPrepare = useRef(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    if (skipPrepare.current) {
+      skipPrepare.current = false;
+      return;
+    }
     e.preventDefault();
     setPrepError(null);
     const form = e.currentTarget;
@@ -34,8 +40,18 @@ export function PaymentProofForm({
         setPrepError(err);
         return;
       }
-      const data = new FormData(form);
-      await action(data);
+      const ready = form.elements.namedItem("proof");
+      const compressed =
+        ready instanceof HTMLInputElement ? ready.files?.[0] : undefined;
+      if (!compressed || compressed.size === 0) {
+        setPrepError("Choose a payment screenshot first.");
+        return;
+      }
+      // The file input must be enabled when the browser builds the request.
+      // A disabled file field is omitted, and the server then says no screenshot was chosen.
+      skipPrepare.current = true;
+      flushSync(() => setPreparing(false));
+      form.requestSubmit();
     } finally {
       setPreparing(false);
     }
@@ -81,7 +97,7 @@ export function PaymentProofForm({
           name="proof"
           accept="image/*"
           aria-label="Payment screenshot"
-          disabled={busy}
+          disabled={pending}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
           onChange={(e) => {
             const next = e.target.files?.[0]?.name ?? null;
