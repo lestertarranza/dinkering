@@ -74,6 +74,7 @@ import { CycleRsvpButton } from "@/components/CycleRsvpButton";
 import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
 import { SplitPreview } from "@/components/SplitPreview";
 import { InlinePendingSpinner } from "@/components/InlinePendingSpinner";
+import { AttendanceStatusSelect } from "@/components/AttendanceStatusSelect";
 
 export const dynamic = "force-dynamic";
 
@@ -877,16 +878,10 @@ export default async function BookingDetail({
                               <Badge tone="warning">Committed</Badge>
                             ) : null}
                             <StatusBadge status={r.response_status} />
-                            <select
-                              name="actual_status"
-                              defaultValue={defaultActual}
-                              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-                            >
-                              <option value="attended">Attended</option>
-                              <option value="absent">Absent</option>
-                              <option value="late_cancel">Late cancel</option>
-                              <option value="guest">Guest</option>
-                            </select>
+                            <AttendanceStatusSelect
+                              savedStatus={r.actual_status}
+                              suggestedStatus={defaultActual}
+                            />
                             <SubmitButton
                               variant="secondary"
                               pendingLabel={saved ? "Update" : "Confirm"}
