@@ -52,6 +52,7 @@ export async function rebuildBookingSharesAtomic(
   booking: BookingRecord,
   rows: ShareRow[],
   lateCancelIds: Iterable<string> = [],
+  absentIds: Iterable<string> = [],
 ) {
   if (rows.length === 0) {
     const { error } = await db.rpc("rebuild_booking_shares_atomic", {
@@ -68,6 +69,7 @@ export async function rebuildBookingSharesAtomic(
     rows,
     Number(booking.total_booking_cost),
     new Set(lateCancelIds),
+    new Set(absentIds),
   );
   const rpcRows = [];
   for (const { row, amount } of allocations) {

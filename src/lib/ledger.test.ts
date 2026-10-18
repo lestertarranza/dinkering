@@ -77,6 +77,48 @@ describe("allocateBookingShareAmounts", () => {
     expect(result[0].amount).toBe(100);
   });
 
+  it("takes each absent penalty out of the court cost before the attended split", () => {
+    const rows = [
+      { player_id: "a", share_units: 1, override_share_amount: null },
+      { player_id: "b", share_units: 1, override_share_amount: null },
+      { player_id: "c", share_units: 1, override_share_amount: null },
+      { player_id: "d", share_units: 1, override_share_amount: null },
+      { player_id: "x", share_units: 0, override_share_amount: 100 },
+      { player_id: "y", share_units: 0, override_share_amount: 100 },
+      { player_id: "z", share_units: 0, override_share_amount: 100 },
+    ];
+    const result = allocateBookingShareAmounts(
+      rows,
+      5000,
+      new Set(),
+      new Set(["x", "y", "z"]),
+    );
+    const byId = Object.fromEntries(result.map((r) => [r.row.player_id, r.amount]));
+    expect(byId.a).toBe(1175);
+    expect(byId.b).toBe(1175);
+    expect(byId.c).toBe(1175);
+    expect(byId.d).toBe(1175);
+    expect(byId.x).toBe(100);
+    expect(byId.y).toBe(100);
+    expect(byId.z).toBe(100);
+    expect(result.reduce((s, r) => s + r.amount, 0)).toBe(5000);
+  });
+
+  it("does not count an absent player with no penalty", () => {
+    const rows = [
+      { player_id: "a", share_units: 1, override_share_amount: null },
+      { player_id: "gone", share_units: 0, override_share_amount: null },
+    ];
+    const result = allocateBookingShareAmounts(
+      rows,
+      200,
+      new Set(),
+      new Set(["gone"]),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].amount).toBe(200);
+  });
+
   it("still takes seat overrides out of the court total", () => {
     const rows = [
       { player_id: "a", share_units: 1, override_share_amount: 40 },

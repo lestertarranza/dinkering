@@ -10,10 +10,15 @@ import { uploadBookingConfirmations } from "@/lib/booking-confirmation";
 import {
   nextCode,
   resolveWalletOwner,
+  round2,
 } from "@/lib/ledger";
 import { rebuildBookingSharesAtomic } from "@/lib/ledger-rpc";
 import { revalidateClubFundCash } from "@/lib/cache-tags";
-import { inEqualCourtSplit, lateCancelPlayerIds } from "@/lib/attendance";
+import {
+  ABSENT_PENALTY,
+  inEqualCourtSplit,
+  lateCancelPlayerIds,
+} from "@/lib/attendance";
 import {
   admitWaitlistedPlayers,
   loadAttendanceRsvp,
@@ -459,7 +464,7 @@ export async function setPlayerActualStatus(
       { onConflict: "booking_id,player_id" },
     );
   revalidatePath(`/admin/bookings/${booking_id}`);
-  return actionOk(`Marked as ${actual_status}.`);
+  return null;
 }
 
 export async function confirmAttendance(
@@ -549,14 +554,16 @@ export async function generateShares(
     .from("booking_attendance")
     .select("player_id, actual_status")
     .eq("booking_id", booking_id);
-  const lateIds = lateCancelPlayerIds(
-    (attendance ?? []) as { player_id: string; actual_status?: string | null }[],
+  const attendanceRows = (attendance ?? []) as {
+    player_id: string;
+    actual_status?: string | null;
+  }[];
+  const lateIds = lateCancelPlayerIds(attendanceRows);
+  const absentIds = new Set(
+    attendanceRows
+      .filter((row) => row.actual_status === "absent")
+      .map((row) => row.player_id),
   );
-  for (const row of attendance ?? []) {
-    if ((row as { actual_status?: string | null }).actual_status === "absent") {
-      lateIds.add((row as { player_id: string }).player_id);
-    }
-  }
 
   try {
     await rebuildBookingSharesAtomic(
@@ -564,6 +571,7 @@ export async function generateShares(
       booking as BookingRecord,
       rows,
       lateIds,
+      absentIds,
     );
   } catch (e) {
     return actionErr(
@@ -579,16 +587,33 @@ export async function generateShares(
   revalidateClubFundCash();
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
-  const penaltyCount = rows.filter(
+  const absentCharged = rows.filter(
+    (r) =>
+      absentIds.has(r.player_id) &&
+      r.override_share_amount != null &&
+      r.override_share_amount > 0,
+  );
+  const absentTotal = round2(
+    absentCharged.reduce((sum, row) => sum + Number(row.override_share_amount), 0),
+  );
+  const lateCount = rows.filter(
     (r) =>
       lateIds.has(r.player_id) &&
       r.override_share_amount != null &&
       r.override_share_amount > 0,
   ).length;
+  const courtTotal = Number(booking.total_booking_cost);
+  const seatPool = round2(Math.max(0, courtTotal - absentTotal));
+  const absentNote =
+    absentCharged.length > 0
+      ? ` ${absentCharged.length} absent ${absentCharged.length === 1 ? "player" : "players"} at ${formatMoney(absentTotal)} came out of the court cost first, so attendees split ${formatMoney(seatPool)}.`
+      : "";
+  const lateNote =
+    lateCount > 0
+      ? ` ${lateCount} late-cancel ${lateCount === 1 ? "penalty was" : "penalties were"} added on top.`
+      : "";
   return actionOk(
-    penaltyCount > 0
-      ? `Shares generated. Court ${formatMoney(booking.total_booking_cost)} plus ${penaltyCount} late-cancel ${penaltyCount === 1 ? "penalty" : "penalties"}.`
-      : `Shares generated for ${rows.length} player${rows.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} total).`,
+    `Shares generated for ${formatMoney(courtTotal)}.${absentNote}${lateNote}`,
   );
 }
 
@@ -635,22 +660,29 @@ export async function chargeAttendees(
     return actionErr("No players on a court seat — confirm attendance or RSVP first.");
   }
 
-  const perSeat = defaultLateCancelCharge(
-    Number(booking.total_booking_cost),
-    included.length,
+  const courtTotal = Number(booking.total_booking_cost);
+  const perSeat = defaultLateCancelCharge(courtTotal, included.length);
+  const absentRows = (roster ?? []).filter(
+    (r) => (r.actual_status as string | null) === "absent",
   );
-  const penaltyRows = (roster ?? []).filter((r) => {
-    const actual = r.actual_status as string | null;
-    return actual === "late_cancel" || actual === "absent";
-  });
+  const lateRows = (roster ?? []).filter(
+    (r) => (r.actual_status as string | null) === "late_cancel",
+  );
+  const absentTotal = round2(absentRows.length * ABSENT_PENALTY);
+  const seatPool = round2(Math.max(0, courtTotal - absentTotal));
   const rows: ShareRow[] = [
     ...included.map((r) => ({
       player_id: r.player_id as string,
       share_units: 1,
       override_share_amount: null,
     })),
-    ...penaltyRows
-      .filter((r) => perSeat > 0)
+    ...absentRows.map((r) => ({
+      player_id: r.player_id as string,
+      share_units: 0,
+      override_share_amount: ABSENT_PENALTY,
+    })),
+    ...lateRows
+      .filter(() => perSeat > 0)
       .map((r) => ({
         player_id: r.player_id as string,
         share_units: 0,
@@ -658,17 +690,18 @@ export async function chargeAttendees(
       })),
   ];
 
-  const penaltyIds = lateCancelPlayerIds(
+  const lateIds = lateCancelPlayerIds(
     (roster ?? []) as { player_id: string; actual_status?: string | null }[],
   );
-  for (const row of penaltyRows) penaltyIds.add(row.player_id as string);
+  const absentIds = new Set(absentRows.map((r) => r.player_id as string));
 
   try {
     await rebuildBookingSharesAtomic(
       supabase,
       booking as BookingRecord,
       rows,
-      penaltyIds,
+      lateIds,
+      absentIds,
     );
   } catch (e) {
     return actionErr(
@@ -684,10 +717,16 @@ export async function chargeAttendees(
   revalidateClubFundCash();
   revalidatePath(`/admin/bookings/${booking_id}`);
   revalidatePath("/admin");
+  const absentNote =
+    absentRows.length > 0
+      ? ` ${absentRows.length} absent ${absentRows.length === 1 ? "player" : "players"} at ${formatMoney(ABSENT_PENALTY)} each came out of the court cost first.`
+      : "";
+  const lateNote =
+    lateRows.length > 0 && perSeat > 0
+      ? ` ${lateRows.length} late cancel ${lateRows.length === 1 ? "penalty" : "penalties"} of ${formatMoney(perSeat)} ${lateRows.length === 1 ? "was" : "were"} added on top.`
+      : "";
   return actionOk(
-    penaltyRows.length > 0
-      ? `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} split equally) and ${penaltyRows.length} late cancel or no-show at ${formatMoney(perSeat)} each.`
-      : `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(booking.total_booking_cost)} split equally).`,
+    `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(seatPool)} split equally).${absentNote}${lateNote}`,
   );
 }
 

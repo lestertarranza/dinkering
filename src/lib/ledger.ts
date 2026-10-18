@@ -208,31 +208,46 @@ type ShareSplitRow = {
   override_share_amount?: number | null;
 };
 
+function positiveOverride(row: ShareSplitRow): number | null {
+  const penalty = Number(row.override_share_amount);
+  if (!Number.isFinite(penalty) || penalty <= 0) return null;
+  return round2(penalty);
+}
+
 /**
  * Court cost is split only among seat rows (attended / guest / Going).
- * Late-cancel Override ₱ is an extra penalty on top of the court total, not
- * a reduction of everyone else's share.
+ * An absent player's penalty comes out of that court cost first.
+ * Late-cancel Override ₱ stays an extra penalty on top of the court total.
  */
 export function allocateBookingShareAmounts<T extends ShareSplitRow>(
   rows: T[],
   courtTotal: number,
   lateCancelIds: Set<string>,
+  absentIds: Set<string> = new Set(),
 ): { row: T; amount: number }[] {
   const seat: T[] = [];
-  const penalties: T[] = [];
+  const absentPenalties: { row: T; amount: number }[] = [];
+  const latePenalties: { row: T; amount: number }[] = [];
   for (const row of rows) {
+    if (absentIds.has(row.player_id)) {
+      const penalty = positiveOverride(row);
+      if (penalty != null) absentPenalties.push({ row, amount: penalty });
+      continue;
+    }
     if (lateCancelIds.has(row.player_id)) {
-      const penalty = Number(row.override_share_amount);
-      if (Number.isFinite(penalty) && penalty > 0) penalties.push(row);
+      const penalty = positiveOverride(row);
+      if (penalty != null) latePenalties.push({ row, amount: penalty });
       continue;
     }
     seat.push(row);
   }
+  const absentTotal = round2(
+    absentPenalties.reduce((sum, row) => sum + row.amount, 0),
+  );
+  const seatPool = round2(Math.max(0, courtTotal - absentTotal));
   return [
-    ...splitByUnits(seat, courtTotal),
-    ...penalties.map((row) => ({
-      row,
-      amount: round2(Number(row.override_share_amount)),
-    })),
+    ...splitByUnits(seat, seatPool),
+    ...absentPenalties,
+    ...latePenalties,
   ];
 }

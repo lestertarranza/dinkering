@@ -283,6 +283,13 @@ export default function DocsPage() {
             </p>
             <ul className="ml-4 mt-2 list-disc space-y-1">
               <li className={liClass}>
+                <strong>Absent</strong> is not a court seat, so that player is
+                not part of the head count. Charge attendees collects ₱100 from
+                each absent player, and that amount comes out of the court cost
+                before the attended split. A ₱5,000 court with 3 absentees
+                leaves ₱4,700 to divide among the players who attended.
+              </li>
+              <li className={liClass}>
                 <strong>Late cancel</strong> is not a court seat. If a waitlisted
                 player filled in, mark them Attended and the canceller Late
                 cancel. Optionally type a penalty in Override ₱ on the late
@@ -295,8 +302,9 @@ export default function DocsPage() {
               </li>
               <li className={liClass}>
                 <strong>Custom shares</strong> — you can override the share amount or
-                unit weighting per player before generating. Seat overrides still
-                come out of the court total; late-cancel Override ₱ does not.
+                unit weighting per player before generating. Seat overrides and
+                absent penalties come out of the court total. Late-cancel
+                Override ₱ does not.
               </li>
               <li className={liClass}>
                 <strong>Regenerating shares</strong> — if attendance changes, you can

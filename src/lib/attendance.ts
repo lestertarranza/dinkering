@@ -3,6 +3,12 @@ import type { ActualStatus } from "@/lib/types";
 /** Players who used a court seat and split the booking cost equally. */
 export const COURT_SEAT_ACTUAL = new Set<ActualStatus>(["attended", "guest"]);
 
+/**
+ * Flat no-show charge. It is collected from each absent player and taken out
+ * of the court cost before the attended split.
+ */
+export const ABSENT_PENALTY = 100;
+
 export function isCourtSeatActual(
   actual: string | null | undefined,
 ): actual is "attended" | "guest" {
