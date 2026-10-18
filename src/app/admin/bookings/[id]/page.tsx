@@ -56,7 +56,6 @@ import {
   addAttendee,
   addAllActivePlayers,
   setResponse,
-  setPlayerActualStatus,
   bulkSetResponse,
   markRemainingAbsent,
   generateShares,
@@ -73,8 +72,7 @@ import { CourtRow } from "../CourtRow";
 import { CycleRsvpButton } from "@/components/CycleRsvpButton";
 import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
 import { SplitPreview } from "@/components/SplitPreview";
-import { InlinePendingSpinner } from "@/components/InlinePendingSpinner";
-import { AttendanceStatusSelect } from "@/components/AttendanceStatusSelect";
+import { AttendanceConfirmRow } from "@/components/AttendanceConfirmRow";
 
 export const dynamic = "force-dynamic";
 
@@ -829,69 +827,17 @@ export default async function BookingDetail({
                       }
                       return (a.players?.name ?? "").localeCompare(b.players?.name ?? "");
                     })
-                    .map((r) => {
-                      const defaultActual =
-                        r.actual_status ??
-                        (r.response_status === "going" ? "attended" : "absent");
-                      const saved = Boolean(r.actual_status);
-                      const rowTone =
-                        r.actual_status === "attended"
-                          ? "bg-emerald-50"
-                          : r.actual_status === "absent"
-                            ? "bg-rose-50"
-                            : r.actual_status === "late_cancel"
-                              ? "bg-orange-50"
-                              : r.actual_status === "guest"
-                                ? "bg-violet-50"
-                                : "bg-slate-50";
-                      const nameTone =
-                        r.actual_status === "attended"
-                          ? "font-medium text-emerald-800"
-                          : r.actual_status === "absent"
-                            ? "font-medium text-rose-800"
-                            : r.actual_status === "late_cancel"
-                              ? "font-medium text-orange-900"
-                              : r.actual_status === "guest"
-                                ? "font-medium text-violet-900"
-                                : "text-slate-700";
-                      return (
-                        <ActionForm
-                          key={r.id}
-                          action={setPlayerActualStatus}
-                          hidePending
-                          className={`rounded-lg px-3 py-1.5 ${rowTone}`}
-                          hidden={
-                            <>
-                              <input type="hidden" name="booking_id" value={b.id} />
-                              <input type="hidden" name="player_id" value={r.player_id} />
-                            </>
-                          }
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                              <span className={`truncate text-sm ${nameTone}`}>
-                                {r.players?.name}
-                              </span>
-                              <InlinePendingSpinner />
-                            </span>
-                            {rsvpLocked && r.response_status === "going" ? (
-                              <Badge tone="warning">Committed</Badge>
-                            ) : null}
-                            <StatusBadge status={r.response_status} />
-                            <AttendanceStatusSelect
-                              savedStatus={r.actual_status}
-                              suggestedStatus={defaultActual}
-                            />
-                            <SubmitButton
-                              variant="secondary"
-                              pendingLabel={saved ? "Update" : "Confirm"}
-                            >
-                              {saved ? "Update" : "Confirm"}
-                            </SubmitButton>
-                          </div>
-                        </ActionForm>
-                      );
-                    })}
+                    .map((r) => (
+                      <AttendanceConfirmRow
+                        key={r.id}
+                        bookingId={b.id}
+                        playerId={r.player_id}
+                        playerName={r.players?.name ?? "Player"}
+                        responseStatus={r.response_status}
+                        savedStatus={r.actual_status}
+                        showCommitted={rsvpLocked && r.response_status === "going"}
+                      />
+                    ))}
                   <p className="pt-1 text-xs text-slate-400">
                     RSVP stays as-is (including locked Going). Attendance is what
                     you charge. Late cancel is not a court seat; a waitlisted

@@ -457,12 +457,13 @@ export async function setPlayerActualStatus(
     return actionErr("Invalid attendance status.");
   }
   const { supabase } = await requireAdmin();
-  await supabase
+  const { error } = await supabase
     .from("booking_attendance")
     .upsert(
       { booking_id, player_id, actual_status, confirmed_by_admin: true },
       { onConflict: "booking_id,player_id" },
     );
+  if (error) return actionErr(error.message);
   revalidatePath(`/admin/bookings/${booking_id}`);
   return null;
 }
