@@ -39,6 +39,7 @@ export function ActionForm({
   hidden,
   id,
   prepare,
+  hidePending = false,
 }: {
   action: FormAction;
   className?: string;
@@ -46,6 +47,8 @@ export function ActionForm({
   pendingLabel?: string;
   hidden?: ReactNode;
   id?: string;
+  /** Skip the pending line when the form shows its own inline indicator. */
+  hidePending?: boolean;
   /** Mutate the form (e.g. shrink a photo) before the server action runs. */
   prepare?: (form: HTMLFormElement) => Promise<string | null>;
   /**
@@ -106,10 +109,12 @@ export function ActionForm({
         </p>
       ) : null}
       <AutoDismissFeedback state={state} />
-      <ActionPending
-        pending={pending || preparing}
-        label={preparing ? "Preparing photo…" : pendingLabel}
-      />
+      {hidePending ? null : (
+        <ActionPending
+          pending={pending || preparing}
+          label={preparing ? "Preparing photo…" : pendingLabel}
+        />
+      )}
       <fieldset disabled={preparing} className="contents">
         {children}
       </fieldset>

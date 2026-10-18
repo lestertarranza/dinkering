@@ -73,6 +73,7 @@ import { CourtRow } from "../CourtRow";
 import { CycleRsvpButton } from "@/components/CycleRsvpButton";
 import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
 import { SplitPreview } from "@/components/SplitPreview";
+import { InlinePendingSpinner } from "@/components/InlinePendingSpinner";
 
 export const dynamic = "force-dynamic";
 
@@ -856,7 +857,7 @@ export default async function BookingDetail({
                         <ActionForm
                           key={r.id}
                           action={setPlayerActualStatus}
-                          pendingLabel="…"
+                          hidePending
                           className={`rounded-lg px-3 py-1.5 ${rowTone}`}
                           hidden={
                             <>
@@ -866,8 +867,11 @@ export default async function BookingDetail({
                           }
                         >
                           <div className="flex items-center gap-2">
-                            <span className={`flex-1 text-sm ${nameTone}`}>
-                              {r.players?.name}
+                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <span className={`truncate text-sm ${nameTone}`}>
+                                {r.players?.name}
+                              </span>
+                              <InlinePendingSpinner />
                             </span>
                             {rsvpLocked && r.response_status === "going" ? (
                               <Badge tone="warning">Committed</Badge>
@@ -883,7 +887,10 @@ export default async function BookingDetail({
                               <option value="late_cancel">Late cancel</option>
                               <option value="guest">Guest</option>
                             </select>
-                            <SubmitButton variant="secondary" pendingLabel="…">
+                            <SubmitButton
+                              variant="secondary"
+                              pendingLabel={saved ? "Update" : "Confirm"}
+                            >
                               {saved ? "Update" : "Confirm"}
                             </SubmitButton>
                           </div>
