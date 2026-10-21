@@ -307,6 +307,12 @@ export default function DocsPage() {
                 Override ₱ does not.
               </li>
               <li className={liClass}>
+                Club admin shares are marked paid on their own. When shares or
+                a club-item contribution are posted, Lester and Donna (the
+                club admin accounts) get a payment recorded for whatever is
+                still unpaid on that booking. Everyone else is unchanged.
+              </li>
+              <li className={liClass}>
                 <strong>Regenerating shares</strong> — if attendance changes, you can
                 regenerate. Old entries are voided and new ones are created.
               </li>
@@ -566,28 +572,33 @@ export default function DocsPage() {
           <Card className="p-6" id="transfer">
             <h2 className={h2Class}>Balance Transfer</h2>
             <p className={pClass}>
-              Use a balance transfer when you need to move outstanding charges from
-              one player to another — for example, if a player leaves the team and
-              another player takes over their debt.
+              Use a balance transfer when outstanding charges should move from
+              one wallet to another. Either side can be a player or a group
+              fund, for example when a player leaves and a couple fund takes
+              over their debt.
             </p>
 
             <h3 className={h3Class}>How to transfer a balance</h3>
             <ol className="ml-4 list-decimal space-y-1">
               <li className={liClass}>
-                Go to a player&apos;s admin page (
-                <Link href="/admin/players" className="text-emerald-700 hover:underline">Players</Link>{" "}
-                → click the player) and click <em>Transfer balance</em>.
+                Open a player (
+                <Link href="/admin/players" className="text-emerald-700 hover:underline">Players</Link>
+                ) or a group fund (
+                <Link href="/admin/groups" className="text-emerald-700 hover:underline">Groups</Link>
+                ) and click <em>Transfer balance</em>.
               </li>
               <li className={liClass}>
-                <strong>Send this player&apos;s charges away:</strong> tick
-                individual charges (or Select all), choose one target player,
-                then Transfer.
+                <strong>Send charges away:</strong> tick individual charges
+                (or Select all), choose a player or a group fund, then
+                Transfer. The same page on a group fund sends that fund&apos;s
+                charges to a player or another fund.
               </li>
               <li className={liClass}>
-                <strong>Collect onto this player:</strong> search and tick every
-                other player (or couple/family wallet) whose outstanding balance
-                should move here, then Move onto this player. Each selected
-                wallet&apos;s full open charges are transferred.
+                <strong>Collect onto this wallet:</strong> search and tick
+                every other player or group fund whose outstanding balance
+                should move here, then Move onto this wallet. Each selected
+                wallet&apos;s full open charges are transferred. Open a group
+                and choose Transfer balance to collect onto that fund.
               </li>
             </ol>
 
@@ -606,8 +617,9 @@ export default function DocsPage() {
                 that were transferred, preserving the audit trail.
               </li>
               <li className={liClass}>
-                Group wallet routing is respected — if either player is in a pooled
-                group, the transfer posts to the group wallet.
+                Either side can be a player or a group fund. A group fund
+                posts straight to that shared wallet. A player still posts to
+                their couple, family, or team fund when they belong to one.
               </li>
             </ul>
 

@@ -25,6 +25,8 @@ import {
   upsertAttendanceRsvp,
 } from "@/lib/waitlist";
 import { seedNewBookingAttendance } from "@/lib/auto-rsvp-seed";
+import { adminSharePaymentNote } from "@/lib/admin-share-payment";
+import { recordClubAdminSharePayments } from "@/lib/admin-share-payment-db";
 import {
   defaultLateCancelCharge,
   parseHoldFee,
@@ -517,7 +519,7 @@ export async function generateShares(
   formData: FormData,
 ): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
 
   const { data: booking } = await supabase
     .from("bookings")
@@ -613,8 +615,20 @@ export async function generateShares(
     lateCount > 0
       ? ` ${lateCount} late-cancel ${lateCount === 1 ? "penalty was" : "penalties were"} added on top.`
       : "";
+  const adminPay = await recordClubAdminSharePayments(
+    supabase,
+    booking_id,
+    user,
+  );
+  if (adminPay.payments.length > 0) {
+    revalidateClubFundCash();
+    revalidatePath(`/admin/bookings/${booking_id}`);
+    revalidatePath("/admin/payments");
+    revalidatePath("/admin");
+  }
+  const adminNote = adminSharePaymentNote(adminPay);
   return actionOk(
-    `Shares generated for ${formatMoney(courtTotal)}.${absentNote}${lateNote}`,
+    `Shares generated for ${formatMoney(courtTotal)}.${absentNote}${lateNote}${adminNote}`,
   );
 }
 
@@ -628,7 +642,7 @@ export async function chargeAttendees(
   formData: FormData,
 ): Promise<ActionState> {
   const booking_id = String(formData.get("booking_id"));
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
 
   const { data: booking } = await supabase
     .from("bookings")
@@ -726,8 +740,20 @@ export async function chargeAttendees(
     lateRows.length > 0 && perSeat > 0
       ? ` ${lateRows.length} late cancel ${lateRows.length === 1 ? "penalty" : "penalties"} of ${formatMoney(perSeat)} ${lateRows.length === 1 ? "was" : "were"} added on top.`
       : "";
+  const adminPay = await recordClubAdminSharePayments(
+    supabase,
+    booking_id,
+    user,
+  );
+  if (adminPay.payments.length > 0) {
+    revalidateClubFundCash();
+    revalidatePath(`/admin/bookings/${booking_id}`);
+    revalidatePath("/admin/payments");
+    revalidatePath("/admin");
+  }
+  const adminNote = adminSharePaymentNote(adminPay);
   return actionOk(
-    `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(seatPool)} split equally).${absentNote}${lateNote}`,
+    `Charged ${included.length} player${included.length === 1 ? "" : "s"} (${formatMoney(seatPool)} split equally).${absentNote}${lateNote}${adminNote}`,
   );
 }
 

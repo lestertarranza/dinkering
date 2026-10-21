@@ -8,6 +8,11 @@ import { actionOk, actionErr, type ActionState } from "@/lib/action-state";
 import { formatMoney, SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import { resolveWalletOwner, round2 } from "@/lib/ledger";
 import { personalCreditTransferProblem } from "@/lib/personal-credit-transfer";
+import {
+  parseTransferParty,
+  sameTransferWallet,
+  type TransferParty,
+} from "@/lib/balance-transfer";
 import { getOpenCharges } from "@/lib/payment-allocation";
 import { logAdminAction } from "@/lib/activity-log";
 import { enrollPlayerInUpcomingBookings } from "@/lib/roster-enroll";
@@ -100,45 +105,85 @@ function formatTransferItems(itemsJson: string): string {
   }
 }
 
+async function partyWallet(
+  supabase: SupabaseClient,
+  party: TransferParty,
+  date: string,
+): Promise<{ name: string; wallet: { player_id: string | null; player_group_id: string | null } } | null> {
+  if (party.kind === "group") {
+    const { data } = await supabase
+      .from("player_groups")
+      .select("name")
+      .eq("id", party.id)
+      .maybeSingle();
+    if (!data?.name) return null;
+    return {
+      name: data.name as string,
+      wallet: { player_id: null, player_group_id: party.id },
+    };
+  }
+  const { data } = await supabase
+    .from("players")
+    .select("name")
+    .eq("id", party.id)
+    .maybeSingle();
+  if (!data?.name) return null;
+  return {
+    name: data.name as string,
+    wallet: await resolveWalletOwner(supabase, party.id, date),
+  };
+}
+
+function revalidateTransferParty(
+  party: TransferParty,
+  wallet: { player_id: string | null; player_group_id: string | null },
+) {
+  if (party.kind === "player") {
+    revalidatePath(`/admin/players/${party.id}`);
+    revalidatePath(`/admin/players/${party.id}/transfer`);
+  } else {
+    revalidatePath(`/admin/groups/${party.id}`);
+    revalidatePath(`/admin/groups/${party.id}/transfer`);
+  }
+  if (wallet.player_id) {
+    revalidatePath(`/admin/players/${wallet.player_id}`);
+    revalidatePath(`/admin/players/${wallet.player_id}/transfer`);
+  }
+  if (wallet.player_group_id) {
+    revalidatePath(`/admin/groups/${wallet.player_group_id}`);
+    revalidatePath(`/admin/groups/${wallet.player_group_id}/transfer`);
+  }
+}
+
 async function executeTransfer(
   supabase: SupabaseClient,
   user: User,
   opts: {
-    sourcePlayerId: string;
-    targetPlayerId: string;
+    source: TransferParty;
+    target: TransferParty;
     amount: number;
     itemsSummary: string;
     extraNotes: string;
     date: string;
   },
 ): Promise<ActionState> {
-  const { sourcePlayerId, targetPlayerId, amount, date, extraNotes } = opts;
-  if (!sourcePlayerId || !targetPlayerId)
-    return actionErr("Select both source and target players.");
-  if (sourcePlayerId === targetPlayerId)
-    return actionErr("Source and target must be different players.");
+  const { source, target, amount, date, extraNotes } = opts;
+  if (source.kind === target.kind && source.id === target.id)
+    return actionErr("Source and target must be different.");
   if (!amount || amount <= 0)
     return actionErr("Select at least one charge to transfer.");
 
-  const [{ data: src }, { data: tgt }] = await Promise.all([
-    supabase.from("players").select("name").eq("id", sourcePlayerId).single(),
-    supabase.from("players").select("name").eq("id", targetPlayerId).single(),
+  const [sourceSide, targetSide] = await Promise.all([
+    partyWallet(supabase, source, date),
+    partyWallet(supabase, target, date),
   ]);
-  if (!src || !tgt) return actionErr("Player not found.");
-  const sourceName = src.name as string;
-  const targetName = tgt.name as string;
+  if (!sourceSide || !targetSide) return actionErr("Player or group not found.");
+  const sourceName = sourceSide.name;
+  const targetName = targetSide.name;
+  const sourceWallet = sourceSide.wallet;
+  const targetWallet = targetSide.wallet;
 
-  const [sourceWallet, targetWallet] = await Promise.all([
-    resolveWalletOwner(supabase, sourcePlayerId, date),
-    resolveWalletOwner(supabase, targetPlayerId, date),
-  ]);
-  const sameWallet =
-    (sourceWallet.player_group_id &&
-      sourceWallet.player_group_id === targetWallet.player_group_id) ||
-    (sourceWallet.player_id &&
-      !sourceWallet.player_group_id &&
-      sourceWallet.player_id === targetWallet.player_id);
-  if (sameWallet) {
+  if (sameTransferWallet(sourceWallet, targetWallet)) {
     return actionErr(
       `${sourceName} and ${targetName} share the same wallet, so there is nothing to move.`,
     );
@@ -204,23 +249,37 @@ async function executeTransfer(
   });
 
   revalidateClubFundCash();
-  revalidatePath(`/admin/players/${sourcePlayerId}`);
-  revalidatePath(`/admin/players/${targetPlayerId}`);
-  revalidatePath(`/admin/players/${sourcePlayerId}/transfer`);
-  revalidatePath(`/admin/players/${targetPlayerId}/transfer`);
+  revalidateTransferParty(source, sourceWallet);
+  revalidateTransferParty(target, targetWallet);
   revalidatePath("/admin");
   await logAdminAction(supabase, user, {
-    entityType: "player",
-    entityId: sourcePlayerId,
-    action: `Transferred ${formatMoney(amount)} to another player`,
-    details: targetPlayerId,
+    entityType: source.kind === "group" ? "group" : "player",
+    entityId: source.id,
+    action: `Transferred ${formatMoney(amount)} to ${targetName}`,
+    details: extraNotes || null,
   });
   await logAdminAction(supabase, user, {
-    entityType: "player",
-    entityId: targetPlayerId,
-    action: `Received ${formatMoney(amount)} transfer`,
-    details: sourcePlayerId,
+    entityType: target.kind === "group" ? "group" : "player",
+    entityId: target.id,
+    action: `Received ${formatMoney(amount)} transfer from ${sourceName}`,
+    details: extraNotes || null,
   });
+  if (sourceWallet.player_group_id && source.kind !== "group") {
+    await logAdminAction(supabase, user, {
+      entityType: "group",
+      entityId: sourceWallet.player_group_id,
+      action: `Transferred ${formatMoney(amount)} to ${targetName}`,
+      details: `${sourceName}${extraNotes ? ` · ${extraNotes}` : ""}`,
+    });
+  }
+  if (targetWallet.player_group_id && target.kind !== "group") {
+    await logAdminAction(supabase, user, {
+      entityType: "group",
+      entityId: targetWallet.player_group_id,
+      action: `Received ${formatMoney(amount)} transfer from ${sourceName}`,
+      details: `${targetName}${extraNotes ? ` · ${extraNotes}` : ""}`,
+    });
+  }
 
   return actionOk(
     `Transferred ${formatMoney(amount)} from ${sourceName} to ${targetName}.`,
@@ -228,19 +287,26 @@ async function executeTransfer(
 }
 
 /**
- * Transfer all or selected open charges from one player's wallet to another.
+ * Transfer all or selected open charges from one wallet to another.
+ * Either side can be a player or a group fund. A player still routes through
+ * their couple, family, or team fund when they have one. A group fund is the
+ * group wallet itself.
  * Creates a matched pair of manual adjustments:
  *   credit to the source wallet (removes their debt)
  *   charge to the target wallet (adds equivalent debt)
  * The items being transferred are embedded in the adjustment notes so the
- * audit trail is preserved on both player ledgers.
+ * audit trail is preserved on both ledgers.
  */
 export async function transferBalance(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const sourcePlayerId = String(formData.get("source_player_id") || "");
-  const targetPlayerId = String(formData.get("target_player_id") || "");
+  const source = parseTransferParty(
+    String(formData.get("source_wallet") || formData.get("source_player_id") || ""),
+  );
+  const target = parseTransferParty(
+    String(formData.get("target_wallet") || formData.get("target_player_id") || ""),
+  );
   const amount = Math.abs(
     parseFloat(String(formData.get("amount") || "0")),
   );
@@ -250,10 +316,12 @@ export async function transferBalance(
     phTodayYmd();
   const extraNotes = String(formData.get("notes") || "").trim();
 
+  if (!source || !target) return actionErr("Select both source and target.");
+
   const { supabase, user } = await requireAdmin();
   return executeTransfer(supabase, user, {
-    sourcePlayerId,
-    targetPlayerId,
+    source,
+    target,
     amount,
     itemsSummary: formatTransferItems(itemsJson),
     extraNotes,
@@ -261,40 +329,52 @@ export async function transferBalance(
   });
 }
 
-/** Move every open charge from several players onto one target player. */
+/** Move every open charge from several wallets onto one player or group fund. */
 export async function transferBalancesBulk(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const targetPlayerId = String(formData.get("target_player_id") || "");
+  const target = parseTransferParty(
+    String(formData.get("target_wallet") || formData.get("target_player_id") || ""),
+  );
   const sourceIds = [
-    ...new Set(formData.getAll("source_player_ids").map(String).filter(Boolean)),
+    ...new Set(
+      [
+        ...formData.getAll("source_wallets"),
+        ...formData.getAll("source_player_ids"),
+      ]
+        .map(String)
+        .filter(Boolean),
+    ),
   ];
   const date =
     String(formData.get("transfer_date") || "") ||
     phTodayYmd();
   const extraNotes = String(formData.get("notes") || "").trim();
 
-  if (!targetPlayerId) return actionErr("Missing target player.");
+  if (!target) return actionErr("Missing target.");
   if (sourceIds.length === 0)
-    return actionErr("Select at least one player to transfer from.");
+    return actionErr("Select at least one wallet to transfer from.");
 
   const { supabase, user } = await requireAdmin();
   const okNames: string[] = [];
   let total = 0;
 
-  for (const sourcePlayerId of sourceIds) {
-    if (sourcePlayerId === targetPlayerId) continue;
-    const wallet = await resolveWalletOwner(supabase, sourcePlayerId, date);
-    const charges = await getOpenCharges(supabase, wallet);
+  for (const raw of sourceIds) {
+    const source = parseTransferParty(raw);
+    if (!source) continue;
+    if (source.kind === target.kind && source.id === target.id) continue;
+    const sourceSide = await partyWallet(supabase, source, date);
+    if (!sourceSide) continue;
+    const charges = await getOpenCharges(supabase, sourceSide.wallet);
     const amount = round2(
       charges.reduce((s, c) => s + Number(c.remaining), 0),
     );
     if (amount < SETTLE_TOLERANCE) continue;
 
     const result = await executeTransfer(supabase, user, {
-      sourcePlayerId,
-      targetPlayerId,
+      source,
+      target,
       amount,
       itemsSummary: formatTransferItems(
         JSON.stringify(
@@ -311,20 +391,15 @@ export async function transferBalancesBulk(
           : "";
       return actionErr((result?.message ?? "Transfer failed.") + done);
     }
-    const { data: src } = await supabase
-      .from("players")
-      .select("name")
-      .eq("id", sourcePlayerId)
-      .single();
-    okNames.push((src?.name as string) || "player");
+    okNames.push(sourceSide.name);
     total = round2(total + amount);
   }
 
   if (okNames.length === 0) {
-    return actionErr("None of the selected players have outstanding charges.");
+    return actionErr("None of the selected wallets have outstanding charges.");
   }
   return actionOk(
-    `Transferred ${formatMoney(total)} from ${okNames.length} player${
+    `Transferred ${formatMoney(total)} from ${okNames.length} wallet${
       okNames.length === 1 ? "" : "s"
     } (${okNames.join(", ")}).`,
   );

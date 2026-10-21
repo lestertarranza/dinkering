@@ -127,9 +127,17 @@ export default async function GroupDetail({
       <PageHeader
         title={g.name}
         action={
-          <Link href="/admin/groups" className={buttonClass("ghost")}>
-            ← All groups
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/admin/groups/${g.id}/transfer`}
+              className={buttonClass("secondary")}
+            >
+              Transfer balance
+            </Link>
+            <Link href="/admin/groups" className={buttonClass("ghost")}>
+              ← All groups
+            </Link>
+          </div>
         }
       />
 

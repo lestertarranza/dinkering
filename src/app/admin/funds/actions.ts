@@ -14,6 +14,8 @@ import {
   type LedgerEntryInput,
 } from "@/lib/ledger";
 import { remainingCashForFund, revalidateClubFundCash } from "@/lib/club-fund-cash";
+import { adminSharePaymentNote } from "@/lib/admin-share-payment";
+import { recordClubAdminSharePayments } from "@/lib/admin-share-payment-db";
 
 function revalidateFunds(id?: string, bookingId?: string | null) {
   revalidateClubFundCash();
@@ -223,7 +225,7 @@ export async function chargeGameContribution(
     return actionErr("Enter an amount per player greater than zero.");
   }
 
-  const { supabase } = await requireAdmin();
+  const { supabase, user } = await requireAdmin();
   const [{ data: booking }, { data: fund }, playerIds] = await Promise.all([
     supabase
       .from("bookings")
@@ -292,9 +294,15 @@ export async function chargeGameContribution(
   }
   await postLedgerEntries(supabase, ledger);
 
+  const adminPay = await recordClubAdminSharePayments(
+    supabase,
+    booking_id,
+    user,
+  );
   revalidateFunds(fund_id, booking_id);
+  if (adminPay.payments.length > 0) revalidatePath("/admin/payments");
   return actionOk(
-    `Charged ${playerIds.length} player${playerIds.length === 1 ? "" : "s"} ${formatMoney(perPlayer)} each (${formatMoney(total)}) toward ${fundName}. The pot counts this as collected after they pay, same FIFO as court fees.`,
+    `Charged ${playerIds.length} player${playerIds.length === 1 ? "" : "s"} ${formatMoney(perPlayer)} each (${formatMoney(total)}) toward ${fundName}. The pot counts this as collected after they pay, same FIFO as court fees.${adminSharePaymentNote(adminPay)}`,
   );
 }
 

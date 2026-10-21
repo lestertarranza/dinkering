@@ -12,6 +12,7 @@ import {
 import { SETTLE_TOLERANCE, phTodayYmd } from "@/lib/format";
 import type { Player, PlayerGroup } from "@/lib/types";
 import { availableCredit } from "@/lib/seat-hold";
+import { groupTransferLabel } from "@/lib/balance-transfer";
 import { TransferForm } from "./TransferForm";
 import { CreditTransferForm } from "./CreditTransferForm";
 import { BulkCollectForm, type BulkSource } from "./BulkCollectForm";
@@ -40,7 +41,7 @@ export default async function TransferPage({
         .neq("active_status", "archived")
         .neq("id", id)
         .order("name"),
-      supabase.from("player_groups").select("id, name"),
+      supabase.from("player_groups").select("id, name, type").order("name"),
       fetchActiveLedgerByWallet(supabase),
     ]);
 
@@ -48,12 +49,8 @@ export default async function TransferPage({
   const p = player as Pick<Player, "id" | "name" | "display_name">;
   const playerName = p.display_name?.trim() || p.name;
   const others = (allPlayers ?? []) as { id: string; name: string }[];
-  const groupName = new Map(
-    ((groups ?? []) as Pick<PlayerGroup, "id" | "name">[]).map((g) => [
-      g.id,
-      g.name,
-    ]),
-  );
+  const groupList = (groups ?? []) as Pick<PlayerGroup, "id" | "name" | "type">[];
+  const groupName = new Map(groupList.map((g) => [g.id, g.name]));
 
   const [wallet, owners] = await Promise.all([
     resolveWalletOwner(supabase, id, today),
@@ -70,22 +67,42 @@ export default async function TransferPage({
     openChargesFromLedger(ledgerByWallet.get(targetKey) ?? []),
   );
 
-  const unique = new Map<
-    string,
-    { sourcePlayerId: string; label: string }
-  >();
+  const unique = new Map<string, { sourceWallet: string; label: string }>();
   for (const o of others) {
     const w = owners.get(o.id);
     if (!w) continue;
     const key = walletKey(w);
     if (!key || key === targetKey || unique.has(key)) continue;
     unique.set(key, {
-      sourcePlayerId: o.id,
+      sourceWallet: key,
       label: w.player_group_id
         ? groupName.get(w.player_group_id) || o.name
         : o.name,
     });
   }
+  for (const g of groupList) {
+    const key = `g:${g.id}`;
+    if (key === targetKey || unique.has(key)) continue;
+    unique.set(key, {
+      sourceWallet: key,
+      label: groupTransferLabel(g.name, g.type),
+    });
+  }
+
+  const targets = [
+    ...others.map((o) => ({
+      value: `p:${o.id}`,
+      name: o.name,
+      kind: "player" as const,
+    })),
+    ...groupList
+      .filter((g) => `g:${g.id}` !== targetKey)
+      .map((g) => ({
+        value: `g:${g.id}`,
+        name: groupTransferLabel(g.name, g.type),
+        kind: "group" as const,
+      })),
+  ];
 
   const bulkSources: BulkSource[] = [];
   for (const [key, row] of unique) {
@@ -93,7 +110,7 @@ export default async function TransferPage({
     const remaining = charges.reduce((s, c) => s + Number(c.remaining), 0);
     if (remaining < SETTLE_TOLERANCE) continue;
     bulkSources.push({
-      id: row.sourcePlayerId,
+      id: row.sourceWallet,
       name: row.label,
       remaining,
       chargeCount: charges.length,
@@ -112,7 +129,7 @@ export default async function TransferPage({
     <div>
       <PageHeader
         title={`Transfer balance — ${playerName}`}
-        description="Send this player's charges to someone else, pull other debts onto this player, or move personal credit to another player."
+        description="Send this wallet's charges to a player or a group fund, pull other debts onto it, or move personal credit to another player."
         action={
           <Link href={`/admin/players/${id}`} className={buttonClass("ghost")}>
             ← Back to player
@@ -126,13 +143,13 @@ export default async function TransferPage({
             Send {playerName}&apos;s charges away
           </h2>
           <p className="mb-4 text-sm text-slate-500">
-            Pick which of their open items move, then choose one target.
+            Pick which open items move, then choose a player or a group fund.
           </p>
           <TransferForm
-            sourcePlayerId={id}
-            sourcePlayerName={playerName}
+            sourceWallet={`p:${id}`}
+            sourceName={playerName}
             openCharges={openCharges}
-            players={others}
+            targets={targets}
           />
         </Card>
 
@@ -141,12 +158,12 @@ export default async function TransferPage({
             Collect onto {playerName}
           </h2>
           <p className="mb-4 text-sm text-slate-500">
-            Tick every player whose outstanding balance should move here.
-            Couples and family wallets appear once.
+            Tick every player or group fund whose outstanding balance should
+            move here. A shared wallet appears once.
           </p>
           <BulkCollectForm
-            targetPlayerId={id}
-            targetPlayerName={playerName}
+            targetWallet={`p:${id}`}
+            targetName={playerName}
             sources={bulkSources}
           />
         </Card>
@@ -183,8 +200,13 @@ export default async function TransferPage({
             Both ledger entries list the original items so history stays clear.
           </li>
           <li>
-            Group wallets are respected when moving charges. Two people who
-            already share a wallet cannot transfer charges to each other.
+            A player or a group fund can be either side. Choosing a group fund
+            posts straight to that shared wallet.
+          </li>
+          <li>
+            Group wallets are respected when the source or target is a player.
+            Two people who already share a wallet cannot transfer charges to
+            each other.
           </li>
           <li>
             Personal credit moves only between the two players&apos; own

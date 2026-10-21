@@ -7,18 +7,18 @@ import { transferBalance } from "../../actions";
 import type { ActionState } from "@/lib/action-state";
 import type { OpenCharge } from "@/lib/payment-allocation";
 
-type PlayerOpt = { id: string; name: string };
+type TargetOpt = { value: string; name: string; kind: "player" | "group" };
 
 export function TransferForm({
-  sourcePlayerId,
-  sourcePlayerName,
+  sourceWallet,
+  sourceName,
   openCharges,
-  players,
+  targets,
 }: {
-  sourcePlayerId: string;
-  sourcePlayerName: string;
+  sourceWallet: string;
+  sourceName: string;
   openCharges: OpenCharge[];
-  players: PlayerOpt[];
+  targets: TargetOpt[];
 }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     transferBalance,
@@ -66,7 +66,7 @@ export function TransferForm({
         </p>
       ) : null}
 
-      <input type="hidden" name="source_player_id" value={sourcePlayerId} />
+      <input type="hidden" name="source_wallet" value={sourceWallet} />
       <input type="hidden" name="amount" value={total.toFixed(2)} />
       <input type="hidden" name="items_json" value={itemsJson} />
 
@@ -128,14 +128,31 @@ export function TransferForm({
       </div>
 
       {/* Target player */}
-      <Field label="Transfer to (target player)">
-        <select name="target_player_id" required className={inputClass}>
-          <option value="">Select target player…</option>
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
+      <Field label="Transfer to">
+        <select name="target_wallet" required className={inputClass}>
+          <option value="">Select a player or group fund…</option>
+          {targets.some((t) => t.kind === "player") ? (
+            <optgroup label="Players">
+              {targets
+                .filter((t) => t.kind === "player")
+                .map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.name}
+                  </option>
+                ))}
+            </optgroup>
+          ) : null}
+          {targets.some((t) => t.kind === "group") ? (
+            <optgroup label="Group funds">
+              {targets
+                .filter((t) => t.kind === "group")
+                .map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.name}
+                  </option>
+                ))}
+            </optgroup>
+          ) : null}
         </select>
       </Field>
 
@@ -171,9 +188,9 @@ export function TransferForm({
           </ul>
           <p className="mt-2 border-t border-emerald-200 pt-2 text-xs text-emerald-700">
             A credit of <strong>{formatMoney(total)}</strong> will be posted to{" "}
-            <strong>{sourcePlayerName}</strong> (removes their debt), and an
-            equivalent charge to the target player. Both entries reference the
-            original items for the audit trail.
+            <strong>{sourceName}</strong> (removes their debt), and an
+            equivalent charge to the selected player or group fund. Both
+            entries reference the original items for the audit trail.
           </p>
         </div>
       ) : null}
