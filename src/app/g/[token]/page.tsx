@@ -112,8 +112,20 @@ export default async function GroupPortal({
   const fundShareIds = statementEntries
     .filter((e) => e.source_type === "club_fund_share" && e.source_id)
     .map((e) => e.source_id as string);
+  const seatHoldIds = [
+    ...new Set(
+      statementEntries
+        .filter(
+          (e) =>
+            e.source_type === "manual_adjustment" &&
+            e.source_id &&
+            (e.description ?? "").startsWith("Seat hold"),
+        )
+        .map((e) => e.source_id as string),
+    ),
+  ];
 
-  const [ledgerContext, { data: bookingOwners }, { data: expenseOwners }, { data: fundOwners }] =
+  const [ledgerContext, { data: bookingOwners }, { data: expenseOwners }, { data: fundOwners }, { data: holdOwners }] =
     await Promise.all([
       buildLedgerBookingContext(db, statementEntries),
       bookingShareIds.length > 0
@@ -142,6 +154,12 @@ export default async function GroupPortal({
             .select("id, players(name)")
             .in("id", fundShareIds)
         : Promise.resolve({ data: [] as { id: string; players: { name: string } | null }[] }),
+      seatHoldIds.length > 0
+        ? db
+            .from("seat_holds")
+            .select("id, players(name)")
+            .in("id", seatHoldIds)
+        : Promise.resolve({ data: [] as { id: string; players: { name: string } | null }[] }),
     ]);
 
   const ownerByShare = new Map<string, string>();
@@ -162,6 +180,12 @@ export default async function GroupPortal({
       expenseDescByShare.set(s.id, s.team_expenses.description);
   }
   for (const s of (fundOwners ?? []) as {
+    id: string;
+    players: { name: string } | null;
+  }[]) {
+    if (s.players?.name) ownerByShare.set(s.id, s.players.name);
+  }
+  for (const s of (holdOwners ?? []) as {
     id: string;
     players: { name: string } | null;
   }[]) {
@@ -277,7 +301,7 @@ export default async function GroupPortal({
       <PublicSection title="Wallet activity">
         <p className={`mb-3 px-1 ${publicHintText}`}>
           Charges and payments on this shared wallet, newest first. A name
-          means that member&apos;s share.
+          means the member that charge belongs to.
         </p>
         <PlayerActivityList
           rows={statement.map(({ entry, running }) => {

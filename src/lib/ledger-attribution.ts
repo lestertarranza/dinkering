@@ -176,11 +176,21 @@ export async function buildLedgerExpenseContext(
 /**
  * Resolve the individual person behind each ledger entry so a pooled group's
  * shared ledger can show who a charge/credit belongs to (e.g. an expense share
- * routed to the group wallet still names the member it was for).
+ * routed to the group wallet still names the member it was for). Seat hold
+ * charges and the credit that applies or returns them name the member who
+ * used that seat.
  *
  * Returns a map of ledger entry id → player display name. Entries with no
- * resolvable person (or whose description already names someone) are omitted.
+ * resolvable person are omitted.
  */
+function isSeatHoldEntry(entry: LedgerEntry): boolean {
+  return (
+    entry.source_type === "manual_adjustment" &&
+    Boolean(entry.source_id) &&
+    (entry.description ?? "").startsWith("Seat hold")
+  );
+}
+
 export async function buildLedgerOwnerNames(
   db: SupabaseClient,
   entries: LedgerEntry[],
@@ -196,8 +206,14 @@ export async function buildLedgerOwnerNames(
   const expenseShareIds = idsOf("team_expense_share");
   const paymentIds = idsOf("payment");
   const expenseCreditIds = idsOf("team_expense_credit");
+  const seatHoldIds = [
+    ...new Set(
+      entries.filter(isSeatHoldEntry).map((e) => e.source_id as string),
+    ),
+  ];
 
-  const [shareRows, expShareRows, payRows, expCreditRows] = await Promise.all([
+  const [shareRows, expShareRows, payRows, expCreditRows, holdRows] =
+    await Promise.all([
     bookingShareIds.length
       ? db.from("booking_shares").select("id, player_id").in("id", bookingShareIds)
       : Promise.resolve({ data: [] as unknown[] }),
@@ -215,6 +231,9 @@ export async function buildLedgerOwnerNames(
           .from("team_expenses")
           .select("id, paid_by_player_id")
           .in("id", expenseCreditIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    seatHoldIds.length
+      ? db.from("seat_holds").select("id, player_id").in("id", seatHoldIds)
       : Promise.resolve({ data: [] as unknown[] }),
   ]);
 
@@ -247,6 +266,13 @@ export async function buildLedgerOwnerNames(
   }[]) {
     if (r.paid_by_player_id) creditPlayer.set(r.id, r.paid_by_player_id);
   }
+  const holdPlayer = new Map<string, string>();
+  for (const r of (holdRows.data ?? []) as {
+    id: string;
+    player_id: string | null;
+  }[]) {
+    if (r.player_id) holdPlayer.set(r.id, r.player_id);
+  }
 
   // entry id -> player id
   const entryPlayer = new Map<string, string>();
@@ -259,6 +285,7 @@ export async function buildLedgerOwnerNames(
     else if (e.source_type === "payment") pid = payPlayer.get(e.source_id);
     else if (e.source_type === "team_expense_credit")
       pid = creditPlayer.get(e.source_id);
+    else if (isSeatHoldEntry(e)) pid = holdPlayer.get(e.source_id);
     if (pid) entryPlayer.set(e.id, pid);
   }
 
