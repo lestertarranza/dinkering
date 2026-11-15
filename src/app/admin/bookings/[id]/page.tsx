@@ -71,7 +71,8 @@ import { CourtAddForm } from "../CourtAddForm";
 import { CourtRow } from "../CourtRow";
 import { CycleRsvpButton } from "@/components/CycleRsvpButton";
 import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
-import { SplitPreview } from "@/components/SplitPreview";
+import { LiveCourtSplitPreview } from "@/components/LiveCourtSplitPreview";
+import type { CourtSplitRow } from "@/lib/court-split-preview";
 import { AttendanceConfirmRow } from "@/components/AttendanceConfirmRow";
 
 export const dynamic = "force-dynamic";
@@ -273,7 +274,30 @@ export default async function BookingDetail({
   const chargeNames = roster
     .filter((r) => inEqualCourtSplit(r))
     .map((r) => r.players?.name ?? "Player");
-  const absentCount = roster.filter((r) => r.actual_status === "absent").length;
+  const splitPreviewRows: CourtSplitRow[] = roster.map((r) => {
+    const existing = shareByPlayer.get(r.player_id);
+    const isAbsent = r.actual_status === "absent";
+    const isLateCancel = isLateCancelActual(r.actual_status);
+    const isPenalty = isAbsent || isLateCancel;
+    const savedOverride = existing?.override_share_amount;
+    const override =
+      savedOverride != null
+        ? Number(savedOverride)
+        : isAbsent
+          ? ABSENT_PENALTY
+          : isLateCancel && perSeatDefault > 0
+            ? perSeatDefault
+            : null;
+    return {
+      playerId: r.player_id,
+      name: r.players?.name ?? "Player",
+      absent: isAbsent,
+      lateCancel: isLateCancel,
+      included: existing != null || isPenalty || inEqualCourtSplit(r),
+      units: Number(existing?.share_units ?? (isPenalty ? 0 : 1)),
+      override,
+    };
+  });
 
   const totalShared = round2(
     shareList.reduce((s, x) => s + Number(x.amount_owed), 0),
@@ -1144,7 +1168,7 @@ export default async function BookingDetail({
                 </h2>
                 <ConfirmButton
                   action={chargeAttendees}
-                  message="Split the court across Attended and Guest (or Going if attendance is not set)? Each absent player is charged ₱100, and that amount comes out of the court cost first. Late cancel is still one seat on top. Existing shares are replaced."
+                  message="Split the court across Attended and Guest (or Going if attendance is not set)? Every absent player is charged ₱100, even if Override ₱ says something else. That amount comes out of the court cost first. Late cancel is still one seat on top. Existing shares are replaced."
                   variant="secondary"
                   hidden={{ booking_id: b.id }}
                   pendingLabel="Charging…"
@@ -1152,13 +1176,13 @@ export default async function BookingDetail({
                   ⚡ Charge everyone who attended
                 </ConfirmButton>
               </div>
-              <SplitPreview
+              <LiveCourtSplitPreview
+                formId={`booking-shares-${b.id}`}
                 totalCost={Number(b.total_booking_cost)}
-                playerNames={chargeNames}
-                absentCount={absentCount}
-                absentPenalty={ABSENT_PENALTY}
+                rows={splitPreviewRows}
               />
               <ActionForm
+                id={`booking-shares-${b.id}`}
                 action={generateShares}
                 className="p-4"
                 pendingLabel="Generating shares…"
@@ -1284,6 +1308,7 @@ export default async function BookingDetail({
                   Court cost is split by units across Attended and Guest (or
                   Going). Absent players are not seats. Their Override ₱ starts
                   at ₱100 and comes out of the court cost before that split.
+                  The split preview follows that Override ₱ as you change it.
                   Late cancel is not a seat either. That Override ₱ starts as
                   one player share and is added on top. Regenerating voids and
                   replaces the previous shares. Open seat holds are applied to
