@@ -19,6 +19,7 @@ import { createPlayer, regenerateRosterToken } from "./actions";
 import { playerLinkMap, loadLinkedIdentities, loadInviteIndex } from "@/lib/accounts";
 import { PlayerAvatar } from "@/components/public-ui";
 import { InviteSelect } from "@/components/InviteSelect";
+import { PlayerListFilter } from "@/components/PlayerListFilter";
 import {
   inviteLineFromIndex,
   inviteOptionsFromIndex,
@@ -27,17 +28,13 @@ import { getAccountsReady } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function PlayersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string; status?: string }>;
-}) {
-  const { q = "", status = "" } = await searchParams;
+export default async function PlayersPage() {
   const supabase = await createClient();
 
-  let query = supabase.from("players").select("*").order("name");
-  if (status) query = query.eq("active_status", status);
-  const { data: players } = await query;
+  const { data: players } = await supabase
+    .from("players")
+    .select("*")
+    .order("name");
 
   const { data: balances } = await supabase.from("player_balances").select("*");
   const balMap = new Map(
@@ -65,13 +62,7 @@ export default async function PlayersPage({
     ? `${appUrl}/schedule/${settings.roster_token}`
     : null;
 
-  const list = ((players ?? []) as Player[]).filter((p) => {
-    if (!q) return true;
-    const invited = inviteLineFromIndex(p.id, inviteIndex, identities) ?? "";
-    return `${p.name} ${p.display_name ?? ""} ${invited}`
-      .toLowerCase()
-      .includes(q.toLowerCase());
-  });
+  const list = (players ?? []) as Player[];
 
   return (
     <div>
@@ -193,30 +184,22 @@ export default async function PlayersPage({
 
         {/* List */}
         <div className="lg:order-1 lg:col-span-2">
-          <form className="mb-3 flex flex-wrap gap-2">
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="Search players…"
-              data-admin-search
-              className={`${inputClass} max-w-xs`}
-            />
-            <select name="status" defaultValue={status} className={`${inputClass} max-w-[10rem]`}>
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="archived">Archived</option>
-            </select>
-            <SubmitButton variant="secondary">Filter</SubmitButton>
-          </form>
-
           {list.length === 0 ? (
             <EmptyState
               title="No players found"
               description="Add your first player using the form."
             />
           ) : (
-            <div className="space-y-2">
+            <PlayerListFilter
+              placeholder="Search players…"
+              statuses={[
+                { value: "", label: "All statuses" },
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+                { value: "archived", label: "Archived" },
+              ]}
+            >
+            <div className="max-h-[32rem] space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1">
               {list.map((p) => {
                 const bal = balMap.get(p.id) ?? 0;
                 const d = describeBalance(bal);
@@ -225,13 +208,15 @@ export default async function PlayersPage({
                   <Link
                     key={p.id}
                     href={`/admin/players/${p.id}`}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-emerald-300"
+                    data-player-name={`${p.name} ${p.display_name ?? ""} ${invited ?? ""}`}
+                    data-player-status={p.active_status}
+                    className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 transition hover:bg-emerald-50"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <PlayerAvatar
                         name={p.name}
                         src={identities.get(p.id)?.avatarUrl}
-                        size="md"
+                        size="sm"
                         verified={links.linked.has(p.id)}
                       />
                       <div className="min-w-0">
@@ -283,6 +268,7 @@ export default async function PlayersPage({
                 );
               })}
             </div>
+            </PlayerListFilter>
           )}
         </div>
       </div>

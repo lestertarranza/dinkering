@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState, useTransition } from "react";
 import { Field, inputClass } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatDate, formatMoney, phTodayYmd } from "@/lib/format";
 import {
@@ -71,35 +72,28 @@ export function BulkPaymentForm({
       </p>
 
       <Field label="Payer">
-        <select
+        <SearchSelect
           name="payer"
           required
-          className={inputClass}
+          placeholder="Search payer…"
           value={payer}
-          onChange={(e) => {
-            const v = e.target.value;
-            setPayer(v);
-            loadPreview(v);
+          onChange={(next) => {
+            setPayer(next);
+            loadPreview(next);
           }}
-        >
-          <option value="">Select payer…</option>
-          {groups.length > 0 ? (
-            <optgroup label="Groups / pooled funds">
-              {groups.map((g) => (
-                <option key={g.id} value={`g:${g.id}`}>
-                  {g.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          <optgroup label="Players">
-            {players.map((p) => (
-              <option key={p.id} value={`p:${p.id}`}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+          options={[
+            ...groups.map((g) => ({
+              value: `g:${g.id}`,
+              label: g.name,
+              group: "Groups / pooled funds",
+            })),
+            ...players.map((p) => ({
+              value: `p:${p.id}`,
+              label: p.name,
+              group: "Players",
+            })),
+          ]}
+        />
       </Field>
 
       {previewPending ? (

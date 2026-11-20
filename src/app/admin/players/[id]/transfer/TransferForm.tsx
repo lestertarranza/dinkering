@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useMemo } from "react";
 import { Field, inputClass } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { formatMoney, formatDate, phTodayYmd } from "@/lib/format";
 import { transferBalance } from "../../actions";
 import type { ActionState } from "@/lib/action-state";
@@ -129,31 +130,16 @@ export function TransferForm({
 
       {/* Target player */}
       <Field label="Transfer to">
-        <select name="target_wallet" required className={inputClass}>
-          <option value="">Select a player or group fund…</option>
-          {targets.some((t) => t.kind === "player") ? (
-            <optgroup label="Players">
-              {targets
-                .filter((t) => t.kind === "player")
-                .map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.name}
-                  </option>
-                ))}
-            </optgroup>
-          ) : null}
-          {targets.some((t) => t.kind === "group") ? (
-            <optgroup label="Group funds">
-              {targets
-                .filter((t) => t.kind === "group")
-                .map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.name}
-                  </option>
-                ))}
-            </optgroup>
-          ) : null}
-        </select>
+        <SearchSelect
+          name="target_wallet"
+          required
+          placeholder="Search a player or group fund…"
+          options={targets.map((target) => ({
+            value: target.value,
+            label: target.name,
+            group: target.kind === "group" ? "Group funds" : "Players",
+          }))}
+        />
       </Field>
 
       <div className="grid grid-cols-2 gap-3">

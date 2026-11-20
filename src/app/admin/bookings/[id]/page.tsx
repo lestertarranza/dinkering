@@ -72,6 +72,8 @@ import { CourtRow } from "../CourtRow";
 import { CycleRsvpButton } from "@/components/CycleRsvpButton";
 import { PlayerDrawerTrigger } from "@/components/PlayerDrawer";
 import { LiveCourtSplitPreview } from "@/components/LiveCourtSplitPreview";
+import { PlayerListFilter } from "@/components/PlayerListFilter";
+import { SearchSelect } from "@/components/SearchSelect";
 import type { CourtSplitRow } from "@/lib/court-split-preview";
 import { AttendanceConfirmRow } from "@/components/AttendanceConfirmRow";
 
@@ -835,7 +837,8 @@ export default async function BookingDetail({
                 </p>
               ) : isPostGame ? (
                 /* ── POST-GAME: attendance confirmation ── */
-                <div className="mb-4 space-y-1.5">
+                <PlayerListFilter placeholder="Search this roster…">
+                <div className="mb-4 max-h-[28rem] space-y-1.5 overflow-y-auto">
                   {[...roster]
                     .sort((a, b) => {
                       const rsvpRank = (r: typeof a) => {
@@ -869,9 +872,11 @@ export default async function BookingDetail({
                     Override ₱ on Booking shares.
                   </p>
                 </div>
+                </PlayerListFilter>
               ) : (
                 /* ── PRE-GAME: RSVP management ── */
-                <ul className="mb-4 space-y-2">
+                <PlayerListFilter placeholder="Search this roster…">
+                <ul className="mb-4 max-h-[28rem] space-y-2 overflow-y-auto">
                   {[...roster]
                     .sort((a, b) => {
                       // Going, then waitlist in FCFS join order, then not going, then no response
@@ -891,6 +896,7 @@ export default async function BookingDetail({
                     .map((r) => (
                     <li
                       key={r.id}
+                      data-player-name={r.players?.name ?? "Player"}
                       className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
                     >
                       <label className="flex min-w-0 flex-1 items-center gap-2 font-medium text-slate-700">
@@ -963,6 +969,7 @@ export default async function BookingDetail({
                     </li>
                   ))}
                 </ul>
+                </PlayerListFilter>
               )}
 
               {/* Add player (always shown) */}
@@ -974,14 +981,16 @@ export default async function BookingDetail({
                   hidden={<input type="hidden" name="booking_id" value={b.id} />}
                 >
                   <div className="flex gap-2">
-                    <select name="player_id" className={inputClass} required>
-                      <option value="">Add player to roster…</option>
-                      {availablePlayers.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect
+                      name="player_id"
+                      required
+                      placeholder="Add player to roster…"
+                      className="min-w-0 flex-1"
+                      options={availablePlayers.map((p) => ({
+                        value: p.id,
+                        label: p.name,
+                      }))}
+                    />
                     <SubmitButton variant="secondary" pendingLabel="Adding…">
                       Add
                     </SubmitButton>
@@ -1188,7 +1197,8 @@ export default async function BookingDetail({
                 pendingLabel="Generating shares…"
                 hidden={<input type="hidden" name="booking_id" value={b.id} />}
               >
-                <div className="overflow-x-auto">
+                <PlayerListFilter placeholder="Search shares…">
+                <div className="max-h-[28rem] overflow-auto">
                   <table className="w-full min-w-[560px] text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
@@ -1229,7 +1239,7 @@ export default async function BookingDetail({
                         const credit =
                           bal <= -SETTLE_TOLERANCE ? Math.abs(bal) : 0;
                         return (
-                          <tr key={r.id}>
+                          <tr key={r.id} data-player-name={r.players?.name ?? "Player"}>
                             <td className="py-2">
                               <input
                                 type="hidden"
@@ -1304,6 +1314,7 @@ export default async function BookingDetail({
                     </tbody>
                   </table>
                 </div>
+                </PlayerListFilter>
                 <p className="mt-3 text-xs text-slate-400">
                   Court cost is split by units across Attended and Guest (or
                   Going). Absent players are not seats. Their Override ₱ starts

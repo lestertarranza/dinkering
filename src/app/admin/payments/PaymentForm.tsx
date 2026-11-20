@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Field, inputClass, buttonClass } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { formatDate, phTodayYmd } from "@/lib/format";
 import { createPayment, type PaymentState } from "./actions";
 
@@ -57,25 +58,23 @@ export function PaymentForm({
       ) : null}
 
       <Field label="Payer">
-        <select name="payer" required className={inputClass}>
-          <option value="">Select payer…</option>
-          {groups.length > 0 ? (
-            <optgroup label="Groups / pooled funds">
-              {groups.map((g) => (
-                <option key={g.id} value={`g:${g.id}`}>
-                  {g.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          <optgroup label="Players">
-            {players.map((p) => (
-              <option key={p.id} value={`p:${p.id}`}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        <SearchSelect
+          name="payer"
+          required
+          placeholder="Search payer…"
+          options={[
+            ...groups.map((g) => ({
+              value: `g:${g.id}`,
+              label: g.name,
+              group: "Groups / pooled funds",
+            })),
+            ...players.map((p) => ({
+              value: `p:${p.id}`,
+              label: p.name,
+              group: "Players",
+            })),
+          ]}
+        />
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Amount">

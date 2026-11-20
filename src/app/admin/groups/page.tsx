@@ -12,6 +12,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { formatMoney, describeBalance } from "@/lib/format";
 import type { Player, PlayerGroup } from "@/lib/types";
 import { createGroup } from "./actions";
+import { SearchMultiSelect } from "@/components/SearchSelect";
 
 export const dynamic = "force-dynamic";
 
@@ -63,19 +64,14 @@ export default async function GroupsPage() {
                 <option value="individual">Individual</option>
               </select>
             </Field>
-            <Field label="Members" hint="Hold Ctrl/Cmd to select several">
-              <select
+            <Field label="Members" hint="Search for a player, then add another.">
+              <SearchMultiSelect
                 name="member_ids"
-                multiple
-                size={5}
-                className={inputClass}
-              >
-                {((players ?? []) as Pick<Player, "id" | "name">[]).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Search players…"
+                options={((players ?? []) as Pick<Player, "id" | "name">[]).map(
+                  (p) => ({ value: p.id, label: p.name }),
+                )}
+              />
             </Field>
             <Field label="Notes">
               <textarea name="notes" rows={2} className={inputClass} />

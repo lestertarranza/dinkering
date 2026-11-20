@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Field, inputClass } from "@/components/ui";
+import { SearchMultiSelect, SearchSelect } from "@/components/SearchSelect";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatDate, phTodayYmd } from "@/lib/format";
 
@@ -47,25 +48,23 @@ export function ExpenseForm({
         </Field>
       </div>
       <Field label="Paid by (buyer)" hint="Buyer is reimbursed the full amount">
-        <select name="payer" required className={inputClass}>
-          <option value="">Select buyer…</option>
-          {groups.length > 0 ? (
-            <optgroup label="Groups / pooled funds">
-              {groups.map((g) => (
-                <option key={g.id} value={`g:${g.id}`}>
-                  {g.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          <optgroup label="Players">
-            {players.map((p) => (
-              <option key={p.id} value={`p:${p.id}`}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        <SearchSelect
+          name="payer"
+          required
+          placeholder="Search buyer…"
+          options={[
+            ...groups.map((g) => ({
+              value: `g:${g.id}`,
+              label: g.name,
+              group: "Groups / pooled funds",
+            })),
+            ...players.map((p) => ({
+              value: `p:${p.id}`,
+              label: p.name,
+              group: "Players",
+            })),
+          ]}
+        />
       </Field>
       <Field label="Split method">
         <select
@@ -82,19 +81,12 @@ export function ExpenseForm({
       </Field>
 
       {method === "selected_players" || method === "custom" ? (
-        <Field label="Players" hint="Hold Ctrl/Cmd to select several">
-          <select
+        <Field label="Players" hint="Search for a player, then add another.">
+          <SearchMultiSelect
             name="selected_players"
-            multiple
-            size={6}
-            className={inputClass}
-          >
-            {players.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Search players…"
+            options={players.map((p) => ({ value: p.id, label: p.name }))}
+          />
         </Field>
       ) : null}
 

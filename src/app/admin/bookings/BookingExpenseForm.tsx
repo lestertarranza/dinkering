@@ -1,6 +1,7 @@
 "use client";
 
 import { Field, inputClass } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { SubmitButton } from "@/components/SubmitButton";
 
 type Opt = { id: string; name: string };
@@ -41,25 +42,23 @@ export function BookingExpenseForm({
         label="Paid by"
         hint="Buyer is reimbursed. Split across Going / attended players on this booking."
       >
-        <select name="payer" required className={inputClass}>
-          <option value="">Select buyer…</option>
-          {groups.length > 0 ? (
-            <optgroup label="Groups / pooled funds">
-              {groups.map((g) => (
-                <option key={g.id} value={`g:${g.id}`}>
-                  {g.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          <optgroup label="Players">
-            {players.map((p) => (
-              <option key={p.id} value={`p:${p.id}`}>
-                {p.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        <SearchSelect
+          name="payer"
+          required
+          placeholder="Search buyer…"
+          options={[
+            ...groups.map((g) => ({
+              value: `g:${g.id}`,
+              label: g.name,
+              group: "Groups / pooled funds",
+            })),
+            ...players.map((p) => ({
+              value: `p:${p.id}`,
+              label: p.name,
+              group: "Players",
+            })),
+          ]}
+        />
       </Field>
       <Field label="Notes">
         <textarea name="notes" rows={2} className={inputClass} />

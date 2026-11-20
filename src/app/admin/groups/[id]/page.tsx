@@ -19,6 +19,7 @@ import { getAppBaseUrl } from "@/lib/app-url";
 import { buildLedgerBookingContext } from "@/lib/booking-context";
 import { buildLedgerOwnerNames } from "@/lib/ledger-attribution";
 import { formatMoney, describeBalance, SETTLE_TOLERANCE } from "@/lib/format";
+import { SearchSelect } from "@/components/SearchSelect";
 import { addManualAdjustment } from "../../players/actions";
 import type { LedgerEntry, Player, PlayerGroup } from "@/lib/types";
 import {
@@ -362,14 +363,15 @@ export default async function GroupDetail({
             ) : (
               <ActionForm action={addMember} className="space-y-2" pendingLabel="Adding member…">
                 <input type="hidden" name="player_group_id" value={g.id} />
-                <select name="player_id" required className={inputClass}>
-                  <option value="">Add a player…</option>
-                  {availablePlayers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect
+                  name="player_id"
+                  required
+                  placeholder="Add a player…"
+                  options={availablePlayers.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  }))}
+                />
                 <label className="flex items-center gap-2 text-sm text-slate-600">
                   <input type="checkbox" name="is_primary" /> Make primary
                   member

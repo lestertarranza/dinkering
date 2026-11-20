@@ -10,6 +10,7 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { CopyReminder } from "@/components/ShareActions";
+import { PlayerListFilter } from "@/components/PlayerListFilter";
 import { ActionForm } from "@/components/ActionForm";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DownloadCsvButton } from "@/components/DownloadCsvButton";
@@ -392,7 +393,8 @@ export default async function CollectionsPage({
       {filteredRows.length === 0 ? (
         <EmptyState title="Everyone is settled — nothing to collect" />
       ) : (
-        <Card className="divide-y divide-slate-100 overflow-hidden">
+        <PlayerListFilter placeholder="Search who owes…">
+        <Card className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto">
           {filteredRows.map((r) => {
             const d = describeBalance(r.balance);
             const last = contactedAt.get(`${r.kind}:${r.ownerId}`);
@@ -403,6 +405,7 @@ export default async function CollectionsPage({
             return (
               <div
                 key={r.id}
+                data-player-name={`${r.label} ${r.pooled ?? ""}`}
                 className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
@@ -455,6 +458,7 @@ export default async function CollectionsPage({
             );
           })}
         </Card>
+        </PlayerListFilter>
       )}
     </div>
   );

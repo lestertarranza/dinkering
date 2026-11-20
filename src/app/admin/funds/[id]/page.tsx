@@ -10,6 +10,7 @@ import {
   EmptyState,
 } from "@/components/ui";
 import { ActionForm } from "@/components/ActionForm";
+import { SearchSelect } from "@/components/SearchSelect";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { formatMoney, formatDate, SETTLE_TOLERANCE, isSettled, phTodayYmd } from "@/lib/format";
@@ -261,25 +262,23 @@ export default async function ClubFundDetail({
                 />
               </Field>
               <Field label="Bought by" hint="This player or group is credited">
-                <select name="payer" required className={inputClass}>
-                  <option value="">Select buyer…</option>
-                  {groupOpts.length > 0 ? (
-                    <optgroup label="Groups">
-                      {groupOpts.map((g) => (
-                        <option key={g.id} value={`g:${g.id}`}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ) : null}
-                  <optgroup label="Players">
-                    {playerOpts.map((p) => (
-                      <option key={p.id} value={`p:${p.id}`}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                <SearchSelect
+                  name="payer"
+                  required
+                  placeholder="Search buyer…"
+                  options={[
+                    ...groupOpts.map((g) => ({
+                      value: `g:${g.id}`,
+                      label: g.name,
+                      group: "Groups",
+                    })),
+                    ...playerOpts.map((p) => ({
+                      value: `p:${p.id}`,
+                      label: p.name,
+                      group: "Players",
+                    })),
+                  ]}
+                />
               </Field>
               {overdrawn || balance < 0.01 ? (
                 <p className="text-xs text-amber-700">

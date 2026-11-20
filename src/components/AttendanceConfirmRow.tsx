@@ -89,6 +89,7 @@ export function AttendanceConfirmRow({
   return (
     <form
       onSubmit={onSubmit}
+      data-player-name={playerName}
       className={`rounded-lg px-3 py-1.5 ${rowTone(applied)}`}
     >
       <div className="flex items-center gap-2">

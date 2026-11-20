@@ -10,6 +10,7 @@ import {
 import { SubmitButton } from "@/components/SubmitButton";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { PlayerListFilter } from "@/components/PlayerListFilter";
 import {
   formatMoney,
   formatDate,
@@ -327,7 +328,8 @@ export default async function ExpenseDetail({
           pendingLabel="Regenerating split…"
           hidden={<input type="hidden" name="expense_id" value={e.id} />}
         >
-          <div className="overflow-x-auto">
+          <PlayerListFilter placeholder="Search players in this split…">
+          <div className="max-h-[28rem] overflow-auto">
             <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
@@ -342,7 +344,7 @@ export default async function ExpenseDetail({
                 {candidates.map((c) => {
                   const existing = shareByPlayer.get(c.id);
                   return (
-                    <tr key={c.id}>
+                    <tr key={c.id} data-player-name={c.name}>
                       <td className="py-2">
                         <input
                           type="hidden"
@@ -388,6 +390,7 @@ export default async function ExpenseDetail({
               </tbody>
             </table>
           </div>
+          </PlayerListFilter>
           <p className="mt-3 text-xs text-slate-400">
             Regenerating voids and replaces existing shares and the buyer
             reimbursement credit.

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Field, inputClass } from "@/components/ui";
+import { SearchSelect } from "@/components/SearchSelect";
 import { formatMoney, phTodayYmd } from "@/lib/format";
 import { transferPersonalCredit } from "../../actions";
 import type { ActionState } from "@/lib/action-state";
@@ -73,19 +74,13 @@ export function CreditTransferForm({
       </Field>
 
       <Field label="Send to">
-        <select
+        <SearchSelect
           name="target_player_id"
           required
           disabled={available <= 0}
-          className={inputClass}
-        >
-          <option value="">Select a player…</option>
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          placeholder="Search a player…"
+          options={players.map((p) => ({ value: p.id, label: p.name }))}
+        />
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
