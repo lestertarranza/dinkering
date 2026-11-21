@@ -162,7 +162,7 @@ export function StatCard({
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {label}
       </p>
-      <p className={`mt-1 text-2xl font-semibold ${accent}`}>{value}</p>
+      <p className={`mt-1 break-words text-xl font-semibold sm:text-2xl ${accent}`}>{value}</p>
       {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
     </Card>
   );

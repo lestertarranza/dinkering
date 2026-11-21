@@ -11,11 +11,11 @@ export default async function Home() {
 
   return (
     <PublicChrome returnTo="/me">
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-16 pb-28 text-center">
+    <main className="mx-auto flex min-h-screen w-full min-w-0 max-w-2xl flex-col items-center justify-center px-6 py-16 pb-28 text-center">
       <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-600 text-3xl shadow-lg">
         🏓
       </div>
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+      <h1 className="max-w-full break-words text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
         Dinkering Pickleball Team Manager
       </h1>
       <p className="mt-4 max-w-md text-slate-600">

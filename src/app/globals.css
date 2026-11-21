@@ -12,11 +12,16 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   -webkit-tap-highlight-color: rgba(5, 150, 105, 0.15);
+  overflow-x: hidden;
 }
 
 html.sun-mode {
@@ -156,5 +161,92 @@ button {
   textarea,
   button {
     font-size: 16px; /* prevents iOS zoom on focus */
+  }
+}
+
+/* Keep the booking action bar above the phone tab bar, including the home indicator. */
+.admin-action-bar {
+  bottom: calc(3.5rem + env(safe-area-inset-bottom));
+}
+.admin-page-pad {
+  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .admin-action-bar {
+    bottom: 0;
+  }
+  .admin-page-pad {
+    padding-bottom: 1.25rem;
+  }
+}
+
+/* Phone: turn wide admin tables into stacked cards. One set of inputs stays in the form. */
+@media (max-width: 767px) {
+  .stack-cards {
+    min-width: 0 !important;
+  }
+  .stack-cards thead {
+    display: none;
+  }
+  .stack-cards,
+  .stack-cards tbody,
+  .stack-cards tfoot {
+    display: block;
+    width: 100%;
+  }
+  .stack-cards tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    background: white;
+  }
+  .stack-cards tr[hidden] {
+    display: none !important;
+  }
+  .stack-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: auto !important;
+    padding: 0.45rem 0;
+    text-align: right;
+    white-space: normal;
+  }
+  .stack-cards td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    max-width: 46%;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: rgb(100 116 139);
+    text-align: left;
+  }
+  .stack-cards td[data-label=""] {
+    justify-content: flex-start;
+    text-align: left;
+    font-weight: 600;
+  }
+  .stack-cards td[data-label=""]::before {
+    content: none;
+  }
+  .stack-cards td[data-stack="block"] {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+  }
+  .stack-cards td[colspan] {
+    display: block;
+    text-align: left;
+  }
+  .stack-cards td:not([data-label]):not([colspan]) {
+    display: none;
+  }
+  .stack-cards td:empty {
+    display: none;
   }
 }

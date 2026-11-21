@@ -691,7 +691,7 @@ export default async function PlayerPortal({
       <>
       {pooled ? (
         /* ── Pooled player: two clearly labelled wallet panels ── */
-        <div className="mb-5 grid grid-cols-2 gap-3">
+        <div className="mb-5 grid grid-cols-2 gap-3 [&>*]:min-w-0">
           {/* Shared / group wallet */}
           {(() => {
             const dg = describeBalance(groupWalletBalance ?? 0);
@@ -711,12 +711,12 @@ export default async function PlayerPortal({
                 <PendingLink
                   href={`/g/${pooled.player_groups.public_token}`}
                   busyLabel="Opening group page…"
-                  className="mt-0.5 block text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 active:text-emerald-900"
+                  className="mt-0.5 block break-words text-sm font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 active:text-emerald-900"
                 >
                   {pooled.player_groups.name}
                 </PendingLink>
                 <p
-                  className={`mt-2 text-2xl font-bold ${
+                  className={`mt-2 break-words text-xl font-bold sm:text-2xl ${
                     dg.tone === "collect"
                       ? "text-rose-700"
                       : dg.tone === "credit"
@@ -755,7 +755,7 @@ export default async function PlayerPortal({
                 </p>
                 <p className={`mt-0.5 text-sm ${publicHintText}`}>your own</p>
                 <p
-                  className={`mt-2 text-2xl font-bold ${
+                  className={`mt-2 break-words text-xl font-bold sm:text-2xl ${
                     dp.tone === "collect"
                       ? "text-rose-700"
                       : dp.tone === "credit"
@@ -790,14 +790,14 @@ export default async function PlayerPortal({
           {d.tone === "collect" ? (
             <>
               <p className="text-base font-medium text-rose-800">You currently owe</p>
-              <p className="mt-1 text-4xl font-bold text-rose-700">
+              <p className="mt-1 break-words text-3xl font-bold text-rose-700 sm:text-4xl">
                 {formatMoney(d.amount)}
               </p>
             </>
           ) : d.tone === "credit" ? (
             <>
               <p className="text-base font-medium text-emerald-800">You have credit</p>
-              <p className="mt-1 text-4xl font-bold text-emerald-700">
+              <p className="mt-1 break-words text-3xl font-bold text-emerald-700 sm:text-4xl">
                 {formatMoney(d.amount)}
               </p>
               <p className="mt-1.5 text-sm font-medium text-emerald-700">
@@ -807,7 +807,7 @@ export default async function PlayerPortal({
           ) : (
             <>
               <p className={`text-base ${publicMetaText}`}>Your balance</p>
-              <p className="mt-1 text-4xl font-bold text-slate-800">You&apos;re all settled 🎉</p>
+              <p className="mt-1 break-words text-3xl font-bold text-slate-800 sm:text-4xl">You&apos;re all settled 🎉</p>
               <p className="mt-1.5 text-sm text-slate-600">
                 Nothing outstanding. See you on court.
               </p>

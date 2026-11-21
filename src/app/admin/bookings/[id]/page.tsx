@@ -76,6 +76,11 @@ import { PlayerListFilter } from "@/components/PlayerListFilter";
 import { SearchSelect } from "@/components/SearchSelect";
 import type { CourtSplitRow } from "@/lib/court-split-preview";
 import { AttendanceConfirmRow } from "@/components/AttendanceConfirmRow";
+import {
+  BookingActionBar,
+  BookingPhoneTabs,
+  BookingSection,
+} from "@/components/BookingPhoneTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -440,7 +445,7 @@ export default async function BookingDetail({
   }
 
   return (
-    <div className="pb-36 md:pb-24">
+    <div className="pb-20 md:pb-20">
       <PageHeader
         title={`${b.booking_code ?? "Booking"}`}
         description={`${formatDate(b.play_date)}${
@@ -570,6 +575,8 @@ export default async function BookingDetail({
         </Card>
       </div>
 
+      <BookingPhoneTabs>
+      <BookingSection tab="roster">
       {holdFee != null ? (
         <Card className="mb-5 p-4">
           <div className="flex items-start justify-between gap-3">
@@ -661,7 +668,9 @@ export default async function BookingDetail({
           </ul>
         </Card>
       ) : null}
+      </BookingSection>
 
+      <BookingSection tab="edit">
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <StatusBadge status={b.status} />
         {(["for_booking", "booked", "played", "cancelled", "refunded"] as const)
@@ -694,12 +703,14 @@ export default async function BookingDetail({
             );
           })}
       </div>
+      </BookingSection>
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
 
           {/* ── Courts ── */}
-          <Card id="add-court">
+          <BookingSection tab="money">
+          <Card id="add-court" className="scroll-mt-28">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold text-slate-700">Courts</h2>
@@ -719,7 +730,7 @@ export default async function BookingDetail({
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-sm">
+                  <table className="stack-cards w-full min-w-[560px] text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
                         <th className="py-2 font-medium">Court #</th>
@@ -739,8 +750,8 @@ export default async function BookingDetail({
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-slate-200 font-semibold">
-                        <td className="py-2 text-slate-700" colSpan={6}>Total court cost</td>
-                        <td className="py-2 text-right text-slate-700">
+                        <td data-label="" className="py-2 text-slate-700" colSpan={6}>Total court cost</td>
+                        <td data-label="Subtotal" className="py-2 text-right text-slate-700">
                           {formatMoney(courtList.reduce((s, c) => s + c.hours * c.rate_per_court_per_hour, 0))}
                         </td>
                         <td />
@@ -753,8 +764,10 @@ export default async function BookingDetail({
               <CourtAddForm bookingId={b.id} />
             </div>
           </Card>
+          </BookingSection>
 
           {/* ── Roster & Attendance (merged) ── */}
+          <BookingSection tab="roster">
           <Card>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
               <div>
@@ -813,7 +826,7 @@ export default async function BookingDetail({
                   >
                     <select
                       name="response_status"
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      className="min-h-11 rounded-md border border-slate-300 px-2 py-1 text-sm"
                       defaultValue="going"
                     >
                       <option value="going">Going</option>
@@ -866,10 +879,10 @@ export default async function BookingDetail({
                       />
                     ))}
                   <p className="pt-1 text-xs text-slate-400">
-                    RSVP stays as-is (including locked Going). Attendance is what
-                    you charge. Late cancel is not a court seat; a waitlisted
-                    player who played should be Attended. Add a penalty with
-                    Override ₱ on Booking shares.
+                    Tap a status to save it. RSVP stays as-is (including locked
+                    Going). Attendance is what you charge. Late cancel is not a
+                    court seat; a waitlisted player who played should be
+                    Attended. Add a penalty with Override ₱ on Booking shares.
                   </p>
                 </div>
                 </PlayerListFilter>
@@ -897,15 +910,15 @@ export default async function BookingDetail({
                     <li
                       key={r.id}
                       data-player-name={r.players?.name ?? "Player"}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
+                      className="flex flex-col gap-2 rounded-lg bg-slate-50 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
                     >
-                      <label className="flex min-w-0 flex-1 items-center gap-2 font-medium text-slate-700">
+                      <label className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
                         <input
                           type="checkbox"
                           form="bulk-rsvp"
                           name="player_ids"
                           value={r.player_id}
-                          className="h-4 w-4 rounded border-slate-300"
+                          className="h-5 w-5 shrink-0 rounded border-slate-300"
                         />
                         <PlayerDrawerTrigger
                           payload={{
@@ -922,7 +935,7 @@ export default async function BookingDetail({
                           {r.players?.name}
                         </PlayerDrawerTrigger>
                       </label>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {rsvpLocked && r.response_status === "going" ? (
                           <Badge tone="warning">Committed</Badge>
                         ) : null}
@@ -954,7 +967,7 @@ export default async function BookingDetail({
                           <select
                             name="response_status"
                             defaultValue={r.response_status}
-                            className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                            className="min-h-11 rounded-md border border-slate-300 px-2 py-1 text-sm"
                           >
                             <option value="going">Going</option>
                             <option value="waitlist">Waitlist</option>
@@ -1010,7 +1023,9 @@ export default async function BookingDetail({
               </div>
             </div>
           </Card>
+          </BookingSection>
 
+          <BookingSection tab="money" className="space-y-5">
           <Card>
             <div className="border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-700">
@@ -1199,7 +1214,7 @@ export default async function BookingDetail({
               >
                 <PlayerListFilter placeholder="Search shares…">
                 <div className="max-h-[28rem] overflow-auto">
-                  <table className="w-full min-w-[560px] text-sm">
+                  <table className="stack-cards w-full min-w-[560px] text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                         <th className="py-2 font-medium">Include</th>
@@ -1240,7 +1255,7 @@ export default async function BookingDetail({
                           bal <= -SETTLE_TOLERANCE ? Math.abs(bal) : 0;
                         return (
                           <tr key={r.id} data-player-name={r.players?.name ?? "Player"}>
-                            <td className="py-2">
+                            <td data-label="Include" className="py-2">
                               <input
                                 type="hidden"
                                 name="share_player_ids"
@@ -1250,9 +1265,10 @@ export default async function BookingDetail({
                                 type="checkbox"
                                 name={`include-${r.player_id}`}
                                 defaultChecked={defaultInclude}
+                                className="h-5 w-5 rounded border-slate-300"
                               />
                             </td>
-                            <td className="py-2 font-medium text-slate-700">
+                            <td data-label="Player" data-stack="block" className="py-2 font-medium text-slate-700">
                               {r.players?.name}
                               {isAbsent ? (
                                 <span className="ml-2 align-middle">
@@ -1264,7 +1280,7 @@ export default async function BookingDetail({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="py-2">
+                            <td data-label="Units" className="py-2">
                               <input
                                 name={`units-${r.player_id}`}
                                 type="number"
@@ -1273,10 +1289,10 @@ export default async function BookingDetail({
                                 defaultValue={
                                   existing?.share_units ?? (isPenalty ? 0 : 1)
                                 }
-                                className="w-16 rounded-md border border-slate-300 px-2 py-1"
+                                className="min-h-11 w-24 rounded-md border border-slate-300 px-2 py-1"
                               />
                             </td>
-                            <td className="py-2">
+                            <td data-label="Override ₱" className="py-2">
                               <input
                                 name={`override-${r.player_id}`}
                                 type="number"
@@ -1291,15 +1307,15 @@ export default async function BookingDetail({
                                       : "")
                                 }
                                 placeholder={isPenalty ? "penalty" : "—"}
-                                className="w-24 rounded-md border border-slate-300 px-2 py-1"
+                                className="min-h-11 w-28 rounded-md border border-slate-300 px-2 py-1"
                               />
                             </td>
-                            <td className="py-2 text-right text-slate-600">
+                            <td data-label="Current" className="py-2 text-right text-slate-600">
                               {existing
                                 ? formatMoney(existing.amount_owed)
                                 : "—"}
                             </td>
-                            <td className="py-2 text-right">
+                            <td data-label="Wallet" className="py-2 text-right">
                               {credit > 0 ? (
                                 <Badge tone="credit">
                                   {formatMoney(credit)}
@@ -1366,7 +1382,7 @@ export default async function BookingDetail({
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[480px] text-sm">
+                  <table className="stack-cards w-full min-w-[480px] text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                         <th className="py-2 font-medium">Player</th>
@@ -1394,7 +1410,7 @@ export default async function BookingDetail({
                         const due = bal >= SETTLE_TOLERANCE;
                         return (
                           <tr key={line.key}>
-                            <td className="py-2">
+                            <td data-label="Player" data-stack="block" className="py-2">
                               <span className="font-medium text-slate-700">
                                 {line.name}
                               </span>
@@ -1411,22 +1427,23 @@ export default async function BookingDetail({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="py-2 text-right text-slate-600">
+                            <td data-label={hasClubShares ? "Court" : "Share"} className="py-2 text-right text-slate-600">
                               {line.charged > 0
                                 ? formatMoney(line.charged)
                                 : "—"}
                             </td>
                             {hasClubShares ? (
-                              <td className="py-2 text-right text-slate-600">
+                              <td data-label="Club item" className="py-2 text-right text-slate-600">
                                 {line.clubCharged > 0
                                   ? formatMoney(line.clubCharged)
                                   : "—"}
                               </td>
                             ) : null}
-                            <td className="py-2 text-right text-emerald-600">
+                            <td data-label="Paid" className="py-2 text-right text-emerald-600">
                               {paidAmt > 0 ? formatMoney(paidAmt) : "—"}
                             </td>
                             <td
+                              data-label="Balance"
                               className={`py-2 text-right font-medium ${
                                 settled
                                   ? "text-slate-400"
@@ -1442,7 +1459,7 @@ export default async function BookingDetail({
                                   : `${formatMoney(Math.abs(bal))} over`}
                             </td>
                             {b.status === "played" ? (
-                              <td className="py-1 pl-3 text-right">
+                              <td data-label="Pay" className="py-1 pl-3 text-right">
                                 {due ? (
                                   <ConfirmButton
                                     action={markBookingSharePaid}
@@ -1466,19 +1483,19 @@ export default async function BookingDetail({
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-slate-200 text-sm font-semibold text-slate-700">
-                        <td className="py-2">Total</td>
-                        <td className="py-2 text-right">
+                        <td data-label="" className="py-2">Total</td>
+                        <td data-label={hasClubShares ? "Court" : "Share"} className="py-2 text-right">
                           {formatMoney(totalShared)}
                         </td>
                         {hasClubShares ? (
-                          <td className="py-2 text-right">
+                          <td data-label="Club item" className="py-2 text-right">
                             {formatMoney(clubChargedTotal)}
                           </td>
                         ) : null}
-                        <td className="py-2 text-right text-emerald-700">
+                        <td data-label="Paid" className="py-2 text-right text-emerald-700">
                           {formatMoney(round2(paid + clubPaidTotal))}
                         </td>
-                        <td className="py-2 text-right">
+                        <td data-label="Balance" className="py-2 text-right">
                           {formatMoney(
                             round2(
                               totalShared +
@@ -1502,11 +1519,12 @@ export default async function BookingDetail({
               ) : null}
             </div>
           </Card>
+          </BookingSection>
         </div>
 
         {/* Edit booking */}
-        <div className="space-y-5">
-          <Card className="p-4" id="edit-booking">
+        <BookingSection tab="edit" className="space-y-5">
+          <Card className="scroll-mt-28 p-4" id="edit-booking">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">
               Edit booking
             </h2>
@@ -1537,19 +1555,17 @@ export default async function BookingDetail({
               Delete / cancel booking
             </ConfirmButton>
           </Card>
-        </div>
+        </BookingSection>
       </div>
 
-      <div className="fixed inset-x-0 bottom-14 z-40 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-6px_16px_rgba(15,23,42,0.12)] backdrop-blur md:bottom-0 md:left-60">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
-          <p className="mr-auto text-sm font-medium text-slate-600">
-            {b.booking_code ?? "Booking"} ·{" "}
-            <span className="capitalize">{b.status.replaceAll("_", " ")}</span>
-          </p>
-          {b.status === "booked" || b.status === "for_booking" ? (
+      <BookingActionBar
+        code={b.booking_code ?? "Booking"}
+        statusLabel={b.status.replaceAll("_", " ")}
+        markPlayed={
+          b.status === "booked" || b.status === "for_booking" ? (
             <ActionForm
               action={setBookingStatus}
-              className="inline"
+              className="w-full md:w-auto"
               pendingLabel="Marking Played…"
               hidden={
                 <>
@@ -1560,15 +1576,10 @@ export default async function BookingDetail({
             >
               <SubmitButton pendingLabel="…">Mark Played</SubmitButton>
             </ActionForm>
-          ) : null}
-          <a href="#edit-booking" className={buttonClass("secondary")}>
-            Save / edit
-          </a>
-          <a href="#add-court" className={buttonClass("secondary")}>
-            Add court
-          </a>
-        </div>
-      </div>
+          ) : null
+        }
+      />
+      </BookingPhoneTabs>
     </div>
   );
 }

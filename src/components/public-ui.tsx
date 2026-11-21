@@ -7,7 +7,7 @@ export { PlayerAvatar, PlayerChip };
 
 /** Wrapper for player/group/board/schedule pages — larger base text on mobile. */
 export const publicMainClass =
-  "mx-auto max-w-lg px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base";
+  "mx-auto w-full min-w-0 max-w-lg px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base";
 
 /** Tappable list row — visible press feedback + 44px+ hit area. */
 export const publicTapRowClass =

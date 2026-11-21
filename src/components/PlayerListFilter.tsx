@@ -50,7 +50,7 @@ export function PlayerListFilter({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={placeholder}
           aria-label={placeholder}
-          className={`${inputClass} min-w-[12rem] flex-1`}
+          className={`${inputClass} w-full min-w-0 sm:w-auto sm:min-w-[12rem] sm:flex-1`}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.preventDefault();
           }}
@@ -60,7 +60,7 @@ export function PlayerListFilter({
             value={status}
             onChange={(event) => setStatus(event.target.value)}
             aria-label="Status"
-            className={`${inputClass} max-w-[11rem]`}
+            className={`${inputClass} w-full sm:w-auto sm:max-w-[11rem]`}
           >
             {statuses.map((option) => (
               <option key={option.value || "all"} value={option.value}>

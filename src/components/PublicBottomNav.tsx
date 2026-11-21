@@ -173,10 +173,10 @@ export function PublicBottomNav({
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-30 w-full max-w-full overflow-hidden border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur"
       aria-label="Player pages"
     >
-      <ul className="mx-auto flex max-w-lg">
+      <ul className="mx-auto flex w-full min-w-0 max-w-lg">
         {items.map((item) => {
           const pathOnly = item.href.split("?")[0];
           const active =
@@ -184,18 +184,18 @@ export function PublicBottomNav({
               ? pathname === "/login"
               : pathname === pathOnly || pathname.startsWith(`${pathOnly}/`);
           return (
-            <li key={item.label} className="flex-1">
+            <li key={item.label} className="min-w-0 flex-1 basis-0">
               <PendingLink
                 href={item.href}
                 busyLabel={`Opening ${item.label}…`}
-                className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs font-semibold ${
+                className={`flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-0.5 text-xs font-semibold ${
                   active ? "text-emerald-700" : "text-slate-500"
                 }`}
               >
-                <span className="text-lg" aria-hidden>
+                <span className="text-lg leading-none" aria-hidden>
                   {item.icon}
                 </span>
-                {item.label}
+                <span className="max-w-full truncate">{item.label}</span>
               </PendingLink>
             </li>
           );

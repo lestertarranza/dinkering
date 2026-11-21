@@ -244,7 +244,7 @@ export default async function ExpenseDetail({
             </div>
           </div>
           <div className="overflow-x-auto p-4">
-            <table className="w-full min-w-[480px] text-sm">
+            <table className="stack-cards w-full min-w-[480px] text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 font-medium">Player</th>
@@ -261,18 +261,18 @@ export default async function ExpenseDetail({
                   const due = row.remaining >= SETTLE_TOLERANCE;
                   return (
                     <tr key={row.share.id}>
-                      <td className="py-2 font-medium text-slate-700">
+                      <td data-label="Player" className="py-2 font-medium text-slate-700">
                         {row.name}
                       </td>
-                      <td className="py-2 text-right text-slate-600">
+                      <td data-label="Share" className="py-2 text-right text-slate-600">
                         {formatMoney(row.owed)}
                       </td>
-                      <td className="py-2 text-right text-emerald-600">
+                      <td data-label="Paid" className="py-2 text-right text-emerald-600">
                         {row.paid > SETTLE_TOLERANCE
                           ? formatMoney(row.paid)
                           : "—"}
                       </td>
-                      <td className="py-2 text-right">
+                      <td data-label="Status" className="py-2 text-right">
                         {settled ? (
                           <Badge tone="going">Settled</Badge>
                         ) : partly ? (
@@ -285,7 +285,7 @@ export default async function ExpenseDetail({
                           </Badge>
                         )}
                       </td>
-                      <td className="py-1 pl-3">
+                      <td data-label="Pay" className="py-1 pl-3">
                         {due ? (
                           <ConfirmButton
                             action={markExpenseSharePaid}
@@ -330,7 +330,7 @@ export default async function ExpenseDetail({
         >
           <PlayerListFilter placeholder="Search players in this split…">
           <div className="max-h-[28rem] overflow-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className="stack-cards w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 font-medium">Include</th>
@@ -345,7 +345,7 @@ export default async function ExpenseDetail({
                   const existing = shareByPlayer.get(c.id);
                   return (
                     <tr key={c.id} data-player-name={c.name}>
-                      <td className="py-2">
+                      <td data-label="Include" className="py-2">
                         <input
                           type="hidden"
                           name="share_player_ids"
@@ -355,22 +355,23 @@ export default async function ExpenseDetail({
                           type="checkbox"
                           name={`include-${c.id}`}
                           defaultChecked={existing != null}
+                          className="h-5 w-5 rounded border-slate-300"
                         />
                       </td>
-                      <td className="py-2 font-medium text-slate-700">
+                      <td data-label="Player" className="py-2 font-medium text-slate-700">
                         {c.name}
                       </td>
-                      <td className="py-2">
+                      <td data-label="Units" className="py-2">
                         <input
                           name={`units-${c.id}`}
                           type="number"
                           step="0.5"
                           min="0"
                           defaultValue={existing?.share_units ?? 1}
-                          className="w-16 rounded-md border border-slate-300 px-2 py-1"
+                          className="min-h-11 w-24 rounded-md border border-slate-300 px-2 py-1"
                         />
                       </td>
-                      <td className="py-2">
+                      <td data-label="Override ₱" className="py-2">
                         <input
                           name={`override-${c.id}`}
                           type="number"
@@ -378,10 +379,10 @@ export default async function ExpenseDetail({
                           min="0"
                           defaultValue={existing?.override_share_amount ?? ""}
                           placeholder="—"
-                          className="w-24 rounded-md border border-slate-300 px-2 py-1"
+                          className="min-h-11 w-28 rounded-md border border-slate-300 px-2 py-1"
                         />
                       </td>
-                      <td className="py-2 text-right text-slate-600">
+                      <td data-label="Current" className="py-2 text-right text-slate-600">
                         {existing ? formatMoney(existing.amount_owed) : "—"}
                       </td>
                     </tr>

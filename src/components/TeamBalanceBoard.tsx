@@ -82,7 +82,7 @@ export function TeamBalanceBoard({
         <EmptyState title="No player matches your search" />
       ) : (
         <div className="space-y-4">
-          <div className="grid items-start gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 [&>*]:min-w-0">
             <BalanceColumn
               title="In credit"
               tone="credit"

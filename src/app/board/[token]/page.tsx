@@ -237,7 +237,7 @@ export default async function TeamBoard({
   return (
     <PublicChrome returnTo={`/board/${token}`} teamToken={token}>
     <RememberPublicTokens teamToken={token} />
-    <main className="mx-auto max-w-3xl px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base">
+    <main className="mx-auto w-full min-w-0 max-w-3xl px-4 py-6 pb-24 text-[17px] leading-relaxed sm:text-base">
       <PublicPageHeader
         icon="🏓"
         title="Dinkering Pickleball"

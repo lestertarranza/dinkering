@@ -350,7 +350,7 @@ export default async function ClubFundDetail({
                 </p>
               </div>
               <div className="overflow-x-auto p-4">
-                <table className="w-full min-w-[480px] text-sm">
+                <table className="stack-cards w-full min-w-[480px] text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                       <th className="py-2 font-medium">Player</th>
@@ -365,10 +365,10 @@ export default async function ClubFundDetail({
                       const settled = isSettled(row.remaining);
                       return (
                         <tr key={row.shareId}>
-                          <td className="py-2 font-medium text-slate-700">
+                          <td data-label="Player" className="py-2 font-medium text-slate-700">
                             {row.playerName}
                           </td>
-                          <td className="py-2 text-slate-600">
+                          <td data-label="Game" data-stack="block" className="py-2 text-slate-600">
                           {row.bookingId ? (
                               <Link
                                 href={`/admin/bookings/${row.bookingId}`}
@@ -385,13 +385,14 @@ export default async function ClubFundDetail({
                               </span>
                             ) : null}
                           </td>
-                          <td className="py-2 text-right text-slate-600">
+                          <td data-label="Charged" className="py-2 text-right text-slate-600">
                             {formatMoney(row.amount)}
                           </td>
-                          <td className="py-2 text-right text-emerald-700">
+                          <td data-label="Paid" className="py-2 text-right text-emerald-700">
                             {row.paid > 0 ? formatMoney(row.paid) : "—"}
                           </td>
                           <td
+                            data-label="Status"
                             className={`py-2 text-right font-medium ${
                               settled
                                 ? "text-slate-400"

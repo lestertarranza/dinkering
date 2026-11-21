@@ -557,7 +557,7 @@ export default async function Dashboard({
     return qs ? `/admin?${qs}` : "/admin";
   }
 
-  const summaryClass = "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm hover:bg-slate-50 [&::-webkit-details-marker]:hidden";
+  const summaryClass = "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm hover:bg-slate-50 [&>:first-child]:min-w-0 [&::-webkit-details-marker]:hidden";
 
   return (
     <div>
@@ -567,7 +567,7 @@ export default async function Dashboard({
         action={<Link href="/admin/collections" className={buttonClass("secondary")}>Collections →</Link>}
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5 [&>*]:min-w-0">
         <StatCard label="Outstanding collectible" value={formatMoney(totalCollectible)} tone="collect" hint="Sum of all positive balances" />
         <StatCard label="Credits on file"          value={formatMoney(totalCredits)}     tone="credit"  hint="Advance & overpayments" />
         <StatCard label="Payments received"        value={formatMoney(totalPayments)}    tone="info" />
@@ -669,7 +669,7 @@ export default async function Dashboard({
 
       <Card className="mt-5 p-4">
         <h2 className="text-sm font-semibold text-slate-800">Daily briefing</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <p className="text-xs font-bold uppercase text-slate-500">Today / tomorrow</p>
             {soonBookings.length === 0 ? (
@@ -715,7 +715,7 @@ export default async function Dashboard({
               <li key={`mc-${b.id}`}>
                 <Link
                   href={`/admin/bookings/${b.id}#add-court`}
-                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50 [&>span:first-child]:min-w-0"
                 >
                   <span>
                     <span className="font-medium">{b.booking_code}</span> is missing court details
@@ -728,7 +728,7 @@ export default async function Dashboard({
               <li key={`pu-${b.id}`}>
                 <Link
                   href={`/admin/bookings/${b.id}`}
-                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50 [&>span:first-child]:min-w-0"
                 >
                   <span>
                     <span className="font-medium">{b.booking_code}</span> is past date and still Booked
@@ -741,7 +741,7 @@ export default async function Dashboard({
               <li key={`rs-${b.id}`}>
                 <Link
                   href={`/admin/bookings/${b.id}`}
-                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50 [&>span:first-child]:min-w-0"
                 >
                   <span>
                     <span className="font-medium">{b.booking_code}</span> has {n} player
@@ -755,7 +755,7 @@ export default async function Dashboard({
               <li key={`ex-${e.id}`}>
                 <Link
                   href={`/admin/expenses/${e.id}`}
-                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50"
+                  className="flex justify-between gap-3 px-4 py-2.5 hover:bg-amber-50 [&>span:first-child]:min-w-0"
                 >
                   <span>
                     Unsettled expense: {e.expense_code ?? e.description}
@@ -770,7 +770,7 @@ export default async function Dashboard({
         </Card>
       ) : null}
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
 
         {/* ── Upcoming bookings ── */}
         <Card>
@@ -896,9 +896,9 @@ export default async function Dashboard({
                               return (
                                 <li key={c.source_id} className="flex items-center justify-between gap-2 text-xs text-slate-600">
                                   {linked ? (
-                                    <Link href={linked.href} className="truncate text-emerald-700 hover:underline">{linked.label}</Link>
+                                    <Link href={linked.href} className="min-w-0 flex-1 truncate text-emerald-700 hover:underline">{linked.label}</Link>
                                   ) : (
-                                    <span className="truncate text-slate-500">{fallback}</span>
+                                    <span className="min-w-0 flex-1 truncate text-slate-500">{fallback}</span>
                                   )}
                                   <span className="shrink-0 font-medium text-rose-600">{formatMoney(c.remaining)}</span>
                                 </li>

@@ -24,14 +24,14 @@ export function CourtRow({ court }: { court: BookingCourt }) {
   if (!editing) {
     return (
       <tr>
-        <td className="py-2 text-slate-700">{formatCourtNumber(court.court_number)}</td>
-        <td className="py-2 text-slate-500">{court.start_time ? formatTime(court.start_time) : "—"}</td>
-        <td className="py-2 text-slate-500">{court.end_time ? formatTime(court.end_time) : "—"}</td>
-        <td className="py-2 text-right text-slate-600">{court.hours}</td>
-        <td className="py-2 text-right text-slate-600">{formatMoney(court.rate_per_court_per_hour)}</td>
-        <td className="py-2 text-right text-slate-600">{court.max_players === 0 ? "∞" : court.max_players}</td>
-        <td className="py-2 text-right font-medium text-slate-700">{formatMoney(court.hours * court.rate_per_court_per_hour)}</td>
-        <td className="py-2 text-right whitespace-nowrap">
+        <td data-label="Court #" className="py-2 text-slate-700">{formatCourtNumber(court.court_number)}</td>
+        <td data-label="Start" className="py-2 text-slate-500">{court.start_time ? formatTime(court.start_time) : "—"}</td>
+        <td data-label="End" className="py-2 text-slate-500">{court.end_time ? formatTime(court.end_time) : "—"}</td>
+        <td data-label="Hours" className="py-2 text-right text-slate-600">{court.hours}</td>
+        <td data-label="Rate / hr" className="py-2 text-right text-slate-600">{formatMoney(court.rate_per_court_per_hour)}</td>
+        <td data-label="Max players" className="py-2 text-right text-slate-600">{court.max_players === 0 ? "∞" : court.max_players}</td>
+        <td data-label="Subtotal" className="py-2 text-right font-medium text-slate-700">{formatMoney(court.hours * court.rate_per_court_per_hour)}</td>
+        <td data-label="Actions" className="py-2 text-right whitespace-nowrap">
           <button
             type="button"
             onClick={() => setEditing(true)}

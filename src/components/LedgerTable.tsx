@@ -81,7 +81,7 @@ export function LedgerTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="stack-cards w-full min-w-[640px] text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
             <th className="px-4 py-2 font-medium">Date</th>
@@ -98,10 +98,10 @@ export function LedgerTable({
               key={entry.id}
               className={entry.voided ? "text-slate-400 line-through" : ""}
             >
-              <td className="whitespace-nowrap px-4 py-2 text-slate-500">
+              <td data-label="Date" className="whitespace-nowrap px-4 py-2 text-slate-500">
                 {formatDate(entry.entry_date)}
               </td>
-              <td className="px-4 py-2">
+              <td data-label="Description" data-stack="block" className="px-4 py-2">
                 {(() => {
                   // Use pre-enriched items from the page if available, else
                   // fall back to parsing the raw description.
@@ -195,20 +195,21 @@ export function LedgerTable({
                   );
                 })()}
               </td>
-              <td className="px-4 py-2 text-slate-500">
+              <td data-label="Type" className="px-4 py-2 text-slate-500">
                 {sourceLabels[entry.source_type] ?? entry.source_type}
               </td>
-              <td className="px-4 py-2 text-right text-rose-600">
+              <td data-label="Charge" className="px-4 py-2 text-right text-rose-600">
                 {Number(entry.debit_amount) > 0
                   ? formatMoney(entry.debit_amount)
                   : "—"}
               </td>
-              <td className="px-4 py-2 text-right text-emerald-600">
+              <td data-label="Credit" className="px-4 py-2 text-right text-emerald-600">
                 {Number(entry.credit_amount) > 0
                   ? formatMoney(entry.credit_amount)
                   : "—"}
               </td>
               <td
+                data-label="Balance"
                 className={`whitespace-nowrap px-4 py-2 text-right font-medium ${
                   running > 0.005
                     ? "text-rose-600"

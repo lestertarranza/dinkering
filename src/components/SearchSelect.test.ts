@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterSearchOptions } from "./SearchSelect";
+import { filterSearchOptions, searchMenuFrame } from "./SearchSelect";
 
 describe("filterSearchOptions", () => {
   const options = [
@@ -24,5 +24,31 @@ describe("filterSearchOptions", () => {
       "1",
       "3",
     ]);
+  });
+});
+
+describe("searchMenuFrame", () => {
+  it("opens downward when there is room above the bottom bars", () => {
+    expect(
+      searchMenuFrame({
+        inputTop: 120,
+        inputBottom: 160,
+        viewTop: 0,
+        viewBottom: 800,
+        reserveBottom: 128,
+      }),
+    ).toEqual({ above: false, maxHeight: 240 });
+  });
+
+  it("opens upward when the field sits on the bottom bars", () => {
+    const frame = searchMenuFrame({
+      inputTop: 620,
+      inputBottom: 660,
+      viewTop: 0,
+      viewBottom: 800,
+      reserveBottom: 128,
+    });
+    expect(frame.above).toBe(true);
+    expect(frame.maxHeight).toBeGreaterThan(96);
   });
 });

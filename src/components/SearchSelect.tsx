@@ -1,6 +1,16 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
 import { inputClass } from "@/components/ui";
 
 export type SearchOption = {
@@ -22,6 +32,109 @@ export function filterSearchOptions(
 
 function labelFor(options: SearchOption[], value: string): string {
   return options.find((option) => option.value === value)?.label ?? "";
+}
+
+/** Decide whether a search menu opens above the field and how tall it can be. */
+export function searchMenuFrame(input: {
+  inputTop: number;
+  inputBottom: number;
+  viewTop: number;
+  viewBottom: number;
+  reserveBottom: number;
+}): { above: boolean; maxHeight: number } {
+  const gap = 4;
+  const spaceBelow =
+    input.viewBottom - input.reserveBottom - input.inputBottom - gap;
+  const spaceAbove = input.inputTop - input.viewTop - gap;
+  const above = spaceBelow < 160 && spaceAbove > spaceBelow;
+  const available = above ? spaceAbove : spaceBelow;
+  return { above, maxHeight: Math.max(96, Math.min(240, available)) };
+}
+
+function FloatingMenu({
+  open,
+  anchorRef,
+  id,
+  children,
+}: {
+  open: boolean;
+  anchorRef: RefObject<HTMLElement | null>;
+  id: string;
+  children: ReactNode;
+}) {
+  const [frame, setFrame] = useState<{
+    above: boolean;
+    maxHeight: number;
+    left: number;
+    width: number;
+    top: number;
+    bottom: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    function place() {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const viewTop = viewport?.offsetTop ?? 0;
+      const viewBottom = viewTop + (viewport?.height ?? window.innerHeight);
+      const reserveBottom = window.innerWidth < 768 ? 128 : 12;
+      const decision = searchMenuFrame({
+        inputTop: rect.top,
+        inputBottom: rect.bottom,
+        viewTop,
+        viewBottom,
+        reserveBottom,
+      });
+      const width = Math.min(rect.width, window.innerWidth - 16);
+      let left = rect.left;
+      if (left + width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - 8 - width);
+      }
+      setFrame({
+        above: decision.above,
+        maxHeight: decision.maxHeight,
+        left,
+        width,
+        top: rect.bottom + 4,
+        bottom: window.innerHeight - rect.top + 4,
+      });
+    }
+    place();
+    const viewport = window.visualViewport;
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    viewport?.addEventListener("resize", place);
+    viewport?.addEventListener("scroll", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+      viewport?.removeEventListener("resize", place);
+      viewport?.removeEventListener("scroll", place);
+    };
+  }, [open, anchorRef]);
+
+  if (!open || !frame || typeof document === "undefined") return null;
+  return createPortal(
+    <ul
+      id={id}
+      role="listbox"
+      style={{
+        position: "fixed",
+        left: frame.left,
+        width: frame.width,
+        maxHeight: frame.maxHeight,
+        zIndex: 60,
+        ...(frame.above ? { bottom: frame.bottom } : { top: frame.top }),
+      }}
+      className="overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+    >
+      {children}
+    </ul>,
+    document.body,
+  );
 }
 
 /**
@@ -51,6 +164,7 @@ export function SearchSelect({
 }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
   const isControlled = valueProp !== undefined;
   const [innerValue, setInnerValue] = useState(defaultValue);
   const selected = isControlled ? valueProp : innerValue;
@@ -128,7 +242,7 @@ export function SearchSelect({
   let previousGroup = "";
 
   return (
-    <div className={`relative ${className}`}>
+    <div ref={anchorRef} className={`relative ${className}`}>
       <input
         ref={inputRef}
         role="combobox"
@@ -164,46 +278,44 @@ export function SearchSelect({
         }}
       />
       <input type="hidden" name={name} value={selected} />
-      {open && !disabled ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-        >
-          {matches.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">No matches</li>
-          ) : (
-            matches.map((option, index) => {
-              const showGroup = option.group && option.group !== previousGroup;
-              if (option.group) previousGroup = option.group;
-              return (
-                <li key={option.value}>
-                  {showGroup ? (
-                    <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      {option.group}
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={option.value === selected}
-                    className={`block w-full px-3 py-2 text-left text-sm ${
-                      index === active
-                        ? "bg-emerald-50 text-emerald-900"
-                        : "text-slate-800 hover:bg-slate-50"
-                    }`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setActive(index)}
-                    onClick={() => choose(option)}
-                  >
-                    {option.label}
-                  </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      ) : null}
+      <FloatingMenu
+        open={open && !disabled}
+        anchorRef={anchorRef}
+        id={listId}
+      >
+        {matches.length === 0 ? (
+          <li className="px-3 py-3 text-sm text-slate-400">No matches</li>
+        ) : (
+          matches.map((option, index) => {
+            const showGroup = option.group && option.group !== previousGroup;
+            if (option.group) previousGroup = option.group;
+            return (
+              <li key={option.value}>
+                {showGroup ? (
+                  <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    {option.group}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === selected}
+                  className={`block min-h-11 w-full px-3 py-2.5 text-left text-sm ${
+                    index === active
+                      ? "bg-emerald-50 text-emerald-900"
+                      : "text-slate-800 hover:bg-slate-50"
+                  }`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => choose(option)}
+                >
+                  {option.label}
+                </button>
+              </li>
+            );
+          })
+        )}
+      </FloatingMenu>
     </div>
   );
 }
@@ -219,6 +331,7 @@ export function SearchMultiSelect({
   placeholder?: string;
 }) {
   const listId = useId();
+  const anchorRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
@@ -263,6 +376,7 @@ export function SearchMultiSelect({
         </div>
       ) : null}
       <input
+        ref={anchorRef}
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
@@ -295,37 +409,31 @@ export function SearchMultiSelect({
           }
         }}
       />
-      {open ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-        >
-          {matches.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">No matches</li>
-          ) : (
-            matches.map((option, index) => (
-              <li key={option.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={false}
-                  className={`block w-full px-3 py-2 text-left text-sm ${
-                    index === active
-                      ? "bg-emerald-50 text-emerald-900"
-                      : "text-slate-800 hover:bg-slate-50"
-                  }`}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => setActive(index)}
-                  onClick={() => add(option)}
-                >
-                  {option.label}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
+      <FloatingMenu open={open} anchorRef={anchorRef} id={listId}>
+        {matches.length === 0 ? (
+          <li className="px-3 py-3 text-sm text-slate-400">No matches</li>
+        ) : (
+          matches.map((option, index) => (
+            <li key={option.value}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                className={`block min-h-11 w-full px-3 py-2.5 text-left text-sm ${
+                  index === active
+                    ? "bg-emerald-50 text-emerald-900"
+                    : "text-slate-800 hover:bg-slate-50"
+                }`}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActive(index)}
+                onClick={() => add(option)}
+              >
+                {option.label}
+              </button>
+            </li>
+          ))
+        )}
+      </FloatingMenu>
     </div>
   );
 }

@@ -39,7 +39,7 @@ function RsvpButton({
       value={value}
       disabled={disabled}
       aria-pressed={selected}
-      className={`min-h-11 flex-1 touch-manipulation rounded-lg px-3 py-2.5 text-sm font-semibold transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-95 disabled:opacity-60 disabled:active:scale-100 ${tone}`}
+      className={`min-h-11 min-w-0 flex-1 basis-0 touch-manipulation rounded-lg px-2 py-2.5 text-sm font-semibold transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 active:scale-95 disabled:opacity-60 disabled:active:scale-100 ${tone}`}
     >
       {pending && selected ? "Saving…" : label}
     </button>
@@ -92,7 +92,7 @@ function RsvpControls({
           <button
             type="button"
             disabled
-            className="min-h-11 flex-1 touch-manipulation rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white ring-2 ring-emerald-300 opacity-100"
+            className="min-h-11 min-w-0 flex-1 basis-0 touch-manipulation rounded-lg bg-emerald-600 px-2 py-2.5 text-sm font-semibold text-white ring-2 ring-emerald-300 opacity-100"
           >
             Going · Locked 🔒
           </button>

@@ -28,8 +28,8 @@ export default async function AdminLayout({
         playerToken={ctx.playerToken}
       />
       <AdminHotkeys />
-      <main className="flex-1 overflow-x-hidden px-4 py-5 pb-24 sm:px-6 lg:px-8 md:pb-5">
-        <div className="mx-auto max-w-6xl">{children}</div>
+      <main className="admin-page-pad min-w-0 flex-1 overflow-x-hidden px-4 pt-5 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full min-w-0 max-w-6xl">{children}</div>
       </main>
     </div>
   );

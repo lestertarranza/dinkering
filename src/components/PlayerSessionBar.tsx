@@ -100,7 +100,7 @@ export async function PlayerSessionBar({
 
   return (
     <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-2">
+      <div className="mx-auto flex w-full min-w-0 max-w-3xl items-center gap-2 px-4 py-2">
         {body}
       </div>
     </div>
@@ -125,8 +125,8 @@ export async function PublicChrome({
       <PlayerSessionBar returnTo={returnTo} viewingName={viewingName} />
       {viewAs ? (
         <div className="border-b border-amber-200 bg-amber-50">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-2">
-            <p className="text-sm text-amber-950">
+          <div className="mx-auto flex w-full min-w-0 max-w-3xl items-center justify-between gap-3 px-4 py-2">
+            <p className="min-w-0 text-sm text-amber-950">
               <span className="font-semibold">Viewing as {viewAs.name}.</span>{" "}
               Going, the waitlist, and payment proof use this player&apos;s wallet.
             </p>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setPlayerActualStatus } from "@/app/admin/bookings/actions";
-import { Badge, StatusBadge, buttonClass } from "@/components/ui";
+import { Badge, StatusBadge } from "@/components/ui";
 
 const OPTIONS = [
   ["attended", "Attended"],
@@ -48,9 +48,6 @@ export function AttendanceConfirmRow({
   savedStatus: string | null;
   showCommitted: boolean;
 }) {
-  const suggested =
-    savedStatus ?? (responseStatus === "going" ? "attended" : "absent");
-  const [value, setValue] = useState(suggested);
   const [applied, setApplied] = useState<string | null>(savedStatus);
   const [seenSaved, setSeenSaved] = useState(savedStatus);
   const [error, setError] = useState<string | null>(null);
@@ -60,12 +57,10 @@ export function AttendanceConfirmRow({
   if (savedStatus !== seenSaved) {
     setSeenSaved(savedStatus);
     setApplied(savedStatus);
-    setValue(savedStatus ?? (responseStatus === "going" ? "attended" : "absent"));
   }
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const chosen = value;
+  function save(chosen: string) {
+    if (pending || chosen === applied) return;
     const previous = applied;
     setApplied(chosen);
     setError(null);
@@ -84,52 +79,56 @@ export function AttendanceConfirmRow({
     });
   }
 
-  const buttonLabel = applied ? "Update" : "Confirm";
-
   return (
-    <form
-      onSubmit={onSubmit}
+    <div
       data-player-name={playerName}
-      className={`rounded-lg px-3 py-1.5 ${rowTone(applied)}`}
+      className={`rounded-lg px-3 py-2 ${rowTone(applied)}`}
     >
-      <div className="flex items-center gap-2">
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span className={`truncate text-sm ${nameTone(applied)}`}>{playerName}</span>
-          {pending ? (
-            <span
-              className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600"
-              role="status"
-              aria-label="Saving"
-            />
-          ) : null}
-        </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`min-w-0 text-sm ${nameTone(applied)}`}>{playerName}</span>
+        {pending ? (
+          <span
+            className="inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600"
+            role="status"
+            aria-label="Saving"
+          />
+        ) : null}
         {showCommitted ? <Badge tone="warning">Committed</Badge> : null}
         <StatusBadge status={responseStatus} />
-        <select
-          name="actual_status"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-        >
-          {OPTIONS.map(([status, label]) => (
-            <option key={status} value={status}>
+        {applied ? null : (
+          <span className="text-xs text-slate-500">Not marked yet</span>
+        )}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        {OPTIONS.map(([status, label]) => {
+          const selected = applied === status;
+          return (
+            <button
+              key={status}
+              type="button"
+              disabled={pending}
+              aria-pressed={selected}
+              onClick={() => save(status)}
+              className={`min-h-11 rounded-lg px-2 text-sm font-semibold ring-1 ring-inset disabled:opacity-60 ${chipTone(status, selected)}`}
+            >
               {label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          disabled={pending}
-          className={buttonClass("secondary")}
-        >
-          {buttonLabel}
-        </button>
+            </button>
+          );
+        })}
       </div>
       {error ? (
         <p className="mt-1 text-sm text-rose-700" role="status">
           {error}
         </p>
       ) : null}
-    </form>
+    </div>
   );
+}
+
+function chipTone(status: string, selected: boolean): string {
+  if (!selected) return "bg-white text-slate-700 ring-slate-200";
+  if (status === "attended") return "bg-emerald-600 text-white ring-emerald-700";
+  if (status === "absent") return "bg-rose-600 text-white ring-rose-700";
+  if (status === "late_cancel") return "bg-orange-600 text-white ring-orange-700";
+  return "bg-violet-600 text-white ring-violet-700";
 }
